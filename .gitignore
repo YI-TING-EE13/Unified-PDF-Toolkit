@@ -1,0 +1,51 @@
+# General
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit Test / Coverage
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.pytest_cache/
+
+# PyInstaller
+*.spec
+
+# IDE Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project Specific (Temporary outputs if any)
+# We generally don't ignore PDF files as users might put examples,
+# but if there's a specific 'output' folder we could list it.
+# For now, sticking to standard ignores.
