@@ -1,8 +1,36 @@
 import os
-import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
+
+# Application name used for default save directories
+_APP_NAME = "PDFToolkit"
+
+
+def get_default_save_dir(subfolder: str) -> str:
+    """
+    Returns a standard default save directory under the user's Documents folder.
+
+    Path format: ~/Documents/PDFToolkit/Saved/{subfolder}/
+    Creates the directory tree if it doesn't exist.
+    Falls back to CWD-based path if permission is denied on Documents.
+
+    Args:
+        subfolder (str): Tool-specific subfolder name 
+                        (e.g., "Merged", "Compressed", "Images").
+
+    Returns:
+        str: Absolute path to the ready-to-use output directory.
+    """
+    base = Path.home() / "Documents" / _APP_NAME / "Saved" / subfolder
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Fallback: use CWD if Documents is not writable (rare on Windows)
+        base = Path.cwd() / _APP_NAME / "Saved" / subfolder
+        base.mkdir(parents=True, exist_ok=True)
+    return str(base)
+
 
 def normalize_path(path: str) -> str:
     """
@@ -33,7 +61,7 @@ def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_overr
     Args:
         input_path (str): Source file path.
         output_dir (Optional[str]): Optional destination directory. 
-                                  If None, uses '~/compressed_files'.
+                                  If None, defaults to ~/Documents/PDFToolkit/Saved/Compressed/.
         ext_override (Optional[str]): Force a specific extension (e.g., '.txt.gz').
     
     Returns:
@@ -46,7 +74,7 @@ def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_overr
     if output_dir:
         out_dir = Path(normalize_path(output_dir))
     else:
-        out_dir = Path.home() / "compressed_files"
+        out_dir = Path(get_default_save_dir("Compressed"))
     
     # Ensure directory exists
     try:

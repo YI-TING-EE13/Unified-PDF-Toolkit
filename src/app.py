@@ -1,8 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import sys
 import os
-from typing import Dict, Optional, Type
+from typing import Dict, Optional
 
 # Ensure src is in path if running directly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +14,8 @@ from src.tools.compressor.tool import CompressorTool
 from src.tools.merger.tool import MergerTool
 from src.tools.splitter.tool import SplitterTool
 from src.tools.converter.tool import ConverterTool
+from src.tools.image2pdf.tool import Image2PDFTool
+from src.tools.page_manager.tool import PageManagerTool
 
 class PDFToolkitApp(tk.Tk):
     """
@@ -132,7 +134,9 @@ class PDFToolkitApp(tk.Tk):
             CompressorTool(),
             MergerTool(),
             SplitterTool(),
-            ConverterTool()
+            ConverterTool(),
+            Image2PDFTool(),
+            PageManagerTool(),
         ]
         
         for tool in tools_list:
