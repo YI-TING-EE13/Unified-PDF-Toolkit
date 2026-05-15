@@ -1,11 +1,11 @@
 """
-Page Manager Tool — Delete and rotate pages within a PDF.
+Page Manager Tool - Delete and rotate pages within a PDF.
 
 Features:
 - Unified FileListWidget as a file queue.
 - Click a file in the list to load its preview (same pattern as Splitter).
 - Delete pages by range (e.g., '3, 5-7').
-- Rotate pages by range with selectable angle (90°, 180°, 270°).
+- Rotate pages by range with selectable angle (90, 180, 270 degrees).
 - Default save to ~/Documents/PDFToolkit/Saved/Managed/.
 """
 
@@ -34,7 +34,7 @@ class PageManagerTool(BaseTool):
     """
 
     name: str = "Page Manager"
-    icon: str = "📄"
+    icon: str = "[P]"
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
@@ -74,7 +74,7 @@ class PageManagerTool(BaseTool):
         self.delete_entry = ttk.Entry(del_frame)
         self.delete_entry.pack(fill="x", pady=(0, 5))
         self.delete_btn = ttk.Button(
-            del_frame, text="🗑️ Delete Pages", command=self._delete_pages, state="disabled"
+            del_frame, text="Delete Pages", command=self._delete_pages, state="disabled"
         )
         self.delete_btn.pack(fill="x")
 
@@ -99,7 +99,7 @@ class PageManagerTool(BaseTool):
         ).pack(side="left", padx=5)
 
         self.rotate_btn = ttk.Button(
-            rot_frame, text="🔄 Rotate Pages", command=self._rotate_pages, state="disabled"
+            rot_frame, text="Rotate Pages", command=self._rotate_pages, state="disabled"
         )
         self.rotate_btn.pack(fill="x")
 
@@ -161,9 +161,12 @@ class PageManagerTool(BaseTool):
         )
 
         self.save_btn = ttk.Button(
-            left_frame, text="💾 Save Modified PDF", command=self.execute, state="disabled"
+            left_frame, text="Save Modified PDF", command=self.execute, state="disabled"
         )
         self.save_btn.pack(pady=10, fill="x")
+
+        self.progress = ttk.Progressbar(left_frame, mode="determinate")
+        self.progress.pack(fill="x", pady=(0, 5))
 
         self.status_lbl = ttk.Label(left_frame, text="Add PDFs and click one to preview.")
         self.status_lbl.pack()
@@ -206,7 +209,7 @@ class PageManagerTool(BaseTool):
 
         self._process_queue()
 
-    # ── File List Selection ─────────────────────────────────────────
+    # File list selection
 
     def _on_file_select(self, event: Any) -> None:
         """Loads the clicked file into the preview."""
@@ -214,7 +217,7 @@ class PageManagerTool(BaseTool):
         if selected and selected != self.current_pdf_path:
             self._load_pdf(selected)
 
-    # ── PDF Loading ─────────────────────────────────────────────────
+    # PDF loading
 
     def _load_pdf(self, path: str) -> None:
         """Loads a PDF and configures the UI for it."""
@@ -248,7 +251,7 @@ class PageManagerTool(BaseTool):
         self.extract_btn.config(state="normal")
         self.save_btn.config(state="normal")
 
-    # ── Preview ─────────────────────────────────────────────────────
+    # Preview
 
     def _on_preview_change(self, event: Any) -> None:
         pg = int(float(event))
@@ -286,7 +289,7 @@ class PageManagerTool(BaseTool):
         except Exception:
             pass
 
-    # ── Queue ───────────────────────────────────────────────────────
+    # Queue
 
     def _process_queue(self) -> None:
         """Polls the thread-safe queue for messages and updates the GUI."""
@@ -300,11 +303,17 @@ class PageManagerTool(BaseTool):
                     self.status_lbl.config(text=data)
                 elif msg_type == "success":
                     self.save_btn.config(state="normal")
+                    self.progress.stop()
+                    self.progress.config(mode="determinate")
+                    self.progress["value"] = 100
                     self.status_lbl.config(text=data)
                     self.output_actions.set_path(data.replace("Saved to ", "", 1))
                     messagebox.showinfo("Success", data)
                 elif msg_type == "error":
                     self.save_btn.config(state="normal")
+                    self.progress.stop()
+                    self.progress.config(mode="determinate")
+                    self.progress["value"] = 0
                     self.status_lbl.config(text="Error.")
                     messagebox.showerror("Error", data)
         except queue.Empty:
@@ -313,7 +322,7 @@ class PageManagerTool(BaseTool):
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(100, self._process_queue)
 
-    # ── Parse Range ─────────────────────────────────────────────────
+    # Parse ranges
 
     def _parse_page_list(self, range_str: str) -> List[int]:
         """
@@ -362,7 +371,7 @@ class PageManagerTool(BaseTool):
             return False
         return True
 
-    # ── Actions ─────────────────────────────────────────────────────
+    # Actions
 
     def _delete_pages(self) -> None:
         """Deletes the specified pages from the in-memory document."""
@@ -443,7 +452,7 @@ class PageManagerTool(BaseTool):
             self._update_preview(current)
 
             self.status_lbl.config(
-                text=f"Rotated {len(pages)} page(s) by {angle}°. (Unsaved)"
+                text=f"Rotated {len(pages)} page(s) by {angle} degrees. (Unsaved)"
             )
         except Exception as e:
             messagebox.showerror("Error", f"Failed to rotate pages: {e}")
@@ -582,7 +591,7 @@ class PageManagerTool(BaseTool):
             self.output_entry.delete(0, tk.END)
             self.output_entry.insert(0, path)
 
-    # ── Execute (Save) ──────────────────────────────────────────────
+    # Execute save
 
     def execute(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Saves the modified PDF to the specified output path."""
@@ -598,6 +607,8 @@ class PageManagerTool(BaseTool):
 
         self.save_btn.config(state="disabled")
         self.status_lbl.config(text="Saving...")
+        self.progress.config(mode="indeterminate")
+        self.progress.start(12)
         self.output_actions.clear()
 
         threading.Thread(target=self._run_save, args=(output_path,)).start()

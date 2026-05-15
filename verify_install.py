@@ -9,6 +9,7 @@ from src.app import PDFToolkitApp
 from src.tools.compressor.tool import CompressorTool
 from src.tools.converter.tool import ConverterTool
 from src.tools.merger.tool import MergerTool
+from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.splitter.tool import SplitterTool
 
 
@@ -20,6 +21,7 @@ def test_instantiation():
             MergerTool(),
             SplitterTool(),
             ConverterTool(),
+            PDFToWordTool(),
         ]
         for tool in tools:
             print(f"[OK] {tool.name} loaded successfully.")
@@ -37,7 +39,13 @@ def test_app_structure():
         registered = app.tools.keys()
         print(f"App registered tools: {list(registered)}")
 
-        expected = ["Compress PDF/Image", "Merge PDFs", "Split PDF", "PDF to Image"]
+        expected = [
+            "Compress PDF/Image",
+            "Merge PDFs",
+            "Split PDF",
+            "PDF to Image",
+            "PDF to Word",
+        ]
         missing = [tool for tool in expected if tool not in registered]
 
         if missing:

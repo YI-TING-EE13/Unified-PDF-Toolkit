@@ -1,5 +1,5 @@
 """
-Compressor Tool — Batch-compresses PDF and Image files.
+Compressor Tool - Batch-compresses PDF and image files.
 
 Features:
 - Unified FileListWidget for file selection.
@@ -33,10 +33,9 @@ class CompressorTool(BaseTool):
     """
 
     name: str = "Compress PDF/Image"
-    icon: str = "📉"
+    icon: str = "[C]"
 
     def __init__(self) -> None:
-        """Initialize the Compressor tool state."""
         self.processor = BatchProcessor()
         self.queue: queue.Queue = queue.Queue()
 
@@ -220,6 +219,8 @@ class CompressorTool(BaseTool):
                     messagebox.showinfo("Done", summary)
                 elif msg_type == "error":
                     self.start_btn.config(state="normal")
+                    self.progress["value"] = 0
+                    self.status_lbl.config(text="Error occurred.")
                     messagebox.showerror("Error", data)
         except queue.Empty:
             pass

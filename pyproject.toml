@@ -1,6 +1,6 @@
 [project]
 name = "pdf-toolkit"
-version = "0.2.0"
+version = "0.3.0"
 description = "A unified PDF toolkit for compression, merging, splitting, and conversion."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -8,6 +8,7 @@ dependencies = [
     "pymupdf>=1.22.0",
     "pillow>=10.0.0",
     "tqdm>=4.65.0",
+    "pdf2docx>=0.5.8",
 ]
 
 [build-system]

@@ -12,10 +12,10 @@ class BaseTool(ABC):
 
     Attributes:
         name (str): The display name of the tool (e.g., "Compress").
-        icon (str): Short emoji/symbol for the navigation menu (e.g., "📉").
+        icon (str): Short symbol for the navigation menu.
     """
     name: str = "Unnamed"
-    icon: str = "⚙"
+    icon: str = "[*]"
     
     @abstractmethod
     def render(self, parent: ttk.Frame) -> None:

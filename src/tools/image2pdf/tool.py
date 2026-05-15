@@ -1,10 +1,10 @@
 """
-Image2PDF Tool — Converts multiple images into a single PDF with inline compression.
+Image2PDF Tool - Converts multiple images into a single PDF with inline compression.
 
 Features:
 - Unified FileListWidget for image selection and ordering.
 - Inline compression during PDF creation (adjust DPI/JPEG quality at write time).
-- No intermediate large files — images are compressed before insertion.
+- No intermediate large files - images are compressed before insertion.
 - Default save to ~/Documents/PDFToolkit/Saved/Image2PDF/.
 """
 
@@ -36,7 +36,7 @@ class Image2PDFTool(BaseTool):
     """
 
     name: str = "Image to PDF"
-    icon: str = "📷"
+    icon: str = "[I]"
 
     # Compression presets: (scale_factor, jpeg_quality)
     # Scale factor applied to original image dimensions before insertion.
@@ -63,7 +63,7 @@ class Image2PDFTool(BaseTool):
         # 1. File List (image ordering = page order)
         self.file_list = FileListWidget(
             parent,
-            label="Images (Top → Bottom = Page 1 → N)",
+            label="Images (Top to Bottom = Page 1 to N)",
             filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.tiff *.tif")],
             show_ordering=True,
         )
@@ -139,6 +139,7 @@ class Image2PDFTool(BaseTool):
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
+                    self.progress["value"] = 0
                     messagebox.showerror("Error", data)
                 processed += 1
         except queue.Empty:

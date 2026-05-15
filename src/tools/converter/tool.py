@@ -1,5 +1,5 @@
 """
-Converter Tool — Batch-converts PDF pages to images (PNG/JPG/JPEG).
+Converter Tool - Batch-converts PDF pages to images (PNG/JPG/JPEG).
 
 Features:
 - Unified FileListWidget for multi-PDF batch conversion.
@@ -34,7 +34,7 @@ class ConverterTool(BaseTool):
     """
 
     name: str = "PDF to Image"
-    icon: str = "🖼️"
+    icon: str = "[IMG]"
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
@@ -132,6 +132,7 @@ class ConverterTool(BaseTool):
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
+                    self.status["value"] = 0
                     messagebox.showerror("Error", data)
                 processed += 1
         except queue.Empty:

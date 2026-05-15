@@ -1,5 +1,5 @@
 """
-Splitter Tool — Splits PDF files by page range.
+Splitter Tool - Splits PDF files by page range.
 
 Features:
 - Unified FileListWidget as a file queue (Option B).
@@ -34,7 +34,7 @@ class SplitterTool(BaseTool):
     """
 
     name: str = "Split PDF"
-    icon: str = "✂️"
+    icon: str = "[S]"
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
@@ -120,6 +120,10 @@ class SplitterTool(BaseTool):
             left_frame, text="Split PDF", command=self.execute, state="disabled"
         )
         self.btn.pack(pady=20, fill="x")
+
+        self.progress = ttk.Progressbar(left_frame, mode="determinate")
+        self.progress.pack(fill="x", pady=(0, 5))
+
         self.status_lbl = ttk.Label(left_frame, text="Add PDFs and click one to preview.")
         self.status_lbl.pack()
 
@@ -168,7 +172,7 @@ class SplitterTool(BaseTool):
 
         self._process_queue()
 
-    # ── File List Selection ─────────────────────────────────────────
+    # File list selection
 
     def _on_file_select(self, event: Any) -> None:
         """
@@ -179,7 +183,7 @@ class SplitterTool(BaseTool):
         if selected and selected != self.current_pdf_path:
             self._load_pdf(selected)
 
-    # ── Range & Preview Callbacks ───────────────────────────────────
+    # Range and preview callbacks
 
     def _on_range_change(self, source: str) -> None:
         """
@@ -249,7 +253,7 @@ class SplitterTool(BaseTool):
                 self._update_preview(new_pg - 1)
                 self.last_y = event.y
 
-    # ── Queue Processing ────────────────────────────────────────────
+    # Queue processing
 
     def _process_queue(self) -> None:
         """GUI Update Loop."""
@@ -258,14 +262,20 @@ class SplitterTool(BaseTool):
                 msg_type, data = self.queue.get_nowait()
                 if msg_type == "status":
                     self.status_lbl.config(text=data)
+                elif msg_type == "progress":
+                    pct, message = data
+                    self.progress["value"] = pct
+                    self.status_lbl.config(text=message)
                 elif msg_type == "success":
                     message = data["message"] if isinstance(data, dict) else data
                     output_dir = data.get("output_dir", "") if isinstance(data, dict) else ""
+                    self.progress["value"] = 100
                     self.status_lbl.config(text=message)
                     self.btn.config(state="normal")
                     self.output_actions.set_path(output_dir)
                     messagebox.showinfo("Success", message)
                 elif msg_type == "error":
+                    self.progress["value"] = 0
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
                     messagebox.showerror("Error", data)
@@ -280,7 +290,7 @@ class SplitterTool(BaseTool):
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(100, self._process_queue)
 
-    # ── PDF Loading & Preview ───────────────────────────────────────
+    # PDF loading and preview
 
     def _load_pdf(self, path: str) -> None:
         """
@@ -353,7 +363,7 @@ class SplitterTool(BaseTool):
             self.output_entry.delete(0, tk.END)
             self.output_entry.insert(0, path)
 
-    # ── Execution ───────────────────────────────────────────────────
+    # Execution
 
     def execute(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Validates inputs and starts splitting thread (Option B: current file only)."""
@@ -370,6 +380,7 @@ class SplitterTool(BaseTool):
 
         self.status_lbl.config(text="Splitting...")
         self.btn.config(state="disabled")
+        self.progress["value"] = 0
         self.output_actions.clear()
         threading.Thread(
             target=self._run_split, args=(self.current_pdf_path, out_dir, ranges_str)
@@ -416,13 +427,32 @@ class SplitterTool(BaseTool):
 
             base_name = os.path.splitext(os.path.basename(input_path))[0]
             count = 0
-            for start, end in page_ranges:
+            total_ranges = len(page_ranges)
+            for idx, (start, end) in enumerate(page_ranges, start=1):
+                self.queue.put(
+                    (
+                        "progress",
+                        (
+                            ((idx - 1) / total_ranges) * 100,
+                            f"Creating split {idx}/{total_ranges}: pages {start + 1}-{end + 1}",
+                        ),
+                    )
+                )
                 new_doc = fitz.open()
                 new_doc.insert_pdf(doc, from_page=start, to_page=end)
                 out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
                 new_doc.save(os.path.join(out_dir, out_name))
                 new_doc.close()
                 count += 1
+                self.queue.put(
+                    (
+                        "progress",
+                        (
+                            (idx / total_ranges) * 100,
+                            f"Created split {idx}/{total_ranges}",
+                        ),
+                    )
+                )
 
             doc.close()
             self.queue.put(

@@ -2,170 +2,160 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20Tkinter-orange)](pyproject.toml)
+[![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20pdf2docx-orange)](pyproject.toml)
 
-**Current version: 0.2.0**
+**Current version: 0.3.0**
 
-## Version 0.2.0 Highlights
+Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is built with Python, Tkinter, PyMuPDF, Pillow, and pdf2docx. Files are processed on your machine; nothing is uploaded to an external service.
 
-*   **Consistent output flow**: Tools now show an output path or folder before processing starts. Canceling a browse dialog no longer starts hidden auto-save work.
-*   **Result actions**: Completed jobs expose **Open Output Folder** and **Copy Path** actions where applicable.
-*   **Merge + Compress workflow**: Merge can automatically compress the final PDF with adjustable compression level, and the merge list shows PDF page counts.
-*   **Advanced PDF compression**: PDF compression can optionally tune image optimization, max image dimension, JPEG quality, or run lossless cleanup only.
-*   **Page Manager upgrades**: Added page reordering, PDF insertion, and page extraction alongside delete and rotate.
-*   **Safer range validation**: Split and page-management workflows now report out-of-range page selections instead of silently skipping them.
-*   **Remembered settings**: Common output folders and selected conversion/compression settings are persisted locally.
-*   **Tests**: Added unit coverage for range parsing, advanced compression configuration, and Merge + auto-compress output.
+## Version 0.3.0 Highlights
 
-A comprehensive, modular, and high-performance desktop application for manipulating PDF files. Built with Python and Tkinter, it leverages **PyMuPDF (fitz)** for robust backend processing, offering a modern graphical user interface for common PDF operations without external system dependencies like Poppler or Ghostscript.
+*   **PDF to Word**: Added DOCX conversion with Preserve Layout, Text Only, and Page Images modes.
+*   **PDF to Word preview and preflight**: Preview pages and detect encrypted, empty, or image-only PDFs before conversion.
+*   **Merged PDF preview**: Merge mode now shows a larger live preview of the combined page order.
+*   **Merge + Compress workflow**: Merge can automatically compress the final PDF with adjustable Low, Medium, or High settings.
+*   **Larger workspace**: The app opens at a wider default size for preview-heavy workflows.
+*   **Progress feedback**: Long-running tools show progress or busy indicators so users can tell work is still running.
+*   **Saved roadmap**: PDF to Word implementation notes and references live in `docs/pdf_to_word_plan.md`.
 
-> **Privacy-First**: All processing runs entirely on your local machine. No files are uploaded to any server — your data never leaves your computer.
+## Features
 
----
+### Compress PDF/Image
 
-## 🚀 Features
+*   Compress PDF and image files in batches.
+*   Add individual files or recursively scan folders.
+*   Tune PDF image optimization, max image dimension, JPEG quality, or run lossless cleanup only.
+*   Shows progress while files are processed.
 
-### 📉 Compress PDF/Image
-*   **Intelligent Compression**: Utilizes sophisticated image resampling and garbage collection to reduce file size.
-*   **Advanced PDF Options**: Override image optimization, max dimension, JPEG quality, or use lossless cleanup only.
-*   **Batch Processing**: Compress individual files or recursively scan entire directories.
-*   **Mixed Mode**: Add multiple folders and files to a single compression queue.
-*   **Multi-threaded**: Background processing prevents UI freezing during large batch operations.
+### Merge PDFs
 
-### 📑 Merge PDFs
-*   **Drag-and-Sort**: Intuitive UI to reorder files before merging.
-*   **Page Counts**: Selected PDFs show their page counts directly in the merge list.
-*   **Recursive Loading**: One-click import of all PDFs within a folder structure.
-*   **Optional Auto-Compression**: Compress the merged PDF immediately with adjustable Low, Medium, or High settings.
-*   **Visible Default Output**: A ready-to-use output path is shown before processing starts and can be changed with Save As.
+*   Add PDFs individually or from folders.
+*   Reorder files with Move Up / Move Down before merging.
+*   Show page counts directly in the merge list.
+*   Preview the final merged page sequence before saving.
+*   Optionally compress the merged PDF immediately after merge.
+*   Shows merge progress by input file and a busy indicator during post-merge compression.
 
-### ✂️ Split PDF
-*   **Visual Preview**: Real-time thumbnail generation allows users to visually verify split points.
-*   **Queue-Based Workflow**: Add multiple PDFs to a queue, click one to preview, and split only the currently loaded file.
-*   **Smart Navigation**: Scroll, drag, or use sliders to navigate pages instantly.
-*   **Flexible Syntax**: Supports complex range extraction (e.g., `1-3, 5, 8-10`).
+### Split PDF
 
-### 🖼️ PDF to Image
-*   **Batch Conversion**: Convert multiple PDFs to images in one operation.
-*   **High Fidelity**: Export pages as PNG, JPG, or JPEG with customizable DPI (72–600).
-*   **Throttled Rendering**: Optimized event loop ensures smooth UI updates even when processing hundreds of pages.
+*   Add PDFs to a queue and click one file to preview it.
+*   Select page ranges with sliders or text syntax such as `1-3, 5, 8-10`.
+*   Split only the currently previewed PDF.
+*   Shows progress while output PDFs are created.
 
-### 📷 Image to PDF
-*   **One-Click Conversion**: Combine multiple images into a single PDF with configurable page order.
-*   **Inline Compression**: Images are scaled and JPEG-optimized *during* PDF creation — no huge intermediate files.
-*   **Adjustable Quality**: Choose from None, Low, Medium, or High compression presets.
+### PDF to Image
 
-### 📄 Page Manager
-*   **Delete Pages**: Remove specific pages by range (e.g., `3, 5-7`).
-*   **Rotate Pages**: Rotate pages by 90°, 180°, or 270° with visual preview.
-*   **Reorder / Insert / Extract**: Reorder pages, insert another PDF, or extract selected pages to a new PDF.
-*   **Non-Destructive**: All modifications are applied in-memory; save only when ready.
+*   Convert PDF pages to PNG, JPG, or JPEG.
+*   Customize DPI from 72 to 600.
+*   Uses throttled UI updates for smoother large batch conversions.
 
----
+### PDF to Word
 
-## 🛠️ Architecture
+*   Convert PDFs to `.docx` using `pdf2docx`.
+*   Supports batch conversion.
+*   Supports selected page ranges such as `1-3, 5`.
+*   Modes:
+    *   `Preserve Layout`: Best effort editable DOCX layout conversion.
+    *   `Text Only`: Extracts editable text with simpler formatting.
+    *   `Page Images`: Places each PDF page into DOCX as an image for visual fidelity.
+*   Known limitation: editable conversion can garble complex math formulas, embedded fonts, or highly positioned layout. Use Page Images when visual fidelity matters more than editability.
 
-The application follows a **Modular Plugin Architecture**:
+### Image to PDF
 
-```
+*   Combine multiple images into one PDF.
+*   Preserve image order as page order.
+*   Apply inline compression during PDF creation.
+*   Choose None, Low, Medium, or High compression presets.
+
+### Page Manager
+
+*   Delete pages by range.
+*   Rotate pages by 90, 180, or 270 degrees.
+*   Reorder pages, insert another PDF, or extract selected pages.
+*   Applies edits in memory and saves only when ready.
+*   Shows a busy indicator while writing the modified PDF.
+
+## Architecture
+
+The app uses a modular tool architecture:
+
+```text
 src/
-├── app.py              # Main Application Shell (sidebar, navigation, frame caching)
-├── base/
-│   └── tool.py         # BaseTool ABC — all tools inherit from this
-├── ui/
-│   └── components.py   # Shared UI widgets (FileListWidget)
-├── tools/              # Each tool is a self-contained package
-│   ├── compressor/
-│   ├── merger/
-│   ├── splitter/
-│   ├── converter/
-│   ├── image2pdf/
-│   └── page_manager/
-├── core/               # Shared processors (BatchProcessor)
-├── handlers/           # Format-specific compression logic (PDF, Image, Text)
-└── utils/              # File operations, logging, default paths
+  app.py              # Main Tkinter shell and navigation
+  base/
+    tool.py           # BaseTool interface
+  ui/
+    components.py     # Shared UI widgets
+  tools/
+    compressor/
+    merger/
+    splitter/
+    converter/
+    pdf2word/
+    image2pdf/
+    page_manager/
+  handlers/           # Format-specific processing logic
+  utils/              # File operations, settings, defaults
 ```
 
-### Key Design Patterns
+Key patterns:
 
-*   **`FileListWidget`**: A reusable UI component shared across all tools, ensuring a consistent file selection experience (Add Files, Add Folder, Move Up/Down, Remove, Clear).
-*   **Default Save Paths**: When no output path is specified, files are automatically saved to `~/Documents/PDFToolkit/Saved/{ToolName}/`. This avoids permission issues when the app is packaged as a standalone executable.
-*   **Thread-Safe Queue**: All tools use a `queue.Queue` for communication between worker threads and the Tkinter main thread, ensuring responsive UI during heavy operations.
+*   **`FileListWidget`** provides consistent file selection, folder import, ordering, removal, and change callbacks.
+*   **Visible output controls** show the output path or folder before work starts.
+*   **Thread-safe queues** keep Tkinter responsive while worker threads process files.
+*   **Output actions** let users open the output folder or copy the output path after completion.
 
----
+## Installation
 
-## 📦 Installation
+This project uses `uv` for dependency management, but standard `pip` also works.
 
-This project uses `uv` for modern Python package management, but standard `pip` works as well.
+### Option A: uv
 
-### Prerequisites
-*   Python 3.10 or higher
-
-### Option A: Using `uv` (Recommended)
 ```bash
-# 1. Clone the repository
 git clone https://github.com/YI-TING-EE13/Unified-PDF-Toolkit.git
 cd Unified-PDF-Toolkit
-
-# 2. Sync dependencies
 uv sync
-
-# 3. Run the application
 uv run python src/app.py
-
-# 4. Run tests
-uv run python -m unittest discover -s tests -v
 ```
 
-### Option B: Using standard `pip`
+### Option B: pip
+
 ```bash
-# 1. Create a virtual environment
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-
-# 2. Install dependencies
-pip install pymupdf pillow
-
-# 3. Run
+venv\Scripts\activate
+pip install pymupdf pillow pdf2docx
 python src/app.py
 ```
 
----
+## Usage
 
-## 🖥️ Usage Guide
+1.  Launch the app with `uv run python src/app.py`.
+2.  Select a tool from the sidebar.
+3.  Add source files or folders.
+4.  Review preview, settings, and output path.
+5.  Start the task and watch the progress/status area.
 
-1.  **Launch the App**: Run `uv run python src/app.py`.
-2.  **Select a Tool**: Use the dark sidebar to navigate between the 6 available tools.
-3.  **Common Operations**:
-    *   **Compress**: Add files/folders → select compression level → click "Start Compression".
-    *   **Merge**: Add PDFs → use Move Up/Down to arrange order → click "Merge & Save As...".
-    *   **Split**: Add PDFs to queue → click a file to preview → set page range → click "Split PDF".
-    *   **PDF to Image**: Add PDFs → set DPI and format → click "Convert to Images".
-    *   **Image to PDF**: Add images (order = page order) → select compression → click "Convert to PDF".
-    *   **Page Manager**: Add a PDF → click to preview → delete or rotate pages → click "Save Modified PDF".
+Common workflows:
 
----
+*   **Compress**: Add files/folders -> select compression options -> click Start Compression.
+*   **Merge**: Add PDFs -> arrange order -> review merged preview -> optionally enable compression -> click Merge PDFs.
+*   **Split**: Add PDFs -> click one file to preview -> set page range -> click Split PDF.
+*   **PDF to Image**: Add PDFs -> set DPI and format -> click Convert to Images.
+*   **PDF to Word**: Add PDFs -> choose mode and optional page range -> click Convert to Word.
+*   **Image to PDF**: Add images -> arrange order -> choose compression -> click Convert to PDF.
+*   **Page Manager**: Add a PDF -> preview it -> edit pages -> click Save Modified PDF.
 
-## 🤝 Contributing
+## Testing
 
-Contributions are welcome! To add a new tool:
+```bash
+uv run python -m unittest discover -s tests -v
+uv run python verify_install.py
+```
 
-1.  Create a new directory in `src/tools/your_tool/`.
-2.  Create `__init__.py` and `tool.py`.
-3.  Inherit from `BaseTool` and implement `render()` and `execute()`.
-4.  Use `FileListWidget` from `src/ui/components.py` for file selection.
-5.  Register your tool in `src/app.py` → `_register_tools()`.
+## Roadmap Notes
 
----
+PDF to Word planning, implemented phases, references, and known conversion limits are documented in `docs/pdf_to_word_plan.md`.
 
-## 📄 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
-## Updated Workflow Notes
-
-*   **Merge**: Add PDFs, arrange order, optionally enable post-merge compression, then click "Merge PDFs".
-*   **Page Manager**: Add a PDF, preview it, delete/rotate/reorder/insert/extract pages, then click "Save Modified PDF".
-*   **Outputs**: Use the visible output path/folder fields before starting. Completed jobs provide output-folder and copy-path actions where applicable.

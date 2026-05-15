@@ -15,6 +15,7 @@ from typing import Callable, List, Optional, Tuple
 
 
 DisplayFormatter = Callable[[str], str]
+ChangeCallback = Callable[[List[str]], None]
 
 
 class FileListWidget(ttk.Frame):
@@ -22,7 +23,8 @@ class FileListWidget(ttk.Frame):
     A reusable file-list widget with optional ordering controls.
 
     The widget stores full file paths internally while optionally showing a
-    friendlier label in the listbox.
+    friendlier label in the listbox. Tools can subscribe to `on_change` when
+    they need previews or derived state to follow the current file order.
     """
 
     def __init__(
@@ -33,6 +35,7 @@ class FileListWidget(ttk.Frame):
         show_ordering: bool = True,
         select_mode: str = tk.EXTENDED,
         display_formatter: Optional[DisplayFormatter] = None,
+        on_change: Optional[ChangeCallback] = None,
     ) -> None:
         super().__init__(parent)
 
@@ -41,6 +44,7 @@ class FileListWidget(ttk.Frame):
         self._show_ordering = show_ordering
         self._select_mode = select_mode
         self._display_formatter = display_formatter
+        self._on_change = on_change
 
         self._build_ui(label)
 
@@ -59,12 +63,15 @@ class FileListWidget(ttk.Frame):
         """Removes all files from the list."""
         self._files.clear()
         self.listbox.delete(0, tk.END)
+        self._notify_change()
 
     def set_files(self, files: List[str]) -> None:
         """Replaces the entire file list."""
-        self.clear()
+        self._files.clear()
+        self.listbox.delete(0, tk.END)
         for file_path in files:
-            self._append_file(file_path)
+            self._append_file(file_path, notify=False)
+        self._notify_change()
 
     def bind_select(self, callback) -> None:
         """Binds a callback to the ListboxSelect event."""
@@ -120,18 +127,29 @@ class FileListWidget(ttk.Frame):
                 return file_path
         return file_path
 
-    def _append_file(self, file_path: str) -> None:
+    def _notify_change(self) -> None:
+        if self._on_change:
+            self._on_change(self.get_files())
+
+    def _append_file(self, file_path: str, notify: bool = True) -> bool:
         if file_path not in self._files:
             self._files.append(file_path)
             self.listbox.insert(tk.END, self._display_text(file_path))
+            if notify:
+                self._notify_change()
+            return True
+        return False
 
     def _add_files(self) -> None:
         """Opens a file dialog to add individual files."""
         paths = filedialog.askopenfilenames(
             title="Select Files", filetypes=self._filetypes
         )
+        changed = False
         for path in paths:
-            self._append_file(path)
+            changed = self._append_file(path, notify=False) or changed
+        if changed:
+            self._notify_change()
 
     def _add_folder(self) -> None:
         """Recursively adds all matching files from a chosen folder."""
@@ -149,23 +167,30 @@ class FileListWidget(ttk.Frame):
         folder_path = Path(folder)
         found = sorted(str(path) for path in folder_path.rglob("*") if path.is_file())
 
+        changed = False
         for file_path in found:
             if extensions and Path(file_path).suffix.lower() not in extensions:
                 continue
-            self._append_file(file_path)
+            changed = self._append_file(file_path, notify=False) or changed
+        if changed:
+            self._notify_change()
 
     def _remove_selected(self) -> None:
         """Removes selected items from the list."""
         selection = self.listbox.curselection()
+        if not selection:
+            return
         for idx in reversed(selection):
             del self._files[idx]
             self.listbox.delete(idx)
+        self._notify_change()
 
     def _move_up(self) -> None:
         """Swaps selected items with the item above them."""
         selection = self.listbox.curselection()
         if not selection:
             return
+        changed = False
         self.listbox.selection_clear(0, tk.END)
         for idx in selection:
             if idx == 0:
@@ -179,12 +204,16 @@ class FileListWidget(ttk.Frame):
             self.listbox.delete(idx)
             self.listbox.insert(idx - 1, text)
             self.listbox.selection_set(idx - 1)
+            changed = True
+        if changed:
+            self._notify_change()
 
     def _move_down(self) -> None:
         """Swaps selected items with the item below them."""
         selection = self.listbox.curselection()
         if not selection:
             return
+        changed = False
         self.listbox.selection_clear(0, tk.END)
         for idx in reversed(selection):
             if idx >= len(self._files) - 1:
@@ -198,6 +227,9 @@ class FileListWidget(ttk.Frame):
             self.listbox.delete(idx)
             self.listbox.insert(idx + 1, text)
             self.listbox.selection_set(idx + 1)
+            changed = True
+        if changed:
+            self._notify_change()
 
 
 class OutputActions(ttk.Frame):

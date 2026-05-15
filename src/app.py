@@ -15,6 +15,7 @@ from src.tools.merger.tool import MergerTool
 from src.tools.splitter.tool import SplitterTool
 from src.tools.converter.tool import ConverterTool
 from src.tools.image2pdf.tool import Image2PDFTool
+from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.page_manager.tool import PageManagerTool
 
 class PDFToolkitApp(tk.Tk):
@@ -33,7 +34,8 @@ class PDFToolkitApp(tk.Tk):
         super().__init__()
         
         self.title("Unified PDF Toolkit")
-        self.geometry("1000x700")
+        self.geometry("1440x900")
+        self.minsize(1280, 820)
         
         # Configure Grid Layout (Sidebar:Main = Fixed:Flexible)
         self.grid_columnconfigure(1, weight=1)
@@ -88,7 +90,7 @@ class PDFToolkitApp(tk.Tk):
     def _init_ui(self) -> None:
         """Build the core UI skeleton: Sidebar and Main Content Area."""
         # 1. Sidebar (Navigation)
-        self.sidebar = ttk.Frame(self, style="Sidebar.TFrame", width=240)
+        self.sidebar = ttk.Frame(self, style="Sidebar.TFrame", width=260)
         self.sidebar.grid(row=0, column=0, sticky="ns")
         self.sidebar.grid_propagate(False) # Enforce fixed width
         
@@ -135,6 +137,7 @@ class PDFToolkitApp(tk.Tk):
             MergerTool(),
             SplitterTool(),
             ConverterTool(),
+            PDFToWordTool(),
             Image2PDFTool(),
             PageManagerTool(),
         ]
