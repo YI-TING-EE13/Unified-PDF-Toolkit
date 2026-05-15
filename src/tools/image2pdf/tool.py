@@ -21,8 +21,9 @@ from PIL import Image
 from typing import List, Optional, Dict, Any, Tuple
 
 from ...base.tool import BaseTool
-from ...ui.components import FileListWidget
+from ...ui.components import FileListWidget, OutputActions
 from ...utils.file_ops import get_default_save_dir
+from ...utils.settings import get_setting, set_setting
 
 
 class Image2PDFTool(BaseTool):
@@ -73,7 +74,9 @@ class Image2PDFTool(BaseTool):
         opts_frame.pack(fill="x", pady=5)
 
         ttk.Label(opts_frame, text="Compression Level:").pack(side="left")
-        self.compression_var = tk.StringVar(value="Medium")
+        self.compression_var = tk.StringVar(
+            value=get_setting("image2pdf.compression", "Medium")
+        )
         ttk.Combobox(
             opts_frame,
             textvariable=self.compression_var,
@@ -94,6 +97,7 @@ class Image2PDFTool(BaseTool):
 
         self.output_entry = ttk.Entry(out_frame)
         self.output_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.output_entry.insert(0, self._default_output_path())
         ttk.Button(out_frame, text="Save As...", command=self._browse_output).pack(
             side="right"
         )
@@ -109,6 +113,9 @@ class Image2PDFTool(BaseTool):
         self.progress.pack(fill="x", padx=10)
         self.status_lbl = ttk.Label(parent, text="Ready.")
         self.status_lbl.pack()
+
+        self.output_actions = OutputActions(parent)
+        self.output_actions.pack(anchor="w", pady=(8, 0))
 
         self._process_queue()
 
@@ -126,8 +133,9 @@ class Image2PDFTool(BaseTool):
                 elif msg_type == "success":
                     self.status_lbl.config(text=data)
                     self.btn.config(state="normal")
+                    self.output_actions.set_path(data)
                     self.progress["value"] = 100
-                    messagebox.showinfo("Success", "PDF Created!")
+                    messagebox.showinfo("Success", f"PDF created: {data}")
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
@@ -141,12 +149,25 @@ class Image2PDFTool(BaseTool):
 
     def _browse_output(self) -> None:
         """Opens file dialog for PDF output path selection."""
+        current_path = self.output_entry.get()
         path = filedialog.asksaveasfilename(
-            defaultextension=".pdf", filetypes=[("PDF Files", "*.pdf")]
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf")],
+            initialfile=Path(current_path or "Image2PDF.pdf").name,
+            initialdir=(
+                str(Path(current_path).parent)
+                if current_path
+                else get_default_save_dir("Image2PDF")
+            ),
         )
         if path:
             self.output_entry.delete(0, tk.END)
             self.output_entry.insert(0, path)
+
+    def _default_output_path(self) -> str:
+        output_dir = get_setting("image2pdf.output_dir", get_default_save_dir("Image2PDF"))
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return str(Path(output_dir) / f"Image2PDF_{timestamp}.pdf")
 
     def execute(self, params: Optional[Dict[str, Any]] = None) -> None:
         """Validates input and starts conversion thread."""
@@ -157,15 +178,17 @@ class Image2PDFTool(BaseTool):
 
         output_path = self.output_entry.get()
         if not output_path:
-            default_dir = get_default_save_dir("Image2PDF")
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = str(Path(default_dir) / f"Image2PDF_{timestamp}.pdf")
+            messagebox.showwarning("Warning", "Please choose an output PDF path.")
+            return
 
         level = self.compression_var.get()
+        set_setting("image2pdf.output_dir", str(Path(output_path).parent))
+        set_setting("image2pdf.compression", level)
 
         self.status_lbl.config(text="Converting...")
         self.btn.config(state="disabled")
         self.progress["value"] = 0
+        self.output_actions.clear()
         threading.Thread(
             target=self._run_convert, args=(files, output_path, level)
         ).start()
@@ -238,10 +261,11 @@ class Image2PDFTool(BaseTool):
                     last_update = now
 
             # Save with cleanup
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             doc.save(output_path, garbage=3, deflate=True)
             doc.close()
 
-            self.queue.put(("success", f"Saved to {output_path}"))
+            self.queue.put(("success", output_path))
 
         except Exception as e:
             self.queue.put(("error", str(e)))

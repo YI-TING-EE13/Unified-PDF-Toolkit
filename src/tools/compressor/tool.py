@@ -17,8 +17,9 @@ from typing import List, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...core.processor import BatchProcessor
-from ...ui.components import FileListWidget
-from ...utils.file_ops import get_default_save_dir
+from ...ui.components import FileListWidget, OutputActions
+from ...utils.file_ops import get_default_save_dir, format_size
+from ...utils.settings import get_setting, set_setting
 
 
 class CompressorTool(BaseTool):
@@ -89,6 +90,67 @@ class CompressorTool(BaseTool):
         )
 
         opts_frame.columnconfigure(3, weight=1)
+        self.output_entry.insert(
+            0, get_setting("compressor.output_dir", get_default_save_dir("Compressed"))
+        )
+
+        # Advanced PDF-only options. A value of 0 keeps the preset default.
+        advanced_frame = ttk.LabelFrame(parent, text="Advanced PDF Options", padding=10)
+        advanced_frame.pack(fill="x", pady=5)
+
+        self.lossless_only_var = tk.BooleanVar(
+            value=bool(get_setting("compressor.lossless_only", False))
+        )
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Lossless cleanup only",
+            variable=self.lossless_only_var,
+        ).grid(row=0, column=0, sticky="w", padx=(0, 20))
+
+        self.optimize_images_var = tk.BooleanVar(
+            value=bool(get_setting("compressor.optimize_images", True))
+        )
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Optimize PDF images",
+            variable=self.optimize_images_var,
+        ).grid(row=0, column=1, sticky="w", padx=(0, 20))
+
+        ttk.Label(advanced_frame, text="Max image dimension:").grid(
+            row=1, column=0, sticky="w", pady=(8, 0)
+        )
+        self.max_dim_var = tk.IntVar(
+            value=int(get_setting("compressor.max_image_dimension", 0) or 0)
+        )
+        ttk.Spinbox(
+            advanced_frame,
+            from_=0,
+            to=8000,
+            increment=100,
+            textvariable=self.max_dim_var,
+            width=10,
+        ).grid(row=1, column=1, sticky="w", pady=(8, 0))
+
+        ttk.Label(advanced_frame, text="JPEG quality:").grid(
+            row=1, column=2, sticky="w", padx=(20, 10), pady=(8, 0)
+        )
+        self.jpeg_quality_var = tk.IntVar(
+            value=int(get_setting("compressor.jpeg_quality", 0) or 0)
+        )
+        ttk.Spinbox(
+            advanced_frame,
+            from_=0,
+            to=100,
+            increment=5,
+            textvariable=self.jpeg_quality_var,
+            width=10,
+        ).grid(row=1, column=3, sticky="w", pady=(8, 0))
+
+        ttk.Label(
+            advanced_frame,
+            text="Use 0 to keep the selected preset default.",
+            foreground="gray",
+        ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
         # --- 3. Action Buttons ---
         self.start_btn = ttk.Button(
@@ -105,6 +167,9 @@ class CompressorTool(BaseTool):
 
         self.status_lbl = ttk.Label(log_frame, text="Ready.")
         self.status_lbl.pack(anchor="w")
+
+        self.output_actions = OutputActions(log_frame)
+        self.output_actions.pack(anchor="w", pady=(8, 0))
 
         # Start background polling for queue messages
         self._process_queue()
@@ -142,10 +207,17 @@ class CompressorTool(BaseTool):
                         self.progress["value"] = pct
                     self.status_lbl.config(text=f"[{curr}/{total}] {status}")
                 elif msg_type == "done":
+                    output_dir, result = data
                     self.start_btn.config(state="normal")
                     self.progress["value"] = 100
-                    self.status_lbl.config(text="Processing Complete.")
-                    messagebox.showinfo("Done", "Processing Complete!")
+                    self.output_actions.set_path(output_dir)
+                    summary = (
+                        f"Processing complete. Success: {result['success']}, "
+                        f"failed: {result['failed']}, skipped: {result['skipped']}, "
+                        f"saved: {format_size(result['total_saved_bytes'])}."
+                    )
+                    self.status_lbl.config(text=summary)
+                    messagebox.showinfo("Done", summary)
                 elif msg_type == "error":
                     self.start_btn.config(state="normal")
                     messagebox.showerror("Error", data)
@@ -170,20 +242,50 @@ class CompressorTool(BaseTool):
             output_dir = get_default_save_dir("Compressed")
 
         level = self.level_var.get()
+        compression_options = self._get_compression_options()
+        self._save_current_settings(output_dir, compression_options)
 
         # Lock UI
         self.start_btn.config(state="disabled")
         self.status_lbl.config(text="Scanning files...")
         self.progress["value"] = 0
+        self.output_actions.clear()
 
         # Start Thread
         thread = threading.Thread(
-            target=self._run_compression, args=(list(input_items), output_dir, level)
+            target=self._run_compression,
+            args=(list(input_items), output_dir, level, compression_options),
         )
         thread.start()
 
+    def _get_compression_options(self) -> Dict[str, Any]:
+        max_dim = self.max_dim_var.get()
+        jpeg_quality = self.jpeg_quality_var.get()
+        return {
+            "optimize_images": self.optimize_images_var.get(),
+            "lossless_only": self.lossless_only_var.get(),
+            "max_image_dimension": max_dim if max_dim > 0 else None,
+            "jpeg_quality": jpeg_quality if jpeg_quality > 0 else None,
+        }
+
+    def _save_current_settings(
+        self, output_dir: str, compression_options: Dict[str, Any]
+    ) -> None:
+        set_setting("compressor.output_dir", output_dir)
+        set_setting("compressor.optimize_images", compression_options["optimize_images"])
+        set_setting("compressor.lossless_only", compression_options["lossless_only"])
+        set_setting(
+            "compressor.max_image_dimension",
+            compression_options["max_image_dimension"] or 0,
+        )
+        set_setting("compressor.jpeg_quality", compression_options["jpeg_quality"] or 0)
+
     def _run_compression(
-        self, input_paths: List[str], output_dir: str, level: str
+        self,
+        input_paths: List[str],
+        output_dir: str,
+        level: str,
+        compression_options: Dict[str, Any],
     ) -> None:
         """
         Worker thread logic. Expands folders and invokes BatchProcessor.
@@ -204,13 +306,14 @@ class CompressorTool(BaseTool):
                 return
 
             # 2. Process
-            self.processor.process_files(
+            result = self.processor.process_files(
                 all_files,
                 output_dir if output_dir else None,
                 level,
                 progress_callback=self.update_progress,
+                compression_options=compression_options,
             )
 
-            self.queue.put(("done", True))
+            self.queue.put(("done", (output_dir, result)))
         except Exception as e:
             self.queue.put(("error", str(e)))

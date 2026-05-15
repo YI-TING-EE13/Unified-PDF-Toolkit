@@ -20,8 +20,9 @@ from PIL import Image, ImageTk
 from typing import List, Optional, Any, Dict
 
 from ...base.tool import BaseTool
-from ...ui.components import FileListWidget
+from ...ui.components import FileListWidget, OutputActions
 from ...utils.file_ops import get_default_save_dir
+from ...utils.settings import get_setting, set_setting
 
 
 class PageManagerTool(BaseTool):
@@ -102,11 +103,59 @@ class PageManagerTool(BaseTool):
         )
         self.rotate_btn.pack(fill="x")
 
-        # 4. Output & Save
+        # 4. Arrange / Extract
+        arrange_frame = ttk.LabelFrame(left_frame, text="Arrange / Extract", padding=10)
+        arrange_frame.pack(fill="x", pady=5)
+
+        ttk.Label(arrange_frame, text="New page order (e.g., 3,1-2):").pack(anchor="w")
+        self.reorder_entry = ttk.Entry(arrange_frame)
+        self.reorder_entry.pack(fill="x", pady=(0, 5))
+        self.reorder_btn = ttk.Button(
+            arrange_frame,
+            text="Reorder Pages",
+            command=self._reorder_pages,
+            state="disabled",
+        )
+        self.reorder_btn.pack(fill="x", pady=(0, 5))
+
+        insert_row = ttk.Frame(arrange_frame)
+        insert_row.pack(fill="x", pady=(0, 5))
+        ttk.Label(insert_row, text="Insert after page:").pack(side="left")
+        self.insert_after_var = tk.IntVar(value=1)
+        ttk.Spinbox(
+            insert_row,
+            from_=0,
+            to=9999,
+            textvariable=self.insert_after_var,
+            width=8,
+        ).pack(side="left", padx=5)
+        self.insert_btn = ttk.Button(
+            insert_row,
+            text="Insert PDF...",
+            command=self._insert_pdf,
+            state="disabled",
+        )
+        self.insert_btn.pack(side="left", padx=5)
+
+        ttk.Label(arrange_frame, text="Pages to extract (e.g., 1, 4-6):").pack(
+            anchor="w"
+        )
+        self.extract_entry = ttk.Entry(arrange_frame)
+        self.extract_entry.pack(fill="x", pady=(0, 5))
+        self.extract_btn = ttk.Button(
+            arrange_frame,
+            text="Extract Pages...",
+            command=self._extract_pages,
+            state="disabled",
+        )
+        self.extract_btn.pack(fill="x")
+
+        # 5. Output & Save
         out_frame = ttk.LabelFrame(left_frame, text="Output", padding=10)
         out_frame.pack(fill="x", pady=5)
         self.output_entry = ttk.Entry(out_frame)
         self.output_entry.pack(side="left", fill="x", expand=True)
+        self.output_entry.insert(0, self._default_output_path())
         ttk.Button(out_frame, text="Browse", command=self._browse_output).pack(
             side="right"
         )
@@ -118,6 +167,9 @@ class PageManagerTool(BaseTool):
 
         self.status_lbl = ttk.Label(left_frame, text="Add PDFs and click one to preview.")
         self.status_lbl.pack()
+
+        self.output_actions = OutputActions(left_frame)
+        self.output_actions.pack(anchor="w", pady=(8, 0))
 
         # --- Right Pane: Preview ---
         right_frame = ttk.LabelFrame(paned, text="Page Preview", padding=10)
@@ -172,6 +224,8 @@ class PageManagerTool(BaseTool):
             self.doc = fitz.open(path)
             self.current_pdf_path = path
             self.total_pages = len(self.doc)
+            self.output_entry.delete(0, tk.END)
+            self.output_entry.insert(0, self._default_output_path())
 
             self.preview_scale.config(to=max(1, self.total_pages))
             self.preview_var.set(1)
@@ -189,6 +243,9 @@ class PageManagerTool(BaseTool):
         """Enables action buttons after a PDF is loaded."""
         self.delete_btn.config(state="normal")
         self.rotate_btn.config(state="normal")
+        self.reorder_btn.config(state="normal")
+        self.insert_btn.config(state="normal")
+        self.extract_btn.config(state="normal")
         self.save_btn.config(state="normal")
 
     # ── Preview ─────────────────────────────────────────────────────
@@ -244,6 +301,7 @@ class PageManagerTool(BaseTool):
                 elif msg_type == "success":
                     self.save_btn.config(state="normal")
                     self.status_lbl.config(text=data)
+                    self.output_actions.set_path(data.replace("Saved to ", "", 1))
                     messagebox.showinfo("Success", data)
                 elif msg_type == "error":
                     self.save_btn.config(state="normal")
@@ -274,6 +332,35 @@ class PageManagerTool(BaseTool):
             else:
                 pages.add(int(part) - 1)
         return sorted(pages)
+
+    def _parse_page_sequence(self, range_str: str) -> List[int]:
+        """
+        Parses a page sequence while preserving the user-provided order.
+        Example: '3,1-2' -> [2, 0, 1].
+        """
+        sequence = []
+        if not range_str.strip():
+            return []
+        for part in range_str.split(","):
+            part = part.strip()
+            if "-" in part:
+                start, end = map(int, part.split("-"))
+                step = 1 if start <= end else -1
+                sequence.extend(range(start - 1, end - 1 + step, step))
+            else:
+                sequence.append(int(part) - 1)
+        return sequence
+
+    def _validate_pages(self, pages: List[int]) -> bool:
+        invalid = [p for p in pages if p < 0 or p >= self.total_pages]
+        if invalid:
+            messagebox.showerror(
+                "Error",
+                f"Page numbers out of range: {[p + 1 for p in invalid]}. "
+                f"PDF has {self.total_pages} pages.",
+            )
+            return False
+        return True
 
     # ── Actions ─────────────────────────────────────────────────────
 
@@ -361,9 +448,135 @@ class PageManagerTool(BaseTool):
         except Exception as e:
             messagebox.showerror("Error", f"Failed to rotate pages: {e}")
 
+    def _reorder_pages(self) -> None:
+        """Reorders the in-memory document by the user-provided page sequence."""
+        if not self.doc:
+            return
+
+        try:
+            pages = self._parse_page_sequence(self.reorder_entry.get())
+        except ValueError:
+            messagebox.showerror("Error", "Invalid page order format.")
+            return
+
+        if not pages:
+            messagebox.showwarning("Warning", "No page order specified.")
+            return
+        if len(pages) != self.total_pages:
+            messagebox.showerror(
+                "Error",
+                f"Page order must include all {self.total_pages} pages exactly once.",
+            )
+            return
+        if sorted(pages) != list(range(self.total_pages)):
+            messagebox.showerror(
+                "Error",
+                "Page order has missing or duplicate pages.",
+            )
+            return
+
+        try:
+            new_doc = fitz.open()
+            for page_index in pages:
+                new_doc.insert_pdf(self.doc, from_page=page_index, to_page=page_index)
+            self.doc.close()
+            self.doc = new_doc
+            self.preview_var.set(1)
+            self._update_preview(0)
+            self.status_lbl.config(text="Reordered pages. (Unsaved)")
+            self.reorder_entry.delete(0, tk.END)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to reorder pages: {e}")
+
+    def _insert_pdf(self) -> None:
+        """Inserts another PDF into the in-memory document."""
+        if not self.doc:
+            return
+
+        insert_path = filedialog.askopenfilename(
+            title="Select PDF to Insert", filetypes=[("PDF Files", "*.pdf")]
+        )
+        if not insert_path:
+            return
+
+        after_page = self.insert_after_var.get()
+        if after_page < 0 or after_page > self.total_pages:
+            messagebox.showerror(
+                "Error",
+                f"Insert position must be between 0 and {self.total_pages}.",
+            )
+            return
+
+        try:
+            with fitz.open(insert_path) as insert_doc:
+                self.doc.insert_pdf(insert_doc, start_at=after_page)
+                inserted_pages = insert_doc.page_count
+            self.total_pages = len(self.doc)
+            self.preview_scale.config(to=max(1, self.total_pages))
+            self.preview_var.set(max(1, min(after_page + 1, self.total_pages)))
+            self._update_preview(self.preview_var.get() - 1)
+            self.status_lbl.config(
+                text=f"Inserted {inserted_pages} page(s). Now {self.total_pages} pages. (Unsaved)"
+            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to insert PDF: {e}")
+
+    def _extract_pages(self) -> None:
+        """Writes selected pages to a separate PDF without changing the loaded document."""
+        if not self.doc:
+            return
+
+        try:
+            pages = self._parse_page_sequence(self.extract_entry.get())
+        except ValueError:
+            messagebox.showerror("Error", "Invalid page range format.")
+            return
+
+        if not pages:
+            messagebox.showwarning("Warning", "No pages specified.")
+            return
+        if not self._validate_pages(pages):
+            return
+
+        base_name = os.path.splitext(os.path.basename(self.current_pdf_path or "extract"))[0]
+        output_dir = get_setting("page_manager.output_dir", get_default_save_dir("Managed"))
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf")],
+            initialdir=output_dir,
+            initialfile=f"{base_name}_extracted_{timestamp}.pdf",
+        )
+        if not output_path:
+            return
+
+        try:
+            new_doc = fitz.open()
+            for page_index in pages:
+                new_doc.insert_pdf(self.doc, from_page=page_index, to_page=page_index)
+            new_doc.save(output_path, garbage=3, deflate=True)
+            new_doc.close()
+            set_setting("page_manager.output_dir", os.path.dirname(output_path))
+            self.output_actions.set_path(output_path)
+            self.status_lbl.config(text=f"Extracted {len(pages)} page(s) to {output_path}")
+            self.extract_entry.delete(0, tk.END)
+            messagebox.showinfo("Success", f"Extracted pages to {output_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to extract pages: {e}")
+
+    def _default_output_path(self) -> str:
+        output_dir = get_setting("page_manager.output_dir", get_default_save_dir("Managed"))
+        base_name = os.path.splitext(os.path.basename(self.current_pdf_path or "output"))[0]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return os.path.join(output_dir, f"{base_name}_managed_{timestamp}.pdf")
+
     def _browse_output(self) -> None:
+        current_path = self.output_entry.get()
         path = filedialog.asksaveasfilename(
-            defaultextension=".pdf", filetypes=[("PDF Files", "*.pdf")]
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf")],
+            initialfile=os.path.basename(current_path or "managed.pdf"),
+            initialdir=os.path.dirname(current_path or get_default_save_dir("Managed")),
         )
         if path:
             self.output_entry.delete(0, tk.END)
@@ -379,19 +592,20 @@ class PageManagerTool(BaseTool):
 
         output_path = self.output_entry.get()
         if not output_path:
-            default_dir = get_default_save_dir("Managed")
-            base_name = os.path.splitext(os.path.basename(self.current_pdf_path or "output"))[0]
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_path = os.path.join(default_dir, f"{base_name}_managed_{timestamp}.pdf")
+            messagebox.showwarning("Warning", "Please choose an output PDF path.")
+            return
+        set_setting("page_manager.output_dir", os.path.dirname(output_path) or os.getcwd())
 
         self.save_btn.config(state="disabled")
         self.status_lbl.config(text="Saving...")
+        self.output_actions.clear()
 
         threading.Thread(target=self._run_save, args=(output_path,)).start()
 
     def _run_save(self, output_path: str) -> None:
         """Worker thread for saving the modified PDF."""
         try:
+            os.makedirs(os.path.dirname(output_path) or os.getcwd(), exist_ok=True)
             self.doc.save(output_path, garbage=3, deflate=True)
             self.queue.put(("success", f"Saved to {output_path}"))
         except Exception as e:

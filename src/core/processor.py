@@ -24,7 +24,12 @@ class BatchProcessor:
         self.logger = setup_logger("BatchProcessor")
         self._handlers: Dict[str, BaseCompressor] = {}
         
-    def _get_handler(self, ext: str, level: str) -> Optional[BaseCompressor]:
+    def _get_handler(
+        self,
+        ext: str,
+        level: str,
+        compression_options: Optional[Dict[str, Any]] = None,
+    ) -> Optional[BaseCompressor]:
         """
         Factory method to retrieve or create a compressor for the specific file extension.
         
@@ -36,7 +41,8 @@ class BatchProcessor:
             Optional[BaseCompressor]: A configured compressor instance, or None if unsupported.
         """
         ext = ext.lower()
-        key = f"{ext}_{level}"
+        option_key = tuple(sorted((compression_options or {}).items()))
+        key = f"{ext}_{level}_{option_key}"
         
         # Cache handlers to avoid redundant instantiation
         if key in self._handlers:
@@ -44,7 +50,7 @@ class BatchProcessor:
             
         handler = None
         if ext == '.pdf':
-            handler = PDFCompressor(level)
+            handler = PDFCompressor(level, **(compression_options or {}))
         elif ext in ('.jpg', '.jpeg', '.png'):
             handler = ImageCompressor(level)
         elif ext == '.txt':
@@ -60,7 +66,8 @@ class BatchProcessor:
         files: List[str], 
         output_dir: Optional[str], 
         level: str,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        compression_options: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Executes compression on a list of files.
@@ -99,7 +106,8 @@ class BatchProcessor:
                     continue
                     
                 ext = os.path.splitext(input_path)[1]
-                handler = self._get_handler(ext, level)
+                handler_options = compression_options if ext.lower() == '.pdf' else None
+                handler = self._get_handler(ext, level, handler_options)
                 
                 if not handler:
                     self.logger.warning(f"Unsupported format: {input_path}")

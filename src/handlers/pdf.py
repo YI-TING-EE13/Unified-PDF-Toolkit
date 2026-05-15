@@ -1,6 +1,7 @@
 import fitz  # PyMuPDF
 import io
 from PIL import Image
+from typing import Optional
 from ..core.base import BaseCompressor
 
 class PDFCompressor(BaseCompressor):
@@ -12,6 +13,20 @@ class PDFCompressor(BaseCompressor):
     - Garbage Collection: Removes unused objects and compacts cross-reference tables.
     - Image Optimization: Downsamples and compresses embedded images to JPEG.
     """
+
+    def __init__(
+        self,
+        level: str = "medium",
+        optimize_images: bool = True,
+        max_image_dimension: Optional[int] = None,
+        jpeg_quality: Optional[int] = None,
+        lossless_only: bool = False,
+    ):
+        super().__init__(level)
+        self.optimize_images = optimize_images
+        self.max_image_dimension = max_image_dimension
+        self.jpeg_quality = jpeg_quality
+        self.lossless_only = lossless_only
 
     def compress(self, input_path: str, output_path: str) -> bool:
         """
@@ -37,8 +52,12 @@ class PDFCompressor(BaseCompressor):
             except Exception as e:
                 self.logger.warning(f"Font subsetting warning (non-fatal): {e}")
 
-            # 2. Image Optimization (Only for Medium/High levels)
-            if self.level in ('medium', 'high'):
+            # 2. Image Optimization (Only for Medium/High levels unless advanced settings override)
+            if (
+                self.optimize_images
+                and not self.lossless_only
+                and (self.level in ('medium', 'high') or self.max_image_dimension or self.jpeg_quality)
+            ):
                 self._optimize_images(doc)
 
             # 3. Save with Garbage Collection and Stream Deflation
@@ -72,14 +91,21 @@ class PDFCompressor(BaseCompressor):
         - Update PDF object dictionary to reflect new format.
         """
         # Configuration based on level
-        if self.level == 'high':
+        if self.max_image_dimension:
+            max_dim = self.max_image_dimension
+        elif self.level == 'high':
             # Max dimension usually corresponds to ~72-96 DPI on A4
             max_dim = 1000 
-            # Lower quality for maximum space saving
-            jpg_quality = 40 
         else: # medium
             # Max dimension usually corresponds to ~150 DPI on A4
             max_dim = 2000
+
+        if self.jpeg_quality:
+            jpg_quality = self.jpeg_quality
+        elif self.level == 'high':
+            # Lower quality for maximum space saving
+            jpg_quality = 40
+        else:
             # Balanced quality
             jpg_quality = 70
 

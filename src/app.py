@@ -111,7 +111,7 @@ class PDFToolkitApp(tk.Tk):
         # Render Sidebar Buttons
         for tool_id, tool_instance in self.tools.items():
             btn = ttk.Button(self.sidebar, 
-                             text=f"{tool_instance.icon}   {tool_instance.name}", 
+                             text=tool_instance.name,
                              style="Nav.TButton",
                              command=lambda t=tool_id: self.switch_view(t))
             btn.pack(fill="x", pady=2)

@@ -4,6 +4,19 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20Tkinter-orange)](pyproject.toml)
 
+**Current version: 0.2.0**
+
+## Version 0.2.0 Highlights
+
+*   **Consistent output flow**: Tools now show an output path or folder before processing starts. Canceling a browse dialog no longer starts hidden auto-save work.
+*   **Result actions**: Completed jobs expose **Open Output Folder** and **Copy Path** actions where applicable.
+*   **Merge + Compress workflow**: Merge can automatically compress the final PDF with adjustable compression level, and the merge list shows PDF page counts.
+*   **Advanced PDF compression**: PDF compression can optionally tune image optimization, max image dimension, JPEG quality, or run lossless cleanup only.
+*   **Page Manager upgrades**: Added page reordering, PDF insertion, and page extraction alongside delete and rotate.
+*   **Safer range validation**: Split and page-management workflows now report out-of-range page selections instead of silently skipping them.
+*   **Remembered settings**: Common output folders and selected conversion/compression settings are persisted locally.
+*   **Tests**: Added unit coverage for range parsing, advanced compression configuration, and Merge + auto-compress output.
+
 A comprehensive, modular, and high-performance desktop application for manipulating PDF files. Built with Python and Tkinter, it leverages **PyMuPDF (fitz)** for robust backend processing, offering a modern graphical user interface for common PDF operations without external system dependencies like Poppler or Ghostscript.
 
 > **Privacy-First**: All processing runs entirely on your local machine. No files are uploaded to any server — your data never leaves your computer.
@@ -14,14 +27,17 @@ A comprehensive, modular, and high-performance desktop application for manipulat
 
 ### 📉 Compress PDF/Image
 *   **Intelligent Compression**: Utilizes sophisticated image resampling and garbage collection to reduce file size.
+*   **Advanced PDF Options**: Override image optimization, max dimension, JPEG quality, or use lossless cleanup only.
 *   **Batch Processing**: Compress individual files or recursively scan entire directories.
 *   **Mixed Mode**: Add multiple folders and files to a single compression queue.
 *   **Multi-threaded**: Background processing prevents UI freezing during large batch operations.
 
 ### 📑 Merge PDFs
 *   **Drag-and-Sort**: Intuitive UI to reorder files before merging.
+*   **Page Counts**: Selected PDFs show their page counts directly in the merge list.
 *   **Recursive Loading**: One-click import of all PDFs within a folder structure.
-*   **Smart Defaults**: If no output path is chosen, files are saved automatically to `~/Documents/PDFToolkit/Saved/Merged/`.
+*   **Optional Auto-Compression**: Compress the merged PDF immediately with adjustable Low, Medium, or High settings.
+*   **Visible Default Output**: A ready-to-use output path is shown before processing starts and can be changed with Save As.
 
 ### ✂️ Split PDF
 *   **Visual Preview**: Real-time thumbnail generation allows users to visually verify split points.
@@ -42,6 +58,7 @@ A comprehensive, modular, and high-performance desktop application for manipulat
 ### 📄 Page Manager
 *   **Delete Pages**: Remove specific pages by range (e.g., `3, 5-7`).
 *   **Rotate Pages**: Rotate pages by 90°, 180°, or 270° with visual preview.
+*   **Reorder / Insert / Extract**: Reorder pages, insert another PDF, or extract selected pages to a new PDF.
 *   **Non-Destructive**: All modifications are applied in-memory; save only when ready.
 
 ---
@@ -95,6 +112,9 @@ uv sync
 
 # 3. Run the application
 uv run python src/app.py
+
+# 4. Run tests
+uv run python -m unittest discover -s tests -v
 ```
 
 ### Option B: Using standard `pip`
@@ -141,3 +161,11 @@ Contributions are welcome! To add a new tool:
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+## Updated Workflow Notes
+
+*   **Merge**: Add PDFs, arrange order, optionally enable post-merge compression, then click "Merge PDFs".
+*   **Page Manager**: Add a PDF, preview it, delete/rotate/reorder/insert/extract pages, then click "Save Modified PDF".
+*   **Outputs**: Use the visible output path/folder fields before starting. Completed jobs provide output-folder and copy-path actions where applicable.

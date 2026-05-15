@@ -18,8 +18,9 @@ import time
 from typing import List, Optional, Dict, Any
 
 from ...base.tool import BaseTool
-from ...ui.components import FileListWidget
+from ...ui.components import FileListWidget, OutputActions
 from ...utils.file_ops import get_default_save_dir
+from ...utils.settings import get_setting, set_setting
 
 
 class ConverterTool(BaseTool):
@@ -62,13 +63,13 @@ class ConverterTool(BaseTool):
         opts_frame.pack(fill="x", pady=5)
 
         ttk.Label(opts_frame, text="DPI (Resolution):").pack(side="left")
-        self.dpi_var = tk.IntVar(value=150)
+        self.dpi_var = tk.IntVar(value=int(get_setting("converter.dpi", 150)))
         ttk.Spinbox(
             opts_frame, from_=72, to=600, textvariable=self.dpi_var, width=10
         ).pack(side="left", padx=10)
 
         ttk.Label(opts_frame, text="Format:").pack(side="left", padx=(20, 0))
-        self.fmt_var = tk.StringVar(value="png")
+        self.fmt_var = tk.StringVar(value=get_setting("converter.format", "png"))
         ttk.Combobox(
             opts_frame,
             textvariable=self.fmt_var,
@@ -82,6 +83,9 @@ class ConverterTool(BaseTool):
         out_frame.pack(fill="x", pady=5)
         self.output_entry = ttk.Entry(out_frame)
         self.output_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.output_entry.insert(
+            0, get_setting("converter.output_dir", get_default_save_dir("Images"))
+        )
 
         ttk.Button(out_frame, text="Browse", command=self._browse_output).pack(
             side="right"
@@ -97,6 +101,9 @@ class ConverterTool(BaseTool):
         self.status.pack(fill="x", padx=10)
         self.status_lbl = ttk.Label(parent, text="Ready.")
         self.status_lbl.pack()
+
+        self.output_actions = OutputActions(parent)
+        self.output_actions.pack(anchor="w", pady=(8, 0))
 
         self._process_queue()
 
@@ -115,10 +122,13 @@ class ConverterTool(BaseTool):
                     self.status["value"] = pct
                     self.status_lbl.config(text=msg)
                 elif msg_type == "success":
-                    self.status_lbl.config(text=data)
+                    message = data["message"] if isinstance(data, dict) else data
+                    output_dir = data.get("output_dir", "") if isinstance(data, dict) else ""
+                    self.status_lbl.config(text=message)
                     self.btn.config(state="normal")
+                    self.output_actions.set_path(output_dir)
                     self.status["value"] = 100
-                    messagebox.showinfo("Success", "Conversion Complete!")
+                    messagebox.showinfo("Success", message)
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
@@ -146,13 +156,19 @@ class ConverterTool(BaseTool):
 
         out_dir = self.output_entry.get()
         if not out_dir:
-            out_dir = get_default_save_dir("Images")
+            messagebox.showwarning("Warning", "Please choose an output folder.")
+            return
 
         dpi = self.dpi_var.get()
         fmt = self.fmt_var.get()
+        set_setting("converter.output_dir", out_dir)
+        set_setting("converter.dpi", dpi)
+        set_setting("converter.format", fmt)
 
         self.status_lbl.config(text="Converting...")
         self.btn.config(state="disabled")
+        self.status["value"] = 0
+        self.output_actions.clear()
         threading.Thread(
             target=self._run_convert, args=(files, out_dir, dpi, fmt)
         ).start()
@@ -165,6 +181,8 @@ class ConverterTool(BaseTool):
         Includes simple throttling logic to avoid flooding the GUI queue.
         """
         try:
+            os.makedirs(out_dir, exist_ok=True)
+
             # Count total pages across all files for accurate progress
             total_pages = 0
             for f in files:
@@ -217,7 +235,15 @@ class ConverterTool(BaseTool):
                     )
                     return
 
-            self.queue.put(("success", f"Converted {total_pages} pages."))
+            self.queue.put(
+                (
+                    "success",
+                    {
+                        "message": f"Converted {total_pages} pages to {out_dir}.",
+                        "output_dir": out_dir,
+                    },
+                )
+            )
 
         except Exception as e:
             self.queue.put(("error", str(e)))

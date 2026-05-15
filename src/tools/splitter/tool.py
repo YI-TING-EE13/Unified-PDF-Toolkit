@@ -19,8 +19,9 @@ from PIL import Image, ImageTk
 from typing import List, Tuple, Optional, Any, Dict
 
 from ...base.tool import BaseTool
-from ...ui.components import FileListWidget
+from ...ui.components import FileListWidget, OutputActions
 from ...utils.file_ops import get_default_save_dir
+from ...utils.settings import get_setting, set_setting
 
 
 class SplitterTool(BaseTool):
@@ -107,6 +108,9 @@ class SplitterTool(BaseTool):
         out_frame.pack(fill="x", pady=5)
         self.output_entry = ttk.Entry(out_frame)
         self.output_entry.pack(side="left", fill="x", expand=True)
+        self.output_entry.insert(
+            0, get_setting("splitter.output_dir", get_default_save_dir("Split"))
+        )
         ttk.Button(out_frame, text="Browse", command=self._browse_output).pack(
             side="right"
         )
@@ -118,6 +122,9 @@ class SplitterTool(BaseTool):
         self.btn.pack(pady=20, fill="x")
         self.status_lbl = ttk.Label(left_frame, text="Add PDFs and click one to preview.")
         self.status_lbl.pack()
+
+        self.output_actions = OutputActions(left_frame)
+        self.output_actions.pack(anchor="w", pady=(8, 0))
 
         # --- Right Pane: Preview ---
         right_frame = ttk.LabelFrame(paned, text="Page Preview", padding=10)
@@ -252,9 +259,12 @@ class SplitterTool(BaseTool):
                 if msg_type == "status":
                     self.status_lbl.config(text=data)
                 elif msg_type == "success":
-                    self.status_lbl.config(text=data)
+                    message = data["message"] if isinstance(data, dict) else data
+                    output_dir = data.get("output_dir", "") if isinstance(data, dict) else ""
+                    self.status_lbl.config(text=message)
                     self.btn.config(state="normal")
-                    messagebox.showinfo("Success", data)
+                    self.output_actions.set_path(output_dir)
+                    messagebox.showinfo("Success", message)
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
@@ -354,10 +364,13 @@ class SplitterTool(BaseTool):
         ranges_str = self.range_entry.get()
         out_dir = self.output_entry.get()
         if not out_dir:
-            out_dir = get_default_save_dir("Split")
+            messagebox.showwarning("Warning", "Please choose an output folder.")
+            return
+        set_setting("splitter.output_dir", out_dir)
 
         self.status_lbl.config(text="Splitting...")
         self.btn.config(state="disabled")
+        self.output_actions.clear()
         threading.Thread(
             target=self._run_split, args=(self.current_pdf_path, out_dir, ranges_str)
         ).start()
@@ -377,30 +390,33 @@ class SplitterTool(BaseTool):
             p = p.strip()
             if "-" in p:
                 start, end = map(int, p.split("-"))
-                ranges.append((start - 1, end - 1))
             else:
-                idx = int(p)
-                ranges.append((idx - 1, idx - 1))
+                start = end = int(p)
+            if start < 1 or end < 1 or start > end or end > total_pages:
+                raise ValueError(
+                    f"Page range {p} is out of bounds. PDF has {total_pages} pages."
+                )
+            ranges.append((start - 1, end - 1))
         return ranges
 
     def _run_split(self, input_path: str, out_dir: str, ranges_str: str) -> None:
         """Worker thread logic for PDF splitting."""
         try:
+            os.makedirs(out_dir, exist_ok=True)
             # Re-open doc in thread (PyMuPDF objects are not thread-safe across threads)
             doc = fitz.open(input_path)
             total = len(doc)
 
             try:
                 page_ranges = self._parse_ranges(ranges_str, total)
-            except ValueError:
-                self.queue.put(("error", "Invalid Range Format"))
+            except ValueError as exc:
+                self.queue.put(("error", str(exc)))
+                doc.close()
                 return
 
             base_name = os.path.splitext(os.path.basename(input_path))[0]
             count = 0
             for start, end in page_ranges:
-                if start < 0 or end >= total:
-                    continue
                 new_doc = fitz.open()
                 new_doc.insert_pdf(doc, from_page=start, to_page=end)
                 out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
@@ -409,6 +425,14 @@ class SplitterTool(BaseTool):
                 count += 1
 
             doc.close()
-            self.queue.put(("success", f"Created {count} files in {out_dir}"))
+            self.queue.put(
+                (
+                    "success",
+                    {
+                        "message": f"Created {count} files in {out_dir}",
+                        "output_dir": out_dir,
+                    },
+                )
+            )
         except Exception as e:
             self.queue.put(("error", str(e)))
