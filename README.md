@@ -109,6 +109,33 @@ Key patterns:
 
 This project uses `uv` for dependency management, but standard `pip` also works.
 
+### macOS double-click launcher
+
+For friends or teammates who do not want to type commands in Terminal:
+
+1.  Download or clone this project, then unzip it if needed.
+2.  Open the project folder in Finder.
+3.  Double-click `run-macos.command`.
+4.  If macOS blocks the file the first time, right-click `run-macos.command`, choose **Open**, then confirm.
+5.  If macOS says the file is not executable, open Terminal in this folder and run:
+
+```bash
+chmod +x run-macos.command
+```
+
+The launcher checks for `uv`, syncs the project dependencies, and starts the app with `uv run python src/app.py`. If `uv` is missing, it prints the install command and waits so the message stays visible.
+
+### Windows double-click launcher
+
+For friends or teammates on Windows:
+
+1.  Download or clone this project, then unzip it if needed.
+2.  Open the project folder in File Explorer.
+3.  Double-click `run-windows.bat`.
+4.  If Windows SmartScreen asks for confirmation, choose **More info** and then **Run anyway** only if you trust this project folder.
+
+The launcher checks for `uv`, syncs the project dependencies, and starts the app with `uv run python src/app.py`. If `uv` is missing, it prints the Windows PowerShell install command and waits so the message stays visible.
+
 ### Option A: uv
 
 ```bash
