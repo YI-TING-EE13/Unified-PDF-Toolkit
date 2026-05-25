@@ -108,6 +108,11 @@ Key patterns:
 ## Installation
 
 This project uses `uv` for dependency management, but standard `pip` also works.
+The repository includes `.python-version` with `3.12` so `uv` prefers Python
+3.12 when commands are run from the project folder.
+On macOS, use a Python build with modern Tkinter support. The built-in
+`/usr/bin/python3` can use an old Tcl/Tk runtime that opens a blank window on
+recent macOS releases.
 
 ### macOS double-click launcher
 
@@ -123,7 +128,16 @@ For friends or teammates who do not want to type commands in Terminal:
 chmod +x run-macos.command
 ```
 
-The launcher checks for `uv`, syncs the project dependencies, and starts the app with `uv run python src/app.py`. If `uv` is missing, it prints the install command and waits so the message stays visible.
+The launcher checks for `uv`, uses a Tk-enabled Python 3.12 runtime such as
+Homebrew `python-tk@3.12`, syncs the project dependencies, and starts the app.
+If the Tk-enabled Python runtime is missing, install it with:
+
+```bash
+brew install python-tk@3.12
+```
+
+If `uv` is missing, the launcher prints the install command and waits so the
+message stays visible.
 
 ### Windows double-click launcher
 
@@ -134,7 +148,10 @@ For friends or teammates on Windows:
 3.  Double-click `run-windows.bat`.
 4.  If Windows SmartScreen asks for confirmation, choose **More info** and then **Run anyway** only if you trust this project folder.
 
-The launcher checks for `uv`, syncs the project dependencies, and starts the app with `uv run python src/app.py`. If `uv` is missing, it prints the Windows PowerShell install command and waits so the message stays visible.
+The launcher checks for `uv`, installs Python 3.12 through `uv` if needed,
+syncs the project dependencies with Python 3.12, and starts the app. If `uv` is
+missing, it prints the Windows PowerShell install command and waits so the
+message stays visible.
 
 ### Option A: uv
 
@@ -143,6 +160,13 @@ git clone https://github.com/YI-TING-EE13/Unified-PDF-Toolkit.git
 cd Unified-PDF-Toolkit
 uv sync
 uv run python src/app.py
+```
+
+On macOS, prefer the launcher or explicitly use the Homebrew Tk-enabled Python:
+
+```bash
+uv sync --python /opt/homebrew/bin/python3.12
+uv run --python /opt/homebrew/bin/python3.12 python src/app.py
 ```
 
 ### Option B: pip

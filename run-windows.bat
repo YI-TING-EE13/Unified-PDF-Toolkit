@@ -19,6 +19,8 @@ echo Starting Unified PDF Toolkit...
 echo Project folder: %CD%
 echo.
 
+set "PYTHON_VERSION=3.12"
+
 where uv >nul 2>nul
 if errorlevel 1 (
   echo uv was not found on this Windows computer.
@@ -39,8 +41,18 @@ if not exist "src\app.py" (
   exit /b 1
 )
 
+echo Ensuring Python %PYTHON_VERSION% is available...
+uv python install %PYTHON_VERSION%
+if errorlevel 1 (
+  echo.
+  echo Error: Python %PYTHON_VERSION% setup failed. Please check the messages above.
+  echo.
+  pause
+  exit /b 1
+)
+
 echo Checking and syncing dependencies...
-uv sync
+uv sync --python %PYTHON_VERSION%
 if errorlevel 1 (
   echo.
   echo Error: Dependency setup failed. Please check the messages above.
@@ -51,7 +63,7 @@ if errorlevel 1 (
 
 echo.
 echo Opening the app...
-uv run python src/app.py
+uv run --python %PYTHON_VERSION% python src/app.py
 if errorlevel 1 (
   echo.
   echo Error: The app closed with an error. Please check the messages above.
