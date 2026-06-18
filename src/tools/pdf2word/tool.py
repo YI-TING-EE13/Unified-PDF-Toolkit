@@ -19,11 +19,12 @@ import tkinter as tk
 from docx import Document
 from docx.shared import Inches
 from pdf2docx import Converter
-from PIL import Image, ImageTk
+from PIL import Image, ImageOps, ImageTk
 from tkinter import filedialog, messagebox, ttk
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
+from ...utils.errors import friendly_error_message
 from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
@@ -40,6 +41,7 @@ class PDFToWordTool(BaseTool):
     name: str = "PDF to Word"
     icon: str = "[W]"
     MODES = ("Preserve Layout", "Text Only", "Page Images", "OCR Text")
+    OCR_PREPROCESS_OPTIONS = ("None", "Grayscale", "Auto Contrast", "Threshold")
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
@@ -118,16 +120,30 @@ class PDFToWordTool(BaseTool):
             width=10,
         ).grid(row=3, column=1, sticky="w", pady=(8, 0))
 
+        ttk.Label(settings_frame, text="OCR Cleanup:").grid(
+            row=4, column=0, sticky="w", padx=(0, 10), pady=(8, 0)
+        )
+        self.ocr_preprocess_var = tk.StringVar(
+            value=get_setting("pdf2word.ocr_preprocess", "Grayscale")
+        )
+        ttk.Combobox(
+            settings_frame,
+            textvariable=self.ocr_preprocess_var,
+            values=self.OCR_PREPROCESS_OPTIONS,
+            state="readonly",
+            width=18,
+        ).grid(row=4, column=1, sticky="w", pady=(8, 0))
+
         ttk.Label(
             settings_frame,
             text="Blank page range = all pages. OCR requires Tesseract and installed language data.",
             foreground="gray",
-        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         self.preflight_lbl = ttk.Label(
             settings_frame, text="Select a PDF to preview and preflight.", foreground="gray"
         )
-        self.preflight_lbl.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.preflight_lbl.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         out_frame = ttk.LabelFrame(left_frame, text="Output Folder", padding=10)
         out_frame.pack(fill="x", pady=5)
@@ -328,9 +344,13 @@ class PDFToWordTool(BaseTool):
         mode = self.mode_var.get()
         ocr_lang = self.ocr_lang_var.get().strip() or "eng"
         ocr_dpi = max(100, min(600, int(self.ocr_dpi_var.get())))
+        ocr_preprocess = self.ocr_preprocess_var.get()
         preflight = self.preflight_files(files, range_text, mode)
         if preflight["fatal_errors"]:
-            messagebox.showerror("Preflight Failed", "\n".join(preflight["fatal_errors"][:8]))
+            messagebox.showerror(
+                "Preflight Failed",
+                "\n".join(friendly_error_message(item) for item in preflight["fatal_errors"][:8]),
+            )
             return
         if preflight["warnings"]:
             messagebox.showwarning(
@@ -342,6 +362,7 @@ class PDFToWordTool(BaseTool):
         set_setting("pdf2word.mode", mode)
         set_setting("pdf2word.ocr_lang", ocr_lang)
         set_setting("pdf2word.ocr_dpi", ocr_dpi)
+        set_setting("pdf2word.ocr_preprocess", ocr_preprocess)
         remember_inputs(files)
 
         self.btn.config(state="disabled")
@@ -353,7 +374,7 @@ class PDFToWordTool(BaseTool):
 
         threading.Thread(
             target=self._run_conversion,
-            args=(files, output_dir, range_text, mode, ocr_lang, ocr_dpi),
+            args=(files, output_dir, range_text, mode, ocr_lang, ocr_dpi, ocr_preprocess),
         ).start()
 
     def _run_conversion(
@@ -364,6 +385,7 @@ class PDFToWordTool(BaseTool):
         mode: str,
         ocr_lang: str = "eng",
         ocr_dpi: int = 200,
+        ocr_preprocess: str = "Grayscale",
     ) -> None:
         results = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
         total = len(files)
@@ -375,6 +397,7 @@ class PDFToWordTool(BaseTool):
                 "page_range": range_text or "all",
                 "ocr_lang": ocr_lang,
                 "ocr_dpi": ocr_dpi,
+                "ocr_preprocess": ocr_preprocess,
                 "conflict_policy": get_conflict_policy(),
             },
         )
@@ -435,15 +458,17 @@ class PDFToWordTool(BaseTool):
                         mode,
                         ocr_lang=ocr_lang,
                         ocr_dpi=ocr_dpi,
+                        ocr_preprocess=ocr_preprocess,
                     )
                     results["success"] += 1
                     report.add(input_path, resolved_output_path)
                 except Exception as exc:
+                    friendly = friendly_error_message(exc)
                     results["failed"] += 1
                     results["errors"].append(
-                        f"{os.path.basename(input_path)}: {str(exc)}"
+                        f"{os.path.basename(input_path)}: {friendly}"
                     )
-                    report.add(input_path, status="failed", message=str(exc))
+                    report.add(input_path, status="failed", message=friendly)
 
             self.queue.put(("progress", (100, "Conversion complete.")))
             report_path = report.write()
@@ -466,7 +491,7 @@ class PDFToWordTool(BaseTool):
         except Exception as exc:
             report.add("", status="failed", message=str(exc))
             report.write()
-            self.queue.put(("error", str(exc)))
+            self.queue.put(("error", friendly_error_message(exc, "PDF to Word failed")))
 
     @classmethod
     def convert_pdf_to_docx(
@@ -477,6 +502,7 @@ class PDFToWordTool(BaseTool):
         mode: str = "Preserve Layout",
         ocr_lang: str = "eng",
         ocr_dpi: int = 200,
+        ocr_preprocess: str = "Grayscale",
     ) -> None:
         """
         Converts a PDF to DOCX using the selected quality mode.
@@ -501,6 +527,7 @@ class PDFToWordTool(BaseTool):
                 page_indices,
                 ocr_lang=ocr_lang,
                 ocr_dpi=ocr_dpi,
+                ocr_preprocess=ocr_preprocess,
             )
             return
 
@@ -605,6 +632,7 @@ class PDFToWordTool(BaseTool):
         page_indices: Optional[List[int]],
         ocr_lang: str = "eng",
         ocr_dpi: int = 200,
+        ocr_preprocess: str = "Grayscale",
     ) -> None:
         try:
             import pytesseract
@@ -624,6 +652,7 @@ class PDFToWordTool(BaseTool):
                 document.add_heading(f"Page {page_index + 1}", level=2)
                 pix = doc[page_index].get_pixmap(dpi=ocr_dpi, alpha=False)
                 image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                image = cls.prepare_ocr_image(image, ocr_preprocess)
                 try:
                     text = pytesseract.image_to_string(image, lang=ocr_lang).strip()
                 except pytesseract.pytesseract.TesseractNotFoundError as exc:
@@ -635,6 +664,21 @@ class PDFToWordTool(BaseTool):
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         document.save(output_path)
+
+    @classmethod
+    def prepare_ocr_image(cls, image: Image.Image, preprocess: str = "Grayscale") -> Image.Image:
+        mode = preprocess if preprocess in cls.OCR_PREPROCESS_OPTIONS else "Grayscale"
+        if mode == "None":
+            return image
+        gray = ImageOps.grayscale(image)
+        if mode == "Grayscale":
+            return gray
+        if mode == "Auto Contrast":
+            return ImageOps.autocontrast(gray)
+        if mode == "Threshold":
+            contrasted = ImageOps.autocontrast(gray)
+            return contrasted.point(lambda px: 255 if px > 180 else 0, mode="1")
+        return gray
 
     @classmethod
     def preflight_pdf(cls, input_path: str, range_text: str = "") -> Dict[str, Any]:

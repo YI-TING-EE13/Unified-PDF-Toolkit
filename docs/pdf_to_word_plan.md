@@ -92,6 +92,15 @@ External requirement:
 
 - OCR Text requires the Tesseract executable to be installed separately and available on PATH.
 
+## Phase 5: OCR Cleanup and Batch Integration
+
+Implemented in 0.5.0:
+
+- OCR cleanup options for None, Grayscale, Auto Contrast, and Threshold preprocessing.
+- Batch Queue integration for PDF to Word Text Only, Page Images, and OCR Text jobs.
+- User-facing recovery suggestions for OCR, page-range, encrypted-PDF, missing-file, permission, and damaged-PDF failures.
+- Diagnostics view for validating Tesseract and dependency availability before OCR workflows.
+
 Remaining later work:
 
 - Optional formula-aware conversion/OCR investigation for users who need editable equations.

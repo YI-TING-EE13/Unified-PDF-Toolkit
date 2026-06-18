@@ -9,12 +9,15 @@ import fitz
 from PIL import Image
 
 from src.handlers.pdf import PDFCompressor
+from src.tools.batch_queue.tool import BatchJob, BatchQueueTool
 from src.tools.converter.tool import ConverterTool
 from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.merger.tool import MergerTool
 from src.tools.page_manager.tool import PageManagerTool
 from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.splitter.tool import SplitterTool
+from src.utils.diagnostics import DiagnosticCheck, diagnostics_to_text
+from src.utils.errors import error_hint, friendly_error_message
 from src.utils.workflow import WorkflowReport
 
 
@@ -289,6 +292,76 @@ class ReportWorkflowTests(unittest.TestCase):
             self.assertEqual(payload["records"][0]["source"], str(source_path))
 
 
+class ErrorAndDiagnosticsTests(unittest.TestCase):
+    def test_error_hints_cover_common_recovery_paths(self):
+        self.assertIn("Tesseract OCR", error_hint("Tesseract is not installed"))
+        self.assertIn("page range", error_hint("Page range 9 is out of bounds"))
+        self.assertIn("Suggestion:", friendly_error_message("Permission denied"))
+
+    def test_diagnostics_text_includes_suggestions(self):
+        text = diagnostics_to_text(
+            [
+                DiagnosticCheck(
+                    "Tesseract executable",
+                    "warning",
+                    "not found on PATH",
+                    "Install Tesseract OCR.",
+                )
+            ]
+        )
+
+        self.assertIn("[WARNING] Tesseract executable", text)
+        self.assertIn("Suggestion: Install Tesseract OCR.", text)
+
+
+class BatchQueueWorkflowTests(unittest.TestCase):
+    def _create_pdf(self, path: Path, pages: int = 2) -> None:
+        doc = fitz.open()
+        for idx in range(pages):
+            page = doc.new_page()
+            page.insert_text((72, 72), f"Batch queue page {idx + 1}")
+        doc.save(path)
+        doc.close()
+
+    def test_batch_queue_converts_pdf_to_images(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "source.pdf"
+            output_dir = root / "out"
+            self._create_pdf(pdf_path, pages=2)
+
+            result = BatchQueueTool.run_jobs(
+                [
+                    BatchJob(
+                        str(pdf_path),
+                        "PDF to Images",
+                        {"dpi": 72, "format": "png", "page_range": "1-2"},
+                    )
+                ],
+                str(output_dir),
+            )
+
+            self.assertEqual(result["success"], 1)
+            self.assertTrue((output_dir / "source_page_1.png").exists())
+            self.assertTrue((output_dir / "source_page_2.png").exists())
+            self.assertTrue(Path(result["report_path"]).exists())
+
+    def test_batch_queue_converts_pdf_to_word_text_only(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "source.pdf"
+            output_dir = root / "out"
+            self._create_pdf(pdf_path, pages=1)
+
+            result = BatchQueueTool.run_jobs(
+                [BatchJob(str(pdf_path), "PDF to Word - Text Only", {"page_range": "1"})],
+                str(output_dir),
+            )
+
+            self.assertEqual(result["success"], 1)
+            self.assertTrue((output_dir / "source.docx").exists())
+
+
 class PDFToWordWorkflowTests(unittest.TestCase):
     def _create_pdf(self, path: Path, pages: int = 2) -> None:
         doc = fitz.open()
@@ -365,11 +438,20 @@ class PDFToWordWorkflowTests(unittest.TestCase):
                     mode="OCR Text",
                     ocr_lang="eng+chi_tra",
                     ocr_dpi=150,
+                    ocr_preprocess="Threshold",
                 )
 
             self.assertTrue(docx_path.exists())
             self.assertGreater(docx_path.stat().st_size, 0)
             self.assertEqual(ocr_mock.call_args.kwargs["lang"], "eng+chi_tra")
+            self.assertEqual(ocr_mock.call_args.args[0].mode, "1")
+
+    def test_pdf_to_word_ocr_preprocess_options(self):
+        image = Image.new("RGB", (20, 20), "gray")
+
+        self.assertEqual(PDFToWordTool.prepare_ocr_image(image, "None").mode, "RGB")
+        self.assertEqual(PDFToWordTool.prepare_ocr_image(image, "Grayscale").mode, "L")
+        self.assertEqual(PDFToWordTool.prepare_ocr_image(image, "Threshold").mode, "1")
 
     def test_pdf_to_word_preflight_detects_text_pdf(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:

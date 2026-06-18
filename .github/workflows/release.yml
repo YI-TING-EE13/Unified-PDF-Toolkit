@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows artifacts
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --dev --python 3.12
+
+      - name: Run tests
+        run: uv run python -m unittest discover -s tests -v
+
+      - name: Verify install
+        run: uv run python verify_install.py
+
+      - name: Build Python package
+        run: uv build
+
+      - name: Build Windows app bundle
+        run: uv run pyinstaller pdf-toolkit.spec --noconfirm
+
+      - name: Package Windows app bundle
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/Unified PDF Toolkit" -DestinationPath "dist/Unified-PDF-Toolkit-Windows.zip" -Force
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            throw "Inno Setup compiler not found at $iscc"
+          }
+          & $iscc "installer/UnifiedPDFToolkit.iss"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unified-PDF-Toolkit-release
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/Unified-PDF-Toolkit-Windows.zip
+            dist/installer/*.exe
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/Unified-PDF-Toolkit-Windows.zip
+            dist/installer/*.exe

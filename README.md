@@ -4,9 +4,18 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20pdf2docx%20%7C%20python--docx-orange)](pyproject.toml)
 
-**Current version: 0.4.0**
+**Current version: 0.5.0**
 
 Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is built with Python, Tkinter, PyMuPDF, Pillow, pdf2docx, and python-docx. Files are processed on your machine; nothing is uploaded to an external service.
+
+## Version 0.5.0 Highlights
+
+*   **Batch Queue**: Queue mixed operations across compression, PDF to image, and PDF to Word, then run them sequentially with a report.
+*   **Diagnostics**: Check Python, Tkinter, key dependencies, Tesseract availability, and writable output/settings folders from inside the app.
+*   **OCR cleanup**: OCR Text mode now includes None, Grayscale, Auto Contrast, and Threshold preprocessing options.
+*   **Release automation**: Tag-driven GitHub Release workflow builds packages, a Windows ZIP bundle, and optional installer artifacts.
+*   **Installer script**: Added an Inno Setup script and release checklist for Windows setup builds.
+*   **Actionable errors**: Common failures now include recovery suggestions for OCR, locked folders, encrypted PDFs, missing files, page ranges, and damaged PDFs.
 
 ## Version 0.4.0 Highlights
 
@@ -69,6 +78,7 @@ Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is
     *   `OCR Text`: Runs OCR through Tesseract and writes recognized text into DOCX.
 *   Known limitation: editable conversion can garble complex math formulas, embedded fonts, or highly positioned layout. Use Page Images when visual fidelity matters more than editability.
 *   OCR Text requires the Tesseract executable to be installed and available on PATH. Use `eng`, `chi_tra`, `chi_sim`, or combined language codes such as `eng+chi_tra` when the matching Tesseract language data is installed.
+*   OCR cleanup can be set to None, Grayscale, Auto Contrast, or Threshold. Grayscale is a good default; Threshold can help high-contrast scans but may hurt photos or low-quality pages.
 
 ### Image to PDF
 
@@ -84,6 +94,17 @@ Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is
 *   Reorder pages, insert another PDF, or extract selected pages.
 *   Applies edits in memory and saves only when ready.
 *   Shows a busy indicator while writing the modified PDF.
+
+### Batch Queue
+
+*   Queue mixed work across compression, PDF to image, PDF to Word Text Only, PDF to Word Page Images, and PDF to Word OCR Text.
+*   Reuse page range, OCR language, DPI, and OCR cleanup settings across queued jobs.
+*   Runs jobs sequentially and writes a TXT, CSV, and JSON report.
+
+### Diagnostics
+
+*   Check Python, platform, Tkinter, core dependencies, Tesseract, and writable output/settings folders.
+*   Copy diagnostic results when asking for support or preparing a release.
 
 ### Settings / Recent
 
@@ -110,6 +131,8 @@ src/
     pdf2word/
     image2pdf/
     page_manager/
+    batch_queue/
+    diagnostics/
   handlers/           # Format-specific processing logic
   utils/              # File operations, settings, defaults
 ```
@@ -215,6 +238,8 @@ Common workflows:
 *   **PDF to Word**: Add PDFs -> choose mode and optional page range -> click Convert to Word.
 *   **Image to PDF**: Add images -> arrange order -> choose compression -> click Convert to PDF.
 *   **Page Manager**: Add a PDF -> preview it -> edit pages -> click Save Modified PDF.
+*   **Batch Queue**: Add files -> choose operation -> Add Files to Queue -> Run Queue.
+*   **Diagnostics**: Run checks -> review warnings -> copy results if needed.
 *   **Settings / Recent**: Set output conflict behavior -> review recent paths and reports.
 
 ## Testing
@@ -227,6 +252,8 @@ uv run python -m compileall -q src tests verify_install.py
 uv build
 ```
 
+Release-specific checks are listed in `docs/release_checklist.md`.
+
 ## Packaging
 
 Windows app bundle smoke build:
@@ -237,6 +264,11 @@ uv run pyinstaller pdf-toolkit.spec --noconfirm
 ```
 
 The generated folder is written under `dist/Unified PDF Toolkit/`.
+If Inno Setup 6 is installed, build the installer with:
+
+```powershell
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\UnifiedPDFToolkit.iss
+```
 
 ## GUI Smoke Checklist
 

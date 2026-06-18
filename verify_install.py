@@ -8,6 +8,8 @@ sys.path.append(os.getcwd())
 from src.app import PDFToolkitApp
 from src.tools.compressor.tool import CompressorTool
 from src.tools.converter.tool import ConverterTool
+from src.tools.batch_queue.tool import BatchQueueTool
+from src.tools.diagnostics.tool import DiagnosticsTool
 from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.merger.tool import MergerTool
 from src.tools.page_manager.tool import PageManagerTool
@@ -27,6 +29,8 @@ def test_instantiation():
             PDFToWordTool(),
             Image2PDFTool(),
             PageManagerTool(),
+            BatchQueueTool(),
+            DiagnosticsTool(),
             SettingsTool(),
         ]
         for tool in tools:
@@ -53,6 +57,8 @@ def test_app_structure():
             "PDF to Word",
             "Image to PDF",
             "Page Manager",
+            "Batch Queue",
+            "Diagnostics",
             "Settings / Recent",
         ]
         missing = [tool for tool in expected if tool not in registered]

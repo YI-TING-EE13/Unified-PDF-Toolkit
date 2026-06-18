@@ -22,6 +22,8 @@ from src.tools.converter.tool import ConverterTool
 from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.page_manager.tool import PageManagerTool
+from src.tools.batch_queue.tool import BatchQueueTool
+from src.tools.diagnostics.tool import DiagnosticsTool
 from src.tools.settings.tool import SettingsTool
 
 _BaseTk = TkinterDnD.Tk if TkinterDnD else tk.Tk
@@ -157,6 +159,8 @@ class PDFToolkitApp(_BaseTk):
             PDFToWordTool(),
             Image2PDFTool(),
             PageManagerTool(),
+            BatchQueueTool(),
+            DiagnosticsTool(),
             SettingsTool(),
         ]
         

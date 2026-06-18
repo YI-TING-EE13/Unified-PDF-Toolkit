@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 - 2026-06-19
+
+- Added a tag-driven GitHub Release workflow for Python packages, Windows ZIP bundles, and optional installer artifacts.
+- Added an Inno Setup installer script and release checklist.
+- Added Batch Queue for mixed sequential jobs across compression, PDF-to-image, and PDF-to-Word workflows.
+- Added Diagnostics view for dependency, Tkinter, Tesseract, settings, and output-folder checks.
+- Added OCR cleanup options: None, Grayscale, Auto Contrast, and Threshold.
+- Added user-facing error suggestions for common OCR, permission, page-range, encrypted-PDF, and missing-file failures.
+- Expanded unit tests for batch queue, diagnostics, OCR cleanup, and error suggestions.
+
 ## 0.4.0 - 2026-06-18
 
 - Added drag-and-drop support for shared file lists when native Tk drag-and-drop is available.

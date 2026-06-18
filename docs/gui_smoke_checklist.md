@@ -37,6 +37,8 @@ Run this checklist before publishing a desktop build.
 - Use Page Manager to rotate one page, save, and reopen the output.
 - Convert a text PDF to Word using Text Only.
 - Convert an image-only PDF to Word using Page Images.
+- Add PDF to Image and PDF to Word jobs to Batch Queue, run the queue, and confirm a report is written.
+- Open Diagnostics, run checks, and copy the results.
 
 ## OCR
 
@@ -44,6 +46,7 @@ Run this checklist before publishing a desktop build.
 - If Tesseract is installed, run OCR Text with `eng`.
 - If Traditional Chinese language data is installed, run OCR Text with `eng+chi_tra`.
 - Confirm OCR DPI changes are accepted and persisted.
+- Confirm OCR cleanup options are selectable and persisted.
 
 ## Cancellation
 
@@ -56,3 +59,4 @@ Run this checklist before publishing a desktop build.
 - Run `uv run pyinstaller pdf-toolkit.spec --noconfirm`.
 - Launch `dist/Unified PDF Toolkit/Unified PDF Toolkit.exe`.
 - Confirm the app window opens and all sidebar tools render.
+- If Inno Setup 6 is installed, build `installer/UnifiedPDFToolkit.iss` and launch the setup executable.

@@ -12,6 +12,10 @@ def _settings_path() -> Path:
     return base / "settings.json"
 
 
+def get_settings_path() -> Path:
+    return _settings_path()
+
+
 def load_settings() -> dict:
     path = _settings_path()
     if not path.exists():
