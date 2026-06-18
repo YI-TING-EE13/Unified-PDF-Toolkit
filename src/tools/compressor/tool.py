@@ -20,6 +20,12 @@ from ...core.processor import BatchProcessor
 from ...ui.components import FileListWidget, OutputActions
 from ...utils.file_ops import get_default_save_dir, format_size
 from ...utils.settings import get_setting, set_setting
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    remember_inputs,
+)
 
 
 class CompressorTool(BaseTool):
@@ -38,6 +44,7 @@ class CompressorTool(BaseTool):
     def __init__(self) -> None:
         self.processor = BatchProcessor()
         self.queue: queue.Queue = queue.Queue()
+        self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
         """
@@ -155,7 +162,11 @@ class CompressorTool(BaseTool):
         self.start_btn = ttk.Button(
             parent, text="Start Compression", command=self.execute
         )
-        self.start_btn.pack(pady=10)
+        self.start_btn.pack(pady=(10, 5))
+        self.cancel_btn = ttk.Button(
+            parent, text="Cancel", command=self._cancel, state="disabled"
+        )
+        self.cancel_btn.pack(pady=(0, 10))
 
         # --- 4. Progress Log ---
         log_frame = ttk.LabelFrame(parent, text="Progress Log", padding=10)
@@ -208,6 +219,7 @@ class CompressorTool(BaseTool):
                 elif msg_type == "done":
                     output_dir, result = data
                     self.start_btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress["value"] = 100
                     self.output_actions.set_path(output_dir)
                     summary = (
@@ -215,10 +227,19 @@ class CompressorTool(BaseTool):
                         f"failed: {result['failed']}, skipped: {result['skipped']}, "
                         f"saved: {format_size(result['total_saved_bytes'])}."
                     )
+                    if result.get("report_path"):
+                        summary += f" Report: {result['report_path']}."
                     self.status_lbl.config(text=summary)
                     messagebox.showinfo("Done", summary)
+                elif msg_type == "cancelled":
+                    self.start_btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
+                    self.progress["value"] = 0
+                    self.status_lbl.config(text=data)
+                    messagebox.showinfo("Cancelled", data)
                 elif msg_type == "error":
                     self.start_btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress["value"] = 0
                     self.status_lbl.config(text="Error occurred.")
                     messagebox.showerror("Error", data)
@@ -228,6 +249,10 @@ class CompressorTool(BaseTool):
         # Re-schedule poller if the view is still active
         if hasattr(self, "start_btn") and self.start_btn.winfo_exists():
             self.start_btn.after(100, self._process_queue)
+
+    def _cancel(self) -> None:
+        self.cancel_token.cancel()
+        self.status_lbl.config(text="Cancelling after current file...")
 
     def execute(self, params: Optional[Dict[str, Any]] = None) -> None:
         """
@@ -245,9 +270,12 @@ class CompressorTool(BaseTool):
         level = self.level_var.get()
         compression_options = self._get_compression_options()
         self._save_current_settings(output_dir, compression_options)
+        remember_inputs(input_items)
 
         # Lock UI
         self.start_btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self.cancel_token.reset()
         self.status_lbl.config(text="Scanning files...")
         self.progress["value"] = 0
         self.output_actions.clear()
@@ -291,6 +319,15 @@ class CompressorTool(BaseTool):
         """
         Worker thread logic. Expands folders and invokes BatchProcessor.
         """
+        report = WorkflowReport(
+            "Compress PDF/Image",
+            output_dir,
+            options={
+                "level": level,
+                "conflict_policy": get_conflict_policy(),
+                **compression_options,
+            },
+        )
         try:
             # 1. Expand Folders using glob
             all_files = []
@@ -313,8 +350,33 @@ class CompressorTool(BaseTool):
                 level,
                 progress_callback=self.update_progress,
                 compression_options=compression_options,
+                cancellation_check=self.cancel_token.is_cancelled,
+                conflict_policy=get_conflict_policy(),
             )
 
+            for record in result.get("records", []):
+                report.add(
+                    record.get("source", ""),
+                    record.get("output", ""),
+                    record.get("status", "success"),
+                    record.get("message", ""),
+                )
+            report_path = report.write()
+            result["report_path"] = report_path
+            if any(record.get("status") == "cancelled" for record in result.get("records", [])):
+                self.queue.put(
+                    (
+                        "cancelled",
+                        (
+                            f"Cancelled. Success: {result['success']}, failed: "
+                            f"{result['failed']}, skipped: {result['skipped']}. "
+                            f"Report: {report_path}"
+                        ),
+                    )
+                )
+                return
             self.queue.put(("done", (output_dir, result)))
         except Exception as e:
+            report.add("", status="failed", message=str(e))
+            report.write()
             self.queue.put(("error", str(e)))

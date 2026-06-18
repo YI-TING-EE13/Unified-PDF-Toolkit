@@ -1,7 +1,12 @@
 import os
 from typing import List, Optional, Callable, Dict, Any
 
-from ..utils.file_ops import get_output_path, check_permissions, get_file_size
+from ..utils.file_ops import (
+    get_output_path,
+    check_permissions,
+    get_file_size,
+    resolve_output_path,
+)
 from ..utils.logger import setup_logger
 from .base import BaseCompressor
 from ..handlers.pdf import PDFCompressor
@@ -68,6 +73,8 @@ class BatchProcessor:
         level: str,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         compression_options: Optional[Dict[str, Any]] = None,
+        cancellation_check: Optional[Callable[[], bool]] = None,
+        conflict_policy: str = "rename",
     ) -> Dict[str, Any]:
         """
         Executes compression on a list of files.
@@ -92,17 +99,36 @@ class BatchProcessor:
             'failed': 0,
             'skipped': 0,
             'total_saved_bytes': 0,
-            'errors': []
+            'errors': [],
+            'records': [],
         }
         
         total = len(files)
         
         for i, input_path in enumerate(files):
             try:
+                if cancellation_check and cancellation_check():
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': '',
+                            'status': 'cancelled',
+                            'message': 'Cancelled before processing.',
+                        }
+                    )
+                    break
                 # 1. Validation phase
                 if not os.path.exists(input_path):
                     # Should rarely happen if glob worked correctly
                     results['skipped'] = results.get('skipped', 0) + 1
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': '',
+                            'status': 'skipped',
+                            'message': 'File not found.',
+                        }
+                    )
                     continue
                     
                 ext = os.path.splitext(input_path)[1]
@@ -112,20 +138,49 @@ class BatchProcessor:
                 if not handler:
                     self.logger.warning(f"Unsupported format: {input_path}")
                     results['skipped'] += 1
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': '',
+                            'status': 'skipped',
+                            'message': 'Unsupported format.',
+                        }
+                    )
                     continue
 
                 # 2. Output Path Preparation
                 # Text files receive a special extension override (.gz)
                 ext_override = '.txt.gz' if ext == '.txt' else None
                 output_path = get_output_path(input_path, output_dir, ext_override=ext_override)
+                resolved_output_path = resolve_output_path(output_path, conflict_policy)
+                if resolved_output_path is None:
+                    results['skipped'] += 1
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': output_path,
+                            'status': 'skipped',
+                            'message': 'Output exists and conflict policy is skip.',
+                        }
+                    )
+                    continue
+                output_path = resolved_output_path
 
                 # 3. Permission Check
                 if not check_permissions(os.path.dirname(output_path), 'w'):
-                     msg = f"Permission denied for output directory: {output_path}"
-                     self.logger.error(msg)
-                     results['failed'] += 1
-                     results['errors'].append(msg)
-                     continue
+                    msg = f"Permission denied for output directory: {output_path}"
+                    self.logger.error(msg)
+                    results['failed'] += 1
+                    results['errors'].append(msg)
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': output_path,
+                            'status': 'failed',
+                            'message': msg,
+                        }
+                    )
+                    continue
 
                 # 4. Execution
                 if progress_callback:
@@ -142,13 +197,37 @@ class BatchProcessor:
                     
                     results['success'] += 1
                     results['total_saved_bytes'] += saved
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': output_path,
+                            'status': 'success',
+                            'message': '',
+                        }
+                    )
                 else:
                     results['failed'] += 1
                     results['errors'].append(f"Compression failed for {input_path}")
+                    results['records'].append(
+                        {
+                            'source': input_path,
+                            'output': output_path,
+                            'status': 'failed',
+                            'message': 'Compression failed.',
+                        }
+                    )
                     
             except Exception as e:
                 results['failed'] += 1
                 results['errors'].append(f"Error processing {input_path}: {str(e)}")
+                results['records'].append(
+                    {
+                        'source': input_path,
+                        'output': '',
+                        'status': 'failed',
+                        'message': str(e),
+                    }
+                )
                 self.logger.error(f"Unexpected error on {input_path}: {e}")
 
         # Final callback update

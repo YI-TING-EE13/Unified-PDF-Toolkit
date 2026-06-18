@@ -20,8 +20,14 @@ from typing import List, Tuple, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir
+from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    remember_inputs,
+)
 
 
 class SplitterTool(BaseTool):
@@ -42,6 +48,7 @@ class SplitterTool(BaseTool):
         self.current_pdf_path: Optional[str] = None
         self.total_pages: int = 0
         self.preview_img: Optional[ImageTk.PhotoImage] = None  # Keep reference to prevent GC
+        self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
         """
@@ -119,7 +126,11 @@ class SplitterTool(BaseTool):
         self.btn = ttk.Button(
             left_frame, text="Split PDF", command=self.execute, state="disabled"
         )
-        self.btn.pack(pady=20, fill="x")
+        self.btn.pack(pady=(20, 5), fill="x")
+        self.cancel_btn = ttk.Button(
+            left_frame, text="Cancel", command=self._cancel, state="disabled"
+        )
+        self.cancel_btn.pack(pady=(0, 10), fill="x")
 
         self.progress = ttk.Progressbar(left_frame, mode="determinate")
         self.progress.pack(fill="x", pady=(0, 5))
@@ -272,12 +283,22 @@ class SplitterTool(BaseTool):
                     self.progress["value"] = 100
                     self.status_lbl.config(text=message)
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.output_actions.set_path(output_dir)
+                    if isinstance(data, dict) and data.get("report_path"):
+                        message += f"\nReport: {data['report_path']}"
                     messagebox.showinfo("Success", message)
+                elif msg_type == "cancelled":
+                    self.progress["value"] = 0
+                    self.status_lbl.config(text=data["message"])
+                    self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
+                    messagebox.showinfo("Cancelled", data["message"])
                 elif msg_type == "error":
                     self.progress["value"] = 0
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     messagebox.showerror("Error", data)
                 elif msg_type == "preview":
                     # Update Image
@@ -289,6 +310,10 @@ class SplitterTool(BaseTool):
 
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(100, self._process_queue)
+
+    def _cancel(self) -> None:
+        self.cancel_token.cancel()
+        self.status_lbl.config(text="Cancelling after current split...")
 
     # PDF loading and preview
 
@@ -380,8 +405,11 @@ class SplitterTool(BaseTool):
 
         self.status_lbl.config(text="Splitting...")
         self.btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self.cancel_token.reset()
         self.progress["value"] = 0
         self.output_actions.clear()
+        remember_inputs([self.current_pdf_path])
         threading.Thread(
             target=self._run_split, args=(self.current_pdf_path, out_dir, ranges_str)
         ).start()
@@ -412,6 +440,14 @@ class SplitterTool(BaseTool):
 
     def _run_split(self, input_path: str, out_dir: str, ranges_str: str) -> None:
         """Worker thread logic for PDF splitting."""
+        report = WorkflowReport(
+            "Split PDF",
+            out_dir,
+            options={
+                "ranges": ranges_str or "all",
+                "conflict_policy": get_conflict_policy(),
+            },
+        )
         try:
             os.makedirs(out_dir, exist_ok=True)
             # Re-open doc in thread (PyMuPDF objects are not thread-safe across threads)
@@ -429,6 +465,20 @@ class SplitterTool(BaseTool):
             count = 0
             total_ranges = len(page_ranges)
             for idx, (start, end) in enumerate(page_ranges, start=1):
+                if self.cancel_token.is_cancelled():
+                    doc.close()
+                    report.add(input_path, status="cancelled")
+                    report_path = report.write()
+                    self.queue.put(
+                        (
+                            "cancelled",
+                            {
+                                "message": f"Cancelled. Created {count} files.\nReport: {report_path}",
+                                "report_path": report_path,
+                            },
+                        )
+                    )
+                    return
                 self.queue.put(
                     (
                         "progress",
@@ -441,8 +491,20 @@ class SplitterTool(BaseTool):
                 new_doc = fitz.open()
                 new_doc.insert_pdf(doc, from_page=start, to_page=end)
                 out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
-                new_doc.save(os.path.join(out_dir, out_name))
+                requested_path = os.path.join(out_dir, out_name)
+                output_path = resolve_output_path(requested_path, get_conflict_policy())
+                if output_path is None:
+                    new_doc.close()
+                    report.add(
+                        input_path,
+                        requested_path,
+                        status="skipped",
+                        message="Output exists and conflict policy is skip.",
+                    )
+                    continue
+                new_doc.save(output_path)
                 new_doc.close()
+                report.add(input_path, output_path)
                 count += 1
                 self.queue.put(
                     (
@@ -455,14 +517,18 @@ class SplitterTool(BaseTool):
                 )
 
             doc.close()
+            report_path = report.write()
             self.queue.put(
                 (
                     "success",
                     {
                         "message": f"Created {count} files in {out_dir}",
                         "output_dir": out_dir,
+                        "report_path": report_path,
                     },
                 )
             )
         except Exception as e:
+            report.add(input_path, status="failed", message=str(e))
+            report.write()
             self.queue.put(("error", str(e)))

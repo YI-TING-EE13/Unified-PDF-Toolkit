@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from .file_ops import get_default_save_dir
 
@@ -26,9 +26,14 @@ def load_settings() -> dict:
 
 def save_settings(settings: dict) -> None:
     path = _settings_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(settings, file, indent=2, sort_keys=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as file:
+            json.dump(settings, file, indent=2, sort_keys=True)
+    except OSError:
+        # Settings are convenience state. Workflow output must not fail because
+        # a user profile settings file is locked or temporarily unwritable.
+        return
 
 
 def get_setting(key: str, default: Any = None) -> Any:
@@ -39,3 +44,23 @@ def set_setting(key: str, value: Any) -> None:
     settings = load_settings()
     settings[key] = value
     save_settings(settings)
+
+
+def get_recent_paths(key: str, limit: int = 10) -> List[str]:
+    value = get_setting(key, [])
+    if not isinstance(value, list):
+        return []
+    paths = [str(item) for item in value if item]
+    return paths[:limit]
+
+
+def add_recent_path(key: str, path: str, limit: int = 10) -> None:
+    if not path:
+        return
+    paths = [item for item in get_recent_paths(key, limit) if item != path]
+    paths.insert(0, path)
+    set_setting(key, paths[:limit])
+
+
+def clear_recent_paths(key: str) -> None:
+    set_setting(key, [])

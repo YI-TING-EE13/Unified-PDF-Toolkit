@@ -13,6 +13,14 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, List, Optional, Tuple
 
+try:
+    from tkinterdnd2 import DND_FILES
+except ImportError:
+    DND_FILES = None
+
+from ..utils.settings import add_recent_path
+from ..utils.workflow import remember_output
+
 
 DisplayFormatter = Callable[[str], str]
 ChangeCallback = Callable[[List[str]], None]
@@ -118,6 +126,51 @@ class FileListWidget(ttk.Frame):
         )
         scrollbar.pack(side="right", fill="y")
         self.listbox.config(yscrollcommand=scrollbar.set)
+        self._enable_drag_drop()
+
+    def _enable_drag_drop(self) -> None:
+        if not DND_FILES or not hasattr(self.listbox, "drop_target_register"):
+            return
+        self.listbox.drop_target_register(DND_FILES)
+        self.listbox.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _matching_files_from_folder(self, folder: str) -> List[str]:
+        extensions = self._allowed_extensions()
+        folder_path = Path(folder)
+        found = sorted(str(path) for path in folder_path.rglob("*") if path.is_file())
+        if not extensions:
+            return found
+        return [
+            file_path
+            for file_path in found
+            if Path(file_path).suffix.lower() in extensions
+        ]
+
+    def _allowed_extensions(self) -> set:
+        extensions = set()
+        for _, pattern in self._filetypes:
+            for part in pattern.split():
+                if part in {"*", "*.*"}:
+                    return set()
+                ext = part.replace("*", "").lower()
+                if ext and ext not in {".", ".*"}:
+                    extensions.add(ext)
+        return extensions
+
+    def _on_drop(self, event) -> None:
+        changed = False
+        for raw_path in self.tk.splitlist(event.data):
+            path = str(Path(raw_path))
+            if Path(path).is_dir():
+                for file_path in self._matching_files_from_folder(path):
+                    changed = self._append_file(file_path, notify=False) or changed
+            elif Path(path).is_file():
+                extensions = self._allowed_extensions()
+                if extensions and Path(path).suffix.lower() not in extensions:
+                    continue
+                changed = self._append_file(path, notify=False) or changed
+        if changed:
+            self._notify_change()
 
     def _display_text(self, file_path: str) -> str:
         if self._display_formatter:
@@ -135,6 +188,7 @@ class FileListWidget(ttk.Frame):
         if file_path not in self._files:
             self._files.append(file_path)
             self.listbox.insert(tk.END, self._display_text(file_path))
+            add_recent_path("recent.inputs", file_path)
             if notify:
                 self._notify_change()
             return True
@@ -157,20 +211,8 @@ class FileListWidget(ttk.Frame):
         if not folder:
             return
 
-        extensions = set()
-        for _, pattern in self._filetypes:
-            for part in pattern.split():
-                ext = part.replace("*", "").lower()
-                if ext:
-                    extensions.add(ext)
-
-        folder_path = Path(folder)
-        found = sorted(str(path) for path in folder_path.rglob("*") if path.is_file())
-
         changed = False
-        for file_path in found:
-            if extensions and Path(file_path).suffix.lower() not in extensions:
-                continue
+        for file_path in self._matching_files_from_folder(folder):
             changed = self._append_file(file_path, notify=False) or changed
         if changed:
             self._notify_change()
@@ -251,6 +293,8 @@ class OutputActions(ttk.Frame):
 
     def set_path(self, path: str) -> None:
         self._path = path
+        if path:
+            remember_output(path)
         state = "normal" if path else "disabled"
         self.open_btn.config(state=state)
         self.copy_btn.config(state=state)

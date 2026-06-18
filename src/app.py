@@ -4,6 +4,11 @@ import sys
 import os
 from typing import Dict, Optional
 
+try:
+    from tkinterdnd2 import TkinterDnD
+except ImportError:
+    TkinterDnD = None  # type: ignore[assignment]
+
 # Ensure src is in path if running directly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -17,8 +22,12 @@ from src.tools.converter.tool import ConverterTool
 from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.page_manager.tool import PageManagerTool
+from src.tools.settings.tool import SettingsTool
 
-class PDFToolkitApp(tk.Tk):
+_BaseTk = TkinterDnD.Tk if TkinterDnD else tk.Tk
+
+
+class PDFToolkitApp(_BaseTk):
     """
     The Main Application Shell for the Unified PDF Toolkit.
     
@@ -125,6 +134,14 @@ class PDFToolkitApp(tk.Tk):
         self.status_lbl = ttk.Label(self.status_bar, text="Ready", font=("Segoe UI", 9))
         self.status_lbl.pack(side="left")
 
+        if TkinterDnD:
+            self.drop_lbl = ttk.Label(
+                self.status_bar,
+                text="Drag files or folders onto any file list",
+                font=("Segoe UI", 9),
+            )
+            self.drop_lbl.pack(side="right")
+
         # Select first tool by default
         if self.tools:
             first_tool = list(self.tools.keys())[0]
@@ -140,6 +157,7 @@ class PDFToolkitApp(tk.Tk):
             PDFToWordTool(),
             Image2PDFTool(),
             PageManagerTool(),
+            SettingsTool(),
         ]
         
         for tool in tools_list:

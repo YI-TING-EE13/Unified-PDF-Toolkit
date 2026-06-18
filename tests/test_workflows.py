@@ -1,15 +1,53 @@
+import json
+import queue
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import fitz
 from PIL import Image
 
 from src.handlers.pdf import PDFCompressor
+from src.tools.converter.tool import ConverterTool
+from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.merger.tool import MergerTool
 from src.tools.page_manager.tool import PageManagerTool
 from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.splitter.tool import SplitterTool
+from src.utils.workflow import WorkflowReport
+
+
+class FakeWidget:
+    def config(self, **kwargs):
+        self.kwargs = kwargs
+
+
+class FakeEntry:
+    def __init__(self, value: str = "") -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
+
+    def delete(self, start, end=None) -> None:
+        self.value = ""
+
+
+class FakeVar:
+    def __init__(self, value) -> None:
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value) -> None:
+        self.value = value
+
+
+class FakeOutputActions:
+    def set_path(self, path: str) -> None:
+        self.path = path
 
 
 class RangeParsingTests(unittest.TestCase):
@@ -93,6 +131,164 @@ class CompressionWorkflowTests(unittest.TestCase):
             )
 
 
+class ImageAndPageWorkflowTests(unittest.TestCase):
+    def _create_pdf(self, path: Path, pages: int = 2) -> None:
+        doc = fitz.open()
+        for idx in range(pages):
+            page = doc.new_page()
+            page.insert_text((72, 72), f"Workflow test page {idx + 1}")
+        doc.save(path)
+        doc.close()
+
+    def _queue_messages(self, tool_queue: queue.Queue):
+        messages = []
+        while True:
+            try:
+                messages.append(tool_queue.get_nowait())
+            except queue.Empty:
+                return messages
+
+    def test_pdf_to_image_creates_one_image_per_page(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "source.pdf"
+            output_dir = root / "images"
+            self._create_pdf(pdf_path, pages=2)
+
+            tool = ConverterTool()
+            tool._run_convert([str(pdf_path)], str(output_dir), 72, "png")
+
+            output_files = sorted(output_dir.glob("source_page_*.png"))
+            self.assertEqual(len(output_files), 2)
+            for output_file in output_files:
+                with Image.open(output_file) as image:
+                    self.assertGreater(image.width, 0)
+                    self.assertGreater(image.height, 0)
+
+            messages = self._queue_messages(tool.queue)
+            self.assertFalse([data for msg_type, data in messages if msg_type == "error"])
+
+    def test_image_to_pdf_creates_page_per_image(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            image_paths = []
+            for idx, color in enumerate(("white", "lightblue"), start=1):
+                image_path = root / f"image_{idx}.png"
+                Image.new("RGB", (120, 80), color).save(image_path)
+                image_paths.append(str(image_path))
+
+            output_path = root / "combined.pdf"
+            tool = Image2PDFTool()
+            tool._run_convert(image_paths, str(output_path), "Medium")
+
+            self.assertTrue(output_path.exists())
+            with fitz.open(output_path) as doc:
+                self.assertEqual(doc.page_count, 2)
+
+            messages = self._queue_messages(tool.queue)
+            self.assertFalse([data for msg_type, data in messages if msg_type == "error"])
+
+    def test_page_manager_save_writes_modified_pdf(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "source.pdf"
+            output_path = root / "managed.pdf"
+            self._create_pdf(source_path, pages=2)
+
+            tool = PageManagerTool()
+            tool.doc = fitz.open(source_path)
+            try:
+                tool.doc[0].set_rotation(90)
+                tool._run_save(str(output_path))
+            finally:
+                tool.doc.close()
+
+            self.assertTrue(output_path.exists())
+            with fitz.open(output_path) as doc:
+                self.assertEqual(doc.page_count, 2)
+                self.assertEqual(doc[0].rotation, 90)
+
+            messages = self._queue_messages(tool.queue)
+            self.assertFalse([data for msg_type, data in messages if msg_type == "error"])
+
+    def test_page_manager_delete_rotate_reorder_insert_extract(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "source.pdf"
+            insert_path = root / "insert.pdf"
+            extract_path = root / "extract.pdf"
+            self._create_pdf(source_path, pages=3)
+            self._create_pdf(insert_path, pages=1)
+
+            tool = PageManagerTool()
+            tool.doc = fitz.open(source_path)
+            tool.current_pdf_path = str(source_path)
+            tool.total_pages = 3
+            tool.preview_scale = FakeWidget()
+            tool.preview_var = FakeVar(1)
+            tool.status_lbl = FakeWidget()
+            tool._update_preview = lambda page_num: None
+
+            tool.delete_entry = FakeEntry("2")
+            tool._delete_pages()
+            self.assertEqual(tool.total_pages, 2)
+
+            tool.rotate_entry = FakeEntry("1")
+            tool.angle_var = FakeVar("90")
+            tool._rotate_pages()
+            self.assertEqual(tool.doc[0].rotation, 90)
+
+            tool.reorder_entry = FakeEntry("2,1")
+            tool._reorder_pages()
+            self.assertEqual(tool.total_pages, 2)
+
+            tool.insert_after_var = FakeVar(1)
+            with mock.patch(
+                "src.tools.page_manager.tool.filedialog.askopenfilename",
+                return_value=str(insert_path),
+            ):
+                tool._insert_pdf()
+            self.assertEqual(tool.total_pages, 3)
+
+            tool.extract_entry = FakeEntry("1,3")
+            tool.output_actions = FakeOutputActions()
+            with mock.patch(
+                "src.tools.page_manager.tool.filedialog.asksaveasfilename",
+                return_value=str(extract_path),
+            ):
+                with mock.patch("src.tools.page_manager.tool.messagebox.showinfo"):
+                    tool._extract_pages()
+
+            with fitz.open(extract_path) as extracted:
+                self.assertEqual(extracted.page_count, 2)
+            tool.doc.close()
+
+
+class ReportWorkflowTests(unittest.TestCase):
+    def test_workflow_report_writes_txt_csv_and_json(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source_path = root / "source.txt"
+            output_path = root / "output.txt"
+            source_path.write_text("input", encoding="utf-8")
+            output_path.write_text("output", encoding="utf-8")
+
+            report = WorkflowReport("Test Tool", str(root), options={"mode": "test"})
+            report.add(str(source_path), str(output_path))
+            txt_path = Path(report.write())
+            csv_path = txt_path.with_suffix(".csv")
+            json_path = txt_path.with_suffix(".json")
+
+            self.assertTrue(txt_path.exists())
+            self.assertTrue(csv_path.exists())
+            self.assertTrue(json_path.exists())
+
+            payload = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["tool"], "Test Tool")
+            self.assertEqual(payload["summary"]["success"], 1)
+            self.assertEqual(payload["records"][0]["source"], str(source_path))
+
+
 class PDFToWordWorkflowTests(unittest.TestCase):
     def _create_pdf(self, path: Path, pages: int = 2) -> None:
         doc = fitz.open()
@@ -154,6 +350,26 @@ class PDFToWordWorkflowTests(unittest.TestCase):
 
             self.assertTrue(docx_path.exists())
             self.assertGreater(docx_path.stat().st_size, 0)
+
+    def test_pdf_to_word_ocr_text_creates_docx_with_mocked_tesseract(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "source.pdf"
+            docx_path = root / "ocr_text.docx"
+            self._create_pdf(pdf_path, pages=1)
+
+            with mock.patch("pytesseract.image_to_string", return_value="OCR text") as ocr_mock:
+                PDFToWordTool.convert_pdf_to_docx(
+                    str(pdf_path),
+                    str(docx_path),
+                    mode="OCR Text",
+                    ocr_lang="eng+chi_tra",
+                    ocr_dpi=150,
+                )
+
+            self.assertTrue(docx_path.exists())
+            self.assertGreater(docx_path.stat().st_size, 0)
+            self.assertEqual(ocr_mock.call_args.kwargs["lang"], "eng+chi_tra")
 
     def test_pdf_to_word_preflight_detects_text_pdf(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:

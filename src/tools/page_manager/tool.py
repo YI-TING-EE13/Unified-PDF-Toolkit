@@ -21,8 +21,9 @@ from typing import List, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir
+from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
+from ...utils.workflow import CancellationToken, WorkflowReport, get_conflict_policy
 
 
 class PageManagerTool(BaseTool):
@@ -42,6 +43,7 @@ class PageManagerTool(BaseTool):
         self.current_pdf_path: Optional[str] = None
         self.total_pages: int = 0
         self.preview_img: Optional[ImageTk.PhotoImage] = None
+        self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
         """
@@ -163,7 +165,11 @@ class PageManagerTool(BaseTool):
         self.save_btn = ttk.Button(
             left_frame, text="Save Modified PDF", command=self.execute, state="disabled"
         )
-        self.save_btn.pack(pady=10, fill="x")
+        self.save_btn.pack(pady=(10, 5), fill="x")
+        self.cancel_btn = ttk.Button(
+            left_frame, text="Cancel", command=self._cancel, state="disabled"
+        )
+        self.cancel_btn.pack(pady=(0, 10), fill="x")
 
         self.progress = ttk.Progressbar(left_frame, mode="determinate")
         self.progress.pack(fill="x", pady=(0, 5))
@@ -302,15 +308,30 @@ class PageManagerTool(BaseTool):
                 elif msg_type == "status":
                     self.status_lbl.config(text=data)
                 elif msg_type == "success":
+                    message = data["message"] if isinstance(data, dict) else data
+                    output_path = data.get("output_path", "") if isinstance(data, dict) else data.replace("Saved to ", "", 1)
+                    report_path = data.get("report_path", "") if isinstance(data, dict) else ""
                     self.save_btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress.stop()
                     self.progress.config(mode="determinate")
                     self.progress["value"] = 100
+                    self.status_lbl.config(text=message)
+                    self.output_actions.set_path(output_path)
+                    if report_path:
+                        message += f"\nReport: {report_path}"
+                    messagebox.showinfo("Success", message)
+                elif msg_type == "cancelled":
+                    self.save_btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
+                    self.progress.stop()
+                    self.progress.config(mode="determinate")
+                    self.progress["value"] = 0
                     self.status_lbl.config(text=data)
-                    self.output_actions.set_path(data.replace("Saved to ", "", 1))
-                    messagebox.showinfo("Success", data)
+                    messagebox.showinfo("Cancelled", data)
                 elif msg_type == "error":
                     self.save_btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress.stop()
                     self.progress.config(mode="determinate")
                     self.progress["value"] = 0
@@ -321,6 +342,10 @@ class PageManagerTool(BaseTool):
 
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(100, self._process_queue)
+
+    def _cancel(self) -> None:
+        self.cancel_token.cancel()
+        self.status_lbl.config(text="Cancelling before save starts...")
 
     # Parse ranges
 
@@ -606,6 +631,8 @@ class PageManagerTool(BaseTool):
         set_setting("page_manager.output_dir", os.path.dirname(output_path) or os.getcwd())
 
         self.save_btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self.cancel_token.reset()
         self.status_lbl.config(text="Saving...")
         self.progress.config(mode="indeterminate")
         self.progress.start(12)
@@ -615,9 +642,53 @@ class PageManagerTool(BaseTool):
 
     def _run_save(self, output_path: str) -> None:
         """Worker thread for saving the modified PDF."""
+        output_dir = os.path.dirname(output_path) or os.getcwd()
+        report = WorkflowReport(
+            "Page Manager",
+            output_dir,
+            options={"conflict_policy": get_conflict_policy()},
+        )
         try:
-            os.makedirs(os.path.dirname(output_path) or os.getcwd(), exist_ok=True)
-            self.doc.save(output_path, garbage=3, deflate=True)
-            self.queue.put(("success", f"Saved to {output_path}"))
+            if self.cancel_token.is_cancelled():
+                report.add(self.current_pdf_path or "", output_path, status="cancelled")
+                report_path = report.write()
+                self.queue.put(("cancelled", f"Cancelled before save.\nReport: {report_path}"))
+                return
+            os.makedirs(output_dir, exist_ok=True)
+            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
+            if resolved_output_path is None:
+                report.add(
+                    self.current_pdf_path or "",
+                    output_path,
+                    status="skipped",
+                    message="Output exists and conflict policy is skip.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "message": "Skipped existing output.",
+                            "output_path": output_path,
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
+            self.doc.save(resolved_output_path, garbage=3, deflate=True)
+            report.add(self.current_pdf_path or "", resolved_output_path)
+            report_path = report.write()
+            self.queue.put(
+                (
+                    "success",
+                    {
+                        "message": f"Saved to {resolved_output_path}",
+                        "output_path": resolved_output_path,
+                        "report_path": report_path,
+                    },
+                )
+            )
         except Exception as e:
+            report.add(self.current_pdf_path or "", output_path, status="failed", message=str(e))
+            report.write()
             self.queue.put(("error", str(e)))

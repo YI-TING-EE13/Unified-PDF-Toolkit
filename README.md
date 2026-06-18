@@ -2,11 +2,19 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20pdf2docx-orange)](pyproject.toml)
+[![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20pdf2docx%20%7C%20python--docx-orange)](pyproject.toml)
 
-**Current version: 0.3.0**
+**Current version: 0.4.0**
 
-Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is built with Python, Tkinter, PyMuPDF, Pillow, and pdf2docx. Files are processed on your machine; nothing is uploaded to an external service.
+Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is built with Python, Tkinter, PyMuPDF, Pillow, pdf2docx, and python-docx. Files are processed on your machine; nothing is uploaded to an external service.
+
+## Version 0.4.0 Highlights
+
+*   **Workflow controls**: Added drag-and-drop input, Cancel buttons, completion reports, and a shared output conflict policy.
+*   **Settings / Recent**: Added a dedicated view for rename/overwrite/skip behavior and recent inputs, outputs, and reports.
+*   **OCR Text mode**: PDF to Word can use Tesseract OCR for scanned PDFs, with configurable OCR language and render DPI.
+*   **Reports for automation**: Long workflows write TXT, CSV, and JSON reports.
+*   **CI and packaging**: Added GitHub Actions validation and a PyInstaller spec for Windows app bundles.
 
 ## Version 0.3.0 Highlights
 
@@ -58,7 +66,9 @@ Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is
     *   `Preserve Layout`: Best effort editable DOCX layout conversion.
     *   `Text Only`: Extracts editable text with simpler formatting.
     *   `Page Images`: Places each PDF page into DOCX as an image for visual fidelity.
+    *   `OCR Text`: Runs OCR through Tesseract and writes recognized text into DOCX.
 *   Known limitation: editable conversion can garble complex math formulas, embedded fonts, or highly positioned layout. Use Page Images when visual fidelity matters more than editability.
+*   OCR Text requires the Tesseract executable to be installed and available on PATH. Use `eng`, `chi_tra`, `chi_sim`, or combined language codes such as `eng+chi_tra` when the matching Tesseract language data is installed.
 
 ### Image to PDF
 
@@ -74,6 +84,12 @@ Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is
 *   Reorder pages, insert another PDF, or extract selected pages.
 *   Applies edits in memory and saves only when ready.
 *   Shows a busy indicator while writing the modified PDF.
+
+### Settings / Recent
+
+*   Choose how output file conflicts are handled: rename, overwrite, or skip.
+*   Review recent input files, output paths, and completion reports.
+*   Copy or clear recent paths.
 
 ## Architecture
 
@@ -174,9 +190,13 @@ uv run --python /opt/homebrew/bin/python3.12 python src/app.py
 ```bash
 python -m venv venv
 venv\Scripts\activate
-pip install pymupdf pillow pdf2docx
+pip install pymupdf pillow pdf2docx python-docx tkinterdnd2 pytesseract
 python src/app.py
 ```
+
+OCR Text mode also requires the Tesseract executable. Install it separately and
+make sure `tesseract` is available on PATH. Install the relevant Tesseract
+language packs before selecting languages such as `chi_tra` or `chi_sim`.
 
 ## Usage
 
@@ -195,13 +215,33 @@ Common workflows:
 *   **PDF to Word**: Add PDFs -> choose mode and optional page range -> click Convert to Word.
 *   **Image to PDF**: Add images -> arrange order -> choose compression -> click Convert to PDF.
 *   **Page Manager**: Add a PDF -> preview it -> edit pages -> click Save Modified PDF.
+*   **Settings / Recent**: Set output conflict behavior -> review recent paths and reports.
 
 ## Testing
 
 ```bash
 uv run python -m unittest discover -s tests -v
 uv run python verify_install.py
+uv run python scripts/gui_smoke.py
+uv run python -m compileall -q src tests verify_install.py
+uv build
 ```
+
+## Packaging
+
+Windows app bundle smoke build:
+
+```bash
+uv sync --dev
+uv run pyinstaller pdf-toolkit.spec --noconfirm
+```
+
+The generated folder is written under `dist/Unified PDF Toolkit/`.
+
+## GUI Smoke Checklist
+
+Before publishing a release, run through `docs/gui_smoke_checklist.md` after
+the automated tests pass.
 
 ## Roadmap Notes
 

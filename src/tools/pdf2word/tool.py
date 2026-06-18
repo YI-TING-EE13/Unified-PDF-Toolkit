@@ -24,8 +24,14 @@ from tkinter import filedialog, messagebox, ttk
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir
+from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    remember_inputs,
+)
 
 
 class PDFToWordTool(BaseTool):
@@ -33,7 +39,7 @@ class PDFToWordTool(BaseTool):
 
     name: str = "PDF to Word"
     icon: str = "[W]"
-    MODES = ("Preserve Layout", "Text Only", "Page Images")
+    MODES = ("Preserve Layout", "Text Only", "Page Images", "OCR Text")
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
@@ -41,6 +47,7 @@ class PDFToWordTool(BaseTool):
         self.current_pdf_path: Optional[str] = None
         self.total_pages = 0
         self.preview_img: Optional[ImageTk.PhotoImage] = None
+        self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
         paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
@@ -85,16 +92,42 @@ class PDFToWordTool(BaseTool):
         self.range_entry.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(8, 0))
         settings_frame.columnconfigure(2, weight=1)
 
+        ttk.Label(settings_frame, text="OCR Language:").grid(
+            row=2, column=0, sticky="w", padx=(0, 10), pady=(8, 0)
+        )
+        self.ocr_lang_var = tk.StringVar(
+            value=get_setting("pdf2word.ocr_lang", "eng")
+        )
+        ttk.Combobox(
+            settings_frame,
+            textvariable=self.ocr_lang_var,
+            values=["eng", "chi_tra", "chi_sim", "eng+chi_tra", "eng+chi_sim"],
+            width=18,
+        ).grid(row=2, column=1, sticky="w", pady=(8, 0))
+
+        ttk.Label(settings_frame, text="OCR DPI:").grid(
+            row=3, column=0, sticky="w", padx=(0, 10), pady=(8, 0)
+        )
+        self.ocr_dpi_var = tk.IntVar(value=int(get_setting("pdf2word.ocr_dpi", 200)))
+        ttk.Spinbox(
+            settings_frame,
+            from_=100,
+            to=600,
+            increment=50,
+            textvariable=self.ocr_dpi_var,
+            width=10,
+        ).grid(row=3, column=1, sticky="w", pady=(8, 0))
+
         ttk.Label(
             settings_frame,
-            text="Blank = all pages. Page Images avoids blank pages but is not editable.",
+            text="Blank page range = all pages. OCR requires Tesseract and installed language data.",
             foreground="gray",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         self.preflight_lbl = ttk.Label(
             settings_frame, text="Select a PDF to preview and preflight.", foreground="gray"
         )
-        self.preflight_lbl.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.preflight_lbl.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
         out_frame = ttk.LabelFrame(left_frame, text="Output Folder", padding=10)
         out_frame.pack(fill="x", pady=5)
@@ -108,7 +141,11 @@ class PDFToWordTool(BaseTool):
         )
 
         self.btn = ttk.Button(left_frame, text="Convert to Word", command=self.execute)
-        self.btn.pack(pady=15, fill="x")
+        self.btn.pack(pady=(15, 5), fill="x")
+        self.cancel_btn = ttk.Button(
+            left_frame, text="Cancel", command=self._cancel, state="disabled"
+        )
+        self.cancel_btn.pack(pady=(0, 10), fill="x")
 
         self.progress = ttk.Progressbar(left_frame, mode="determinate")
         self.progress.pack(fill="x")
@@ -192,7 +229,7 @@ class PDFToWordTool(BaseTool):
                 f"{report['selected_page_count']} selected. "
             )
             if report["image_only"]:
-                message += "Looks image-only/scanned; OCR is planned for a later phase."
+                message += "Looks image-only/scanned; OCR Text or Page Images may help."
             else:
                 message += "Text detected."
             self.preflight_lbl.config(text=message)
@@ -244,13 +281,25 @@ class PDFToWordTool(BaseTool):
                     self.status_lbl.config(text=message)
                 elif msg_type == "success":
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress["value"] = 100
                     output_dir = data["output_dir"]
+                    report_path = data.get("report_path", "")
                     self.output_actions.set_path(output_dir)
                     self.status_lbl.config(text=data["message"])
-                    messagebox.showinfo("Success", data["message"])
+                    message = data["message"]
+                    if report_path:
+                        message += f"\nReport: {report_path}"
+                    messagebox.showinfo("Success", message)
+                elif msg_type == "cancelled":
+                    self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
+                    self.progress["value"] = 0
+                    self.status_lbl.config(text=data["message"])
+                    messagebox.showinfo("Cancelled", data["message"])
                 elif msg_type == "error":
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress["value"] = 0
                     self.status_lbl.config(text="Error occurred.")
                     messagebox.showerror("Error", data)
@@ -259,6 +308,10 @@ class PDFToWordTool(BaseTool):
 
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(100, self._process_queue)
+
+    def _cancel(self) -> None:
+        self.cancel_token.cancel()
+        self.status_lbl.config(text="Cancelling after current file...")
 
     def execute(self, params: Optional[Dict[str, Any]] = None) -> None:
         files = self.file_list.get_files()
@@ -273,6 +326,8 @@ class PDFToWordTool(BaseTool):
 
         range_text = self.range_entry.get().strip()
         mode = self.mode_var.get()
+        ocr_lang = self.ocr_lang_var.get().strip() or "eng"
+        ocr_dpi = max(100, min(600, int(self.ocr_dpi_var.get())))
         preflight = self.preflight_files(files, range_text, mode)
         if preflight["fatal_errors"]:
             messagebox.showerror("Preflight Failed", "\n".join(preflight["fatal_errors"][:8]))
@@ -285,27 +340,66 @@ class PDFToWordTool(BaseTool):
 
         set_setting("pdf2word.output_dir", output_dir)
         set_setting("pdf2word.mode", mode)
+        set_setting("pdf2word.ocr_lang", ocr_lang)
+        set_setting("pdf2word.ocr_dpi", ocr_dpi)
+        remember_inputs(files)
 
         self.btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self.cancel_token.reset()
         self.progress["value"] = 0
         self.output_actions.clear()
         self.status_lbl.config(text="Converting PDFs to Word...")
 
         threading.Thread(
             target=self._run_conversion,
-            args=(files, output_dir, range_text, mode),
+            args=(files, output_dir, range_text, mode, ocr_lang, ocr_dpi),
         ).start()
 
     def _run_conversion(
-        self, files: List[str], output_dir: str, range_text: str, mode: str
+        self,
+        files: List[str],
+        output_dir: str,
+        range_text: str,
+        mode: str,
+        ocr_lang: str = "eng",
+        ocr_dpi: int = 200,
     ) -> None:
         results = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
         total = len(files)
+        report = WorkflowReport(
+            "PDF to Word",
+            output_dir,
+            options={
+                "mode": mode,
+                "page_range": range_text or "all",
+                "ocr_lang": ocr_lang,
+                "ocr_dpi": ocr_dpi,
+                "conflict_policy": get_conflict_policy(),
+            },
+        )
 
         try:
             os.makedirs(output_dir, exist_ok=True)
 
             for idx, input_path in enumerate(files, start=1):
+                if self.cancel_token.is_cancelled():
+                    report.add(input_path, status="cancelled")
+                    report_path = report.write()
+                    self.queue.put(
+                        (
+                            "cancelled",
+                            {
+                                "message": (
+                                    f"Cancelled. Success: {results['success']}, "
+                                    f"failed: {results['failed']}, skipped: {results['skipped']}.\n"
+                                    f"Report: {report_path}"
+                                ),
+                                "report_path": report_path,
+                            },
+                        )
+                    )
+                    return
                 pct = ((idx - 1) / total) * 100
                 self.queue.put(
                     (
@@ -318,26 +412,60 @@ class PDFToWordTool(BaseTool):
                     if not os.path.exists(input_path):
                         results["skipped"] += 1
                         results["errors"].append(f"File not found: {input_path}")
+                        report.add(input_path, status="skipped", message="File not found.")
                         continue
 
                     output_path = self._output_path(input_path, output_dir)
-                    self.convert_pdf_to_docx(input_path, output_path, range_text, mode)
+                    resolved_output_path = resolve_output_path(
+                        output_path, get_conflict_policy()
+                    )
+                    if resolved_output_path is None:
+                        results["skipped"] += 1
+                        report.add(
+                            input_path,
+                            output_path,
+                            status="skipped",
+                            message="Output exists and conflict policy is skip.",
+                        )
+                        continue
+                    self.convert_pdf_to_docx(
+                        input_path,
+                        resolved_output_path,
+                        range_text,
+                        mode,
+                        ocr_lang=ocr_lang,
+                        ocr_dpi=ocr_dpi,
+                    )
                     results["success"] += 1
+                    report.add(input_path, resolved_output_path)
                 except Exception as exc:
                     results["failed"] += 1
                     results["errors"].append(
                         f"{os.path.basename(input_path)}: {str(exc)}"
                     )
+                    report.add(input_path, status="failed", message=str(exc))
 
             self.queue.put(("progress", (100, "Conversion complete.")))
+            report_path = report.write()
             summary = (
                 f"Word conversion complete ({mode}). Success: {results['success']}, "
                 f"failed: {results['failed']}, skipped: {results['skipped']}."
             )
             if results["errors"]:
                 summary += "\n" + "\n".join(results["errors"][:5])
-            self.queue.put(("success", {"message": summary, "output_dir": output_dir}))
+            self.queue.put(
+                (
+                    "success",
+                    {
+                        "message": summary,
+                        "output_dir": output_dir,
+                        "report_path": report_path,
+                    },
+                )
+            )
         except Exception as exc:
+            report.add("", status="failed", message=str(exc))
+            report.write()
             self.queue.put(("error", str(exc)))
 
     @classmethod
@@ -347,6 +475,8 @@ class PDFToWordTool(BaseTool):
         output_path: str,
         range_text: str = "",
         mode: str = "Preserve Layout",
+        ocr_lang: str = "eng",
+        ocr_dpi: int = 200,
     ) -> None:
         """
         Converts a PDF to DOCX using the selected quality mode.
@@ -363,6 +493,15 @@ class PDFToWordTool(BaseTool):
             return
         if mode == "Page Images":
             cls._convert_page_images(input_path, output_path, page_indices)
+            return
+        if mode == "OCR Text":
+            cls._convert_ocr_text(
+                input_path,
+                output_path,
+                page_indices,
+                ocr_lang=ocr_lang,
+                ocr_dpi=ocr_dpi,
+            )
             return
 
         temp_path = ""
@@ -398,7 +537,7 @@ class PDFToWordTool(BaseTool):
                 if report["image_only"] and mode != "Page Images":
                     warnings.append(
                         f"{os.path.basename(input_path)} looks image-only/scanned. "
-                        "Use Page Images if Preserve Layout creates blank pages. OCR is not included yet."
+                        "Use OCR Text for editable extracted text or Page Images for visual fidelity."
                     )
             except Exception as exc:
                 fatal_errors.append(f"{os.path.basename(input_path)}: {exc}")
@@ -454,6 +593,45 @@ class PDFToWordTool(BaseTool):
                 image.save(buffer, format="PNG")
                 buffer.seek(0)
                 document.add_picture(buffer, width=image_width)
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        document.save(output_path)
+
+    @classmethod
+    def _convert_ocr_text(
+        cls,
+        input_path: str,
+        output_path: str,
+        page_indices: Optional[List[int]],
+        ocr_lang: str = "eng",
+        ocr_dpi: int = 200,
+    ) -> None:
+        try:
+            import pytesseract
+        except ImportError as exc:
+            raise RuntimeError(
+                "OCR Text mode requires pytesseract. Run uv sync and install Tesseract OCR."
+            ) from exc
+
+        document = Document()
+        document.add_heading(Path(input_path).stem, level=1)
+
+        with fitz.open(input_path) as doc:
+            selected = cls._selected_pages(doc, page_indices)
+            for count, page_index in enumerate(selected):
+                if count:
+                    document.add_page_break()
+                document.add_heading(f"Page {page_index + 1}", level=2)
+                pix = doc[page_index].get_pixmap(dpi=ocr_dpi, alpha=False)
+                image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                try:
+                    text = pytesseract.image_to_string(image, lang=ocr_lang).strip()
+                except pytesseract.pytesseract.TesseractNotFoundError as exc:
+                    raise RuntimeError(
+                        "OCR Text mode requires the Tesseract executable. "
+                        "Install Tesseract OCR and make sure it is on PATH."
+                    ) from exc
+                document.add_paragraph(text or "[No OCR text detected on this page.]")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         document.save(output_path)
@@ -536,13 +714,4 @@ class PDFToWordTool(BaseTool):
 
     @staticmethod
     def _output_path(input_path: str, output_dir: str) -> str:
-        output_path = Path(output_dir) / f"{Path(input_path).stem}.docx"
-        if not output_path.exists():
-            return str(output_path)
-
-        counter = 2
-        while True:
-            candidate = output_path.with_name(f"{output_path.stem}_{counter}.docx")
-            if not candidate.exists():
-                return str(candidate)
-            counter += 1
+        return str(Path(output_dir) / f"{Path(input_path).stem}.docx")

@@ -54,7 +54,6 @@ Implemented additions:
 Deferred:
 
 - Optional "open output on completion" preference.
-- OCR for scanned/image-only PDFs.
 
 ## Later Phases
 
@@ -75,8 +74,25 @@ Implemented additions:
 - `Page Images` is intended as a practical fallback when Preserve Layout creates blank pages or mishandles complex image-heavy pages.
 - Math formulas may become garbled in editable modes because PDF formulas are often stored as positioned glyphs or embedded fonts rather than semantic equations. Use `Page Images` when visual fidelity is more important than editability.
 
+## Phase 4: Workflow Controls and OCR
+
+Implemented additions:
+
+- Drag-and-drop support for file lists when native Tk drag-and-drop support is available.
+- Completion reports for long-running workflows.
+- Shared output conflict policy: rename, overwrite, or skip.
+- Cancel buttons for long-running/background workflows.
+- Settings / Recent view for conflict policy and recent paths.
+- `OCR Text` mode for scanned PDFs through `pytesseract`.
+- Configurable OCR language codes such as `eng`, `chi_tra`, `chi_sim`, and combined language packs.
+- Configurable OCR render DPI for quality/performance tradeoffs.
+- TXT, CSV, and JSON completion reports for workflow review and automation.
+
+External requirement:
+
+- OCR Text requires the Tesseract executable to be installed separately and available on PATH.
+
 Remaining later work:
 
-- OCR Mode for scanned PDFs.
 - Optional formula-aware conversion/OCR investigation for users who need editable equations.
 - Conversion report with page count, elapsed time, output size, and failure list.

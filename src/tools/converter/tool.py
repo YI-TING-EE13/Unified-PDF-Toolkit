@@ -19,8 +19,14 @@ from typing import List, Optional, Dict, Any
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir
+from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    remember_inputs,
+)
 
 
 class ConverterTool(BaseTool):
@@ -38,6 +44,7 @@ class ConverterTool(BaseTool):
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
+        self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
         """
@@ -95,7 +102,11 @@ class ConverterTool(BaseTool):
         self.btn = ttk.Button(
             parent, text="Convert to Images", command=self.execute
         )
-        self.btn.pack(pady=20)
+        self.btn.pack(pady=(20, 5))
+        self.cancel_btn = ttk.Button(
+            parent, text="Cancel", command=self._cancel, state="disabled"
+        )
+        self.cancel_btn.pack(pady=(0, 15))
 
         self.status = ttk.Progressbar(parent, mode="determinate")
         self.status.pack(fill="x", padx=10)
@@ -124,14 +135,29 @@ class ConverterTool(BaseTool):
                 elif msg_type == "success":
                     message = data["message"] if isinstance(data, dict) else data
                     output_dir = data.get("output_dir", "") if isinstance(data, dict) else ""
+                    report_path = data.get("report_path", "") if isinstance(data, dict) else ""
                     self.status_lbl.config(text=message)
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.output_actions.set_path(output_dir)
                     self.status["value"] = 100
+                    if report_path:
+                        message += f"\nReport: {report_path}"
                     messagebox.showinfo("Success", message)
+                elif msg_type == "cancelled":
+                    message = data["message"]
+                    report_path = data.get("report_path", "")
+                    self.status_lbl.config(text=message)
+                    self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
+                    self.status["value"] = 0
+                    if report_path:
+                        message += f"\nReport: {report_path}"
+                    messagebox.showinfo("Cancelled", message)
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.status["value"] = 0
                     messagebox.showerror("Error", data)
                 processed += 1
@@ -140,6 +166,10 @@ class ConverterTool(BaseTool):
 
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(50, self._process_queue)
+
+    def _cancel(self) -> None:
+        self.cancel_token.cancel()
+        self.status_lbl.config(text="Cancelling after current page...")
 
     def _browse_output(self) -> None:
         """Opens directory dialog for output path selection."""
@@ -165,9 +195,12 @@ class ConverterTool(BaseTool):
         set_setting("converter.output_dir", out_dir)
         set_setting("converter.dpi", dpi)
         set_setting("converter.format", fmt)
+        remember_inputs(files)
 
         self.status_lbl.config(text="Converting...")
         self.btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self.cancel_token.reset()
         self.status["value"] = 0
         self.output_actions.clear()
         threading.Thread(
@@ -181,6 +214,11 @@ class ConverterTool(BaseTool):
         Worker thread for batch conversion.
         Includes simple throttling logic to avoid flooding the GUI queue.
         """
+        report = WorkflowReport(
+            "PDF to Image",
+            out_dir,
+            options={"dpi": dpi, "format": fmt, "conflict_policy": get_conflict_policy()},
+        )
         try:
             os.makedirs(out_dir, exist_ok=True)
 
@@ -202,15 +240,45 @@ class ConverterTool(BaseTool):
             last_update = 0.0
 
             for pdf_path in files:
+                if self.cancel_token.is_cancelled():
+                    report.add(pdf_path, status="cancelled", message="Cancelled before file.")
+                    break
                 try:
                     doc = fitz.open(pdf_path)
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
                     for i, page in enumerate(doc):
+                        if self.cancel_token.is_cancelled():
+                            report.add(pdf_path, status="cancelled", message="Cancelled during conversion.")
+                            doc.close()
+                            report_path = report.write()
+                            self.queue.put(
+                                (
+                                    "cancelled",
+                                    {
+                                        "message": f"Cancelled. Converted {current_page} pages before stopping.",
+                                        "report_path": report_path,
+                                    },
+                                )
+                            )
+                            return
                         pix = page.get_pixmap(dpi=dpi)
                         out_name = f"{base_name}_page_{i + 1}.{fmt}"
-                        out_path = os.path.join(out_dir, out_name)
+                        requested_path = os.path.join(out_dir, out_name)
+                        out_path = resolve_output_path(
+                            requested_path, get_conflict_policy()
+                        )
+                        if out_path is None:
+                            current_page += 1
+                            report.add(
+                                pdf_path,
+                                requested_path,
+                                status="skipped",
+                                message="Output exists and conflict policy is skip.",
+                            )
+                            continue
                         pix.save(out_path)
+                        report.add(pdf_path, out_path)
 
                         current_page += 1
 
@@ -228,6 +296,7 @@ class ConverterTool(BaseTool):
 
                     doc.close()
                 except Exception as e:
+                    report.add(pdf_path, status="failed", message=str(e))
                     self.queue.put(
                         (
                             "error",
@@ -236,15 +305,19 @@ class ConverterTool(BaseTool):
                     )
                     return
 
+            report_path = report.write()
             self.queue.put(
                 (
                     "success",
                     {
                         "message": f"Converted {total_pages} pages to {out_dir}.",
                         "output_dir": out_dir,
+                        "report_path": report_path,
                     },
                 )
             )
 
         except Exception as e:
+            report.add("", status="failed", message=str(e))
+            report.write()
             self.queue.put(("error", str(e)))

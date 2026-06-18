@@ -127,6 +127,38 @@ def get_file_size(path: str) -> int:
     except OSError:
         return 0
 
+def ensure_unique_path(path: str) -> str:
+    """Returns a non-existing variant by appending _2, _3, etc."""
+    candidate = Path(path)
+    if not candidate.exists():
+        return str(candidate)
+
+    counter = 2
+    while True:
+        next_candidate = candidate.with_name(
+            f"{candidate.stem}_{counter}{candidate.suffix}"
+        )
+        if not next_candidate.exists():
+            return str(next_candidate)
+        counter += 1
+
+def resolve_output_path(path: str, conflict_policy: str = "rename") -> Optional[str]:
+    """
+    Resolves an output path according to the configured collision policy.
+
+    Policies:
+    - rename: append _2, _3, etc. when a file already exists.
+    - overwrite: keep the requested path.
+    - skip: return None when the requested path exists.
+    """
+    normalized = normalize_path(path)
+    policy = (conflict_policy or "rename").lower()
+    if policy == "skip" and Path(normalized).exists():
+        return None
+    if policy == "overwrite":
+        return normalized
+    return ensure_unique_path(normalized)
+
 def format_size(size_bytes: int) -> str:
     """
     Formats a byte count into a human-readable string (e.g., '10.5 MB').

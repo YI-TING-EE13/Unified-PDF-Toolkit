@@ -22,8 +22,14 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir
+from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    remember_inputs,
+)
 
 
 class Image2PDFTool(BaseTool):
@@ -49,6 +55,7 @@ class Image2PDFTool(BaseTool):
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
+        self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
         """
@@ -106,7 +113,11 @@ class Image2PDFTool(BaseTool):
         self.btn = ttk.Button(
             parent, text="Convert to PDF", command=self.execute
         )
-        self.btn.pack(pady=15)
+        self.btn.pack(pady=(15, 5))
+        self.cancel_btn = ttk.Button(
+            parent, text="Cancel", command=self._cancel, state="disabled"
+        )
+        self.cancel_btn.pack(pady=(0, 10))
 
         # Progress
         self.progress = ttk.Progressbar(parent, mode="determinate")
@@ -131,14 +142,27 @@ class Image2PDFTool(BaseTool):
                     self.progress["value"] = pct
                     self.status_lbl.config(text=msg)
                 elif msg_type == "success":
-                    self.status_lbl.config(text=data)
+                    output_path = data["output_path"] if isinstance(data, dict) else data
+                    report_path = data.get("report_path", "") if isinstance(data, dict) else ""
+                    self.status_lbl.config(text=output_path)
                     self.btn.config(state="normal")
-                    self.output_actions.set_path(data)
+                    self.cancel_btn.config(state="disabled")
+                    self.output_actions.set_path(output_path)
                     self.progress["value"] = 100
-                    messagebox.showinfo("Success", f"PDF created: {data}")
+                    message = f"PDF created: {output_path}"
+                    if report_path:
+                        message += f"\nReport: {report_path}"
+                    messagebox.showinfo("Success", message)
+                elif msg_type == "cancelled":
+                    self.status_lbl.config(text=data["message"])
+                    self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
+                    self.progress["value"] = 0
+                    messagebox.showinfo("Cancelled", data["message"])
                 elif msg_type == "error":
                     self.status_lbl.config(text="Error occurred.")
                     self.btn.config(state="normal")
+                    self.cancel_btn.config(state="disabled")
                     self.progress["value"] = 0
                     messagebox.showerror("Error", data)
                 processed += 1
@@ -147,6 +171,10 @@ class Image2PDFTool(BaseTool):
 
         if hasattr(self, "status_lbl") and self.status_lbl.winfo_exists():
             self.status_lbl.after(50, self._process_queue)
+
+    def _cancel(self) -> None:
+        self.cancel_token.cancel()
+        self.status_lbl.config(text="Cancelling after current image...")
 
     def _browse_output(self) -> None:
         """Opens file dialog for PDF output path selection."""
@@ -185,9 +213,12 @@ class Image2PDFTool(BaseTool):
         level = self.compression_var.get()
         set_setting("image2pdf.output_dir", str(Path(output_path).parent))
         set_setting("image2pdf.compression", level)
+        remember_inputs(files)
 
         self.status_lbl.config(text="Converting...")
         self.btn.config(state="disabled")
+        self.cancel_btn.config(state="normal")
+        self.cancel_token.reset()
         self.progress["value"] = 0
         self.output_actions.clear()
         threading.Thread(
@@ -207,13 +238,48 @@ class Image2PDFTool(BaseTool):
         - Insert the compressed JPEG bytes directly into the PDF page.
         - Save with garbage collection and deflation.
         """
+        report = WorkflowReport(
+            "Image to PDF",
+            str(Path(output_path).parent),
+            options={"compression": level, "conflict_policy": get_conflict_policy()},
+        )
         try:
             scale, quality = self.COMPRESSION_PRESETS.get(level, (0.75, 70))
             doc = fitz.open()
             total = len(files)
             last_update = 0.0
+            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
+            if resolved_output_path is None:
+                report.add(
+                    "",
+                    output_path,
+                    status="skipped",
+                    message="Output exists and conflict policy is skip.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {"output_path": output_path, "report_path": report_path},
+                    )
+                )
+                return
 
             for i, img_path in enumerate(files):
+                if self.cancel_token.is_cancelled():
+                    doc.close()
+                    report.add(img_path, status="cancelled")
+                    report_path = report.write()
+                    self.queue.put(
+                        (
+                            "cancelled",
+                            {
+                                "message": f"Cancelled. Report: {report_path}",
+                                "report_path": report_path,
+                            },
+                        )
+                    )
+                    return
                 try:
                     with Image.open(img_path) as pil_img:
                         # Convert to RGB (required for JPEG)
@@ -244,8 +310,10 @@ class Image2PDFTool(BaseTool):
 
                     # Insert the compressed image bytes directly
                     page.insert_image(page_rect, stream=img_bytes)
+                    report.add(img_path, resolved_output_path)
 
                 except Exception as e:
+                    report.add(img_path, status="failed", message=str(e))
                     self.queue.put(
                         ("error", f"Failed on image {Path(img_path).name}: {e}")
                     )
@@ -262,11 +330,19 @@ class Image2PDFTool(BaseTool):
                     last_update = now
 
             # Save with cleanup
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            doc.save(output_path, garbage=3, deflate=True)
+            Path(resolved_output_path).parent.mkdir(parents=True, exist_ok=True)
+            doc.save(resolved_output_path, garbage=3, deflate=True)
             doc.close()
 
-            self.queue.put(("success", output_path))
+            report_path = report.write()
+            self.queue.put(
+                (
+                    "success",
+                    {"output_path": resolved_output_path, "report_path": report_path},
+                )
+            )
 
         except Exception as e:
+            report.add("", status="failed", message=str(e))
+            report.write()
             self.queue.put(("error", str(e)))

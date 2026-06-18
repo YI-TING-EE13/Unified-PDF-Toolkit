@@ -8,8 +8,11 @@ sys.path.append(os.getcwd())
 from src.app import PDFToolkitApp
 from src.tools.compressor.tool import CompressorTool
 from src.tools.converter.tool import ConverterTool
+from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.merger.tool import MergerTool
+from src.tools.page_manager.tool import PageManagerTool
 from src.tools.pdf2word.tool import PDFToWordTool
+from src.tools.settings.tool import SettingsTool
 from src.tools.splitter.tool import SplitterTool
 
 
@@ -22,6 +25,9 @@ def test_instantiation():
             SplitterTool(),
             ConverterTool(),
             PDFToWordTool(),
+            Image2PDFTool(),
+            PageManagerTool(),
+            SettingsTool(),
         ]
         for tool in tools:
             print(f"[OK] {tool.name} loaded successfully.")
@@ -45,6 +51,9 @@ def test_app_structure():
             "Split PDF",
             "PDF to Image",
             "PDF to Word",
+            "Image to PDF",
+            "Page Manager",
+            "Settings / Recent",
         ]
         missing = [tool for tool in expected if tool not in registered]
 
