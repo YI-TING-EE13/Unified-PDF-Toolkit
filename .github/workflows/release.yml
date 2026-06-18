@@ -37,12 +37,12 @@ jobs:
         run: uv build
 
       - name: Build Windows app bundle
-        run: uv run pyinstaller pdf-toolkit.spec --noconfirm
+        run: uv run pyinstaller pdf-toolkit.spec --noconfirm --distpath C:\tmp\pdf-toolkit-release-dist --workpath C:\tmp\pdf-toolkit-release-build
 
       - name: Package Windows app bundle
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/Unified PDF Toolkit" -DestinationPath "dist/Unified-PDF-Toolkit-Windows.zip" -Force
+          Compress-Archive -Path "C:\tmp\pdf-toolkit-release-dist\Unified PDF Toolkit" -DestinationPath "dist/Unified-PDF-Toolkit-Windows.zip" -Force
 
       - name: Install Inno Setup
         shell: pwsh
@@ -50,7 +50,7 @@ jobs:
 
       - name: Build installer
         shell: pwsh
-        run: .\scripts\build_installer.ps1
+        run: .\scripts\build_installer.ps1 -AppBundlePath "C:\tmp\pdf-toolkit-release-dist\Unified PDF Toolkit"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
