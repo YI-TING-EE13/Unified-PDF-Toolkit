@@ -17,7 +17,7 @@ uv run pyinstaller pdf-toolkit.spec --noconfirm
 If Inno Setup 6 is installed:
 
 ```powershell
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\UnifiedPDFToolkit.iss
+.\scripts\build_installer.ps1
 ```
 
 ## Publish
@@ -32,4 +32,5 @@ git push origin v0.5.0
 ```
 
 The `Release` workflow builds package artifacts, a Windows ZIP bundle, installs
-Inno Setup on the Windows runner, and publishes the installer artifact.
+Inno Setup on the Windows runner, builds a current-user Windows installer, and
+publishes the installer artifact.
