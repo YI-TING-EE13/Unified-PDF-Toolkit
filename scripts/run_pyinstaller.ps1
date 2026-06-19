@@ -14,7 +14,8 @@ try {
         throw "PyInstaller was not found at $pyinstaller. Run uv sync --dev first."
     }
 
-    $arguments = @($SpecPath, "--noconfirm")
+    $resolvedSpec = Resolve-Path $SpecPath
+    $arguments = @($resolvedSpec.Path, "--noconfirm")
     if ($DistPath) {
         $arguments += @("--distpath", $DistPath)
     }
