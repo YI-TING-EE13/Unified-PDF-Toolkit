@@ -57,7 +57,8 @@ jobs:
         run: uv sync --dev --python 3.12
 
       - name: Build Windows app
-        run: uv run pyinstaller pdf-toolkit.spec --noconfirm
+        shell: pwsh
+        run: .\scripts\run_pyinstaller.ps1
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4

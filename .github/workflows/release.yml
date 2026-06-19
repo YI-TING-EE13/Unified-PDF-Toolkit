@@ -51,7 +51,7 @@ jobs:
 
       - name: Build Windows app bundle
         shell: pwsh
-        run: .\.venv\Scripts\pyinstaller.exe pdf-toolkit.spec --noconfirm --distpath "$env:PYINSTALLER_DIST_PATH" --workpath "$env:PYINSTALLER_WORK_PATH"
+        run: .\scripts\run_pyinstaller.ps1 -DistPath "$env:PYINSTALLER_DIST_PATH" -WorkPath "$env:PYINSTALLER_WORK_PATH"
 
       - name: Package Windows app bundle
         shell: pwsh
