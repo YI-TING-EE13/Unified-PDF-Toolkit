@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $root
 try {
     $pyinstaller = Join-Path $root ".venv\Scripts\pyinstaller.exe"
@@ -14,8 +14,13 @@ try {
         throw "PyInstaller was not found at $pyinstaller. Run uv sync --dev first."
     }
 
-    $resolvedSpec = Resolve-Path $SpecPath
-    $arguments = @($resolvedSpec.Path, "--noconfirm")
+    $specCandidate = if ([System.IO.Path]::IsPathRooted($SpecPath)) {
+        $SpecPath
+    } else {
+        Join-Path $root $SpecPath
+    }
+    $resolvedSpec = (Resolve-Path $specCandidate).Path
+    $arguments = @($resolvedSpec, "--noconfirm")
     if ($DistPath) {
         $arguments += @("--distpath", $DistPath)
     }
@@ -47,6 +52,11 @@ try {
         Write-Output "::error title=PyInstaller failed::$escaped"
         throw "PyInstaller failed with exit code $exitCode. Log: $logPath"
     }
+}
+catch {
+    $message = $_.Exception.Message.Replace("%", "%25").Replace("`r", "%0D").Replace("`n", "%0A")
+    Write-Output "::error title=PyInstaller wrapper failed::$message"
+    throw
 }
 finally {
     Pop-Location
