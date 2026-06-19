@@ -1,128 +1,208 @@
 # Unified PDF Toolkit
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![CI](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/YI-TING-EE13/Unified-PDF-Toolkit?include_prereleases&label=release)](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/releases)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Dependencies](https://img.shields.io/badge/dependencies-PyMuPDF%20%7C%20Pillow%20%7C%20pdf2docx%20%7C%20python--docx-orange)](pyproject.toml)
 
-**Current version: 0.5.0**
+Unified PDF Toolkit is a local-first desktop application for everyday PDF work:
+compressing, merging, splitting, converting, page editing, OCR-assisted text
+extraction, and repeatable batch jobs.
 
-Unified PDF Toolkit is a local-first desktop app for common PDF workflows. It is built with Python, Tkinter, PyMuPDF, Pillow, pdf2docx, and python-docx. Files are processed on your machine; nothing is uploaded to an external service.
+The app runs on your machine. Source files are not uploaded to any external
+service.
 
-## Version 0.5.0 Highlights
+## Highlights
 
-*   **Batch Queue**: Queue mixed operations across compression, PDF to image, and PDF to Word, then run them sequentially with a report.
-*   **Diagnostics**: Check Python, Tkinter, key dependencies, Tesseract availability, and writable output/settings folders from inside the app.
-*   **OCR cleanup**: OCR Text mode now includes None, Grayscale, Auto Contrast, and Threshold preprocessing options.
-*   **Release automation**: Tag-driven GitHub Release workflow builds packages, a Windows ZIP bundle, and optional installer artifacts.
-*   **Installer script**: Added an Inno Setup script and release checklist for Windows setup builds.
-*   **Actionable errors**: Common failures now include recovery suggestions for OCR, locked folders, encrypted PDFs, missing files, page ranges, and damaged PDFs.
+- **All-in-one PDF workspace**: compress PDFs and images, merge files, split
+  selected ranges, convert PDF pages to images, convert images to PDF, and edit
+  page order or rotation.
+- **PDF to Word workflows**: export to DOCX using layout preservation, text-only
+  extraction, page images, or OCR text mode.
+- **Batch Queue**: run repeatable mixed jobs and generate TXT, CSV, and JSON
+  reports.
+- **Diagnostics**: check Python, Tkinter, key dependencies, Tesseract OCR, and
+  writable output folders from inside the app.
+- **Local release packaging**: CI builds Python packages, a Windows app bundle,
+  and a Windows installer for tagged releases.
 
-## Version 0.4.0 Highlights
+Current stable release: **0.5.0**. See [CHANGELOG.md](CHANGELOG.md) for the
+full release history.
 
-*   **Workflow controls**: Added drag-and-drop input, Cancel buttons, completion reports, and a shared output conflict policy.
-*   **Settings / Recent**: Added a dedicated view for rename/overwrite/skip behavior and recent inputs, outputs, and reports.
-*   **OCR Text mode**: PDF to Word can use Tesseract OCR for scanned PDFs, with configurable OCR language and render DPI.
-*   **Reports for automation**: Long workflows write TXT, CSV, and JSON reports.
-*   **CI and packaging**: Added GitHub Actions validation and a PyInstaller spec for Windows app bundles.
+## Download
 
-## Version 0.3.0 Highlights
+Windows users can download the latest release from:
 
-*   **PDF to Word**: Added DOCX conversion with Preserve Layout, Text Only, and Page Images modes.
-*   **PDF to Word preview and preflight**: Preview pages and detect encrypted, empty, or image-only PDFs before conversion.
-*   **Merged PDF preview**: Merge mode now shows a larger live preview of the combined page order.
-*   **Merge + Compress workflow**: Merge can automatically compress the final PDF with adjustable Low, Medium, or High settings.
-*   **Larger workspace**: The app opens at a wider default size for preview-heavy workflows.
-*   **Progress feedback**: Long-running tools show progress or busy indicators so users can tell work is still running.
-*   **Saved roadmap**: PDF to Word implementation notes and references live in `docs/pdf_to_word_plan.md`.
+<https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/releases>
+
+Available release assets usually include:
+
+- `Unified-PDF-Toolkit-Setup-<version>.exe`: Windows installer.
+- `Unified-PDF-Toolkit-Windows.zip`: portable Windows app bundle.
+- `pdf_toolkit-<version>-py3-none-any.whl` and `.tar.gz`: Python package
+  artifacts.
+
+If Windows SmartScreen warns about the installer, only continue if you trust the
+repository and release source. The project currently does not ship with a paid
+code-signing certificate.
 
 ## Features
 
 ### Compress PDF/Image
 
-*   Compress PDF and image files in batches.
-*   Add individual files or recursively scan folders.
-*   Tune PDF image optimization, max image dimension, JPEG quality, or run lossless cleanup only.
-*   Shows progress while files are processed.
+- Compress PDF and image files in batches.
+- Add files directly or scan folders recursively.
+- Tune PDF image optimization, max image dimension, JPEG quality, or run
+  lossless cleanup.
+- Choose output conflict handling: rename, overwrite, or skip.
 
 ### Merge PDFs
 
-*   Add PDFs individually or from folders.
-*   Reorder files with Move Up / Move Down before merging.
-*   Show page counts directly in the merge list.
-*   Preview the final merged page sequence before saving.
-*   Optionally compress the merged PDF immediately after merge.
-*   Shows merge progress by input file and a busy indicator during post-merge compression.
+- Add PDFs individually or from folders.
+- Reorder inputs before merging.
+- Preview the combined page order.
+- Optionally compress the merged output.
 
 ### Split PDF
 
-*   Add PDFs to a queue and click one file to preview it.
-*   Select page ranges with sliders or text syntax such as `1-3, 5, 8-10`.
-*   Split only the currently previewed PDF.
-*   Shows progress while output PDFs are created.
+- Preview a selected PDF before splitting.
+- Select pages with sliders or range syntax such as `1-3, 5, 8-10`.
+- Save only the selected ranges.
 
 ### PDF to Image
 
-*   Convert PDF pages to PNG, JPG, or JPEG.
-*   Customize DPI from 72 to 600.
-*   Uses throttled UI updates for smoother large batch conversions.
+- Convert PDF pages to PNG, JPG, or JPEG.
+- Select render DPI from 72 to 600.
+- Uses throttled UI updates for large files.
 
 ### PDF to Word
 
-*   Convert PDFs to `.docx` using `pdf2docx`.
-*   Supports batch conversion.
-*   Supports selected page ranges such as `1-3, 5`.
-*   Modes:
-    *   `Preserve Layout`: Best effort editable DOCX layout conversion.
-    *   `Text Only`: Extracts editable text with simpler formatting.
-    *   `Page Images`: Places each PDF page into DOCX as an image for visual fidelity.
-    *   `OCR Text`: Runs OCR through Tesseract and writes recognized text into DOCX.
-*   Known limitation: editable conversion can garble complex math formulas, embedded fonts, or highly positioned layout. Use Page Images when visual fidelity matters more than editability.
-*   OCR Text requires the Tesseract executable to be installed and available on PATH. Use `eng`, `chi_tra`, `chi_sim`, or combined language codes such as `eng+chi_tra` when the matching Tesseract language data is installed.
-*   OCR cleanup can be set to None, Grayscale, Auto Contrast, or Threshold. Grayscale is a good default; Threshold can help high-contrast scans but may hurt photos or low-quality pages.
+- Convert PDFs to `.docx` with multiple modes:
+  - `Preserve Layout`: best-effort editable DOCX conversion.
+  - `Text Only`: simpler editable text extraction.
+  - `Page Images`: each PDF page is placed into DOCX as an image.
+  - `OCR Text`: scanned pages are rendered and sent through Tesseract OCR.
+- Supports selected page ranges.
+- Detects common preflight issues such as encrypted, empty, or image-only PDFs.
+- Supports OCR cleanup modes: None, Grayscale, Auto Contrast, and Threshold.
+
+Editable PDF-to-DOCX conversion is best effort. Complex math, embedded fonts, or
+heavily positioned layouts may not convert cleanly. Use Page Images when visual
+fidelity matters more than editability.
 
 ### Image to PDF
 
-*   Combine multiple images into one PDF.
-*   Preserve image order as page order.
-*   Apply inline compression during PDF creation.
-*   Choose None, Low, Medium, or High compression presets.
+- Combine images into one PDF.
+- Preserve image order as page order.
+- Apply optional compression during PDF creation.
 
 ### Page Manager
 
-*   Delete pages by range.
-*   Rotate pages by 90, 180, or 270 degrees.
-*   Reorder pages, insert another PDF, or extract selected pages.
-*   Applies edits in memory and saves only when ready.
-*   Shows a busy indicator while writing the modified PDF.
+- Delete, rotate, reorder, insert, or extract pages.
+- Apply edits in memory and save when ready.
+- Preview the current page while editing.
 
 ### Batch Queue
 
-*   Queue mixed work across compression, PDF to image, PDF to Word Text Only, PDF to Word Page Images, and PDF to Word OCR Text.
-*   Reuse page range, OCR language, DPI, and OCR cleanup settings across queued jobs.
-*   Runs jobs sequentially and writes a TXT, CSV, and JSON report.
+- Queue mixed jobs across compression, PDF to image, and PDF to Word modes.
+- Reuse page range, OCR language, DPI, and OCR cleanup settings.
+- Run jobs sequentially with a structured completion report.
 
-### Diagnostics
+### Diagnostics and Settings
 
-*   Check Python, platform, Tkinter, core dependencies, Tesseract, and writable output/settings folders.
-*   Copy diagnostic results when asking for support or preparing a release.
+- Check runtime dependencies and writable folders.
+- Copy diagnostic results for troubleshooting.
+- Review recent inputs, outputs, and reports.
+- Configure output conflict behavior.
 
-### Settings / Recent
+## Requirements
 
-*   Choose how output file conflicts are handled: rename, overwrite, or skip.
-*   Review recent input files, output paths, and completion reports.
-*   Copy or clear recent paths.
+- Python 3.10 or newer for source runs.
+- `uv` is recommended for dependency management.
+- Tesseract OCR is optional, but required for OCR Text mode.
+- macOS users should use a Python build with modern Tkinter support. The system
+  `/usr/bin/python3` can use an older Tcl/Tk runtime on recent macOS versions.
 
-## Architecture
+## Installation
 
-The app uses a modular tool architecture:
+### Option 1: Windows Installer
+
+1. Download `Unified-PDF-Toolkit-Setup-<version>.exe` from the latest release.
+2. Run the installer.
+3. Start Unified PDF Toolkit from the Start Menu or desktop shortcut.
+
+The installer uses a per-user install location and does not require
+administrator privileges.
+
+### Option 2: Portable Windows Bundle
+
+1. Download `Unified-PDF-Toolkit-Windows.zip` from the latest release.
+2. Extract the archive.
+3. Run `Unified PDF Toolkit.exe`.
+
+### Option 3: Source Checkout with uv
+
+```bash
+git clone https://github.com/YI-TING-EE13/Unified-PDF-Toolkit.git
+cd Unified-PDF-Toolkit
+uv sync
+uv run python src/app.py
+```
+
+On macOS, prefer a Tk-enabled Python runtime:
+
+```bash
+uv sync --python /opt/homebrew/bin/python3.12
+uv run --python /opt/homebrew/bin/python3.12 python src/app.py
+```
+
+### Option 4: Source Checkout with pip
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install pymupdf pillow pdf2docx python-docx tkinterdnd2 pytesseract
+python src/app.py
+```
+
+OCR Text mode also requires the Tesseract executable and the relevant language
+data files. Use language codes such as `eng`, `chi_tra`, `chi_sim`,
+`eng+chi_tra`, or `eng+chi_sim` only when the matching Tesseract data is
+installed.
+
+## Double-Click Launchers
+
+The repository includes convenience launchers for source checkouts:
+
+- `run-windows.bat` checks for `uv`, syncs dependencies with Python 3.12, and
+  starts the app.
+- `run-macos.command` checks for `uv`, prefers a Tk-enabled Python 3.12 runtime,
+  syncs dependencies, and starts the app.
+
+If macOS reports that `run-macos.command` is not executable:
+
+```bash
+chmod +x run-macos.command
+```
+
+## Basic Usage
+
+1. Launch the app.
+2. Select a tool from the sidebar.
+3. Add source files or folders.
+4. Review previews, settings, and output paths.
+5. Start the task and monitor the progress area.
+6. Open the output folder or copy the output path when the task completes.
+
+## Project Structure
 
 ```text
 src/
-  app.py              # Main Tkinter shell and navigation
+  app.py              # Tkinter shell and navigation
   base/
     tool.py           # BaseTool interface
   ui/
-    components.py     # Shared UI widgets
+    components.py     # Shared widgets and output actions
   tools/
     compressor/
     merger/
@@ -134,151 +214,71 @@ src/
     batch_queue/
     diagnostics/
   handlers/           # Format-specific processing logic
-  utils/              # File operations, settings, defaults
+  utils/              # File operations, settings, diagnostics, reports
 ```
 
-Key patterns:
+Design patterns used throughout the app:
 
-*   **`FileListWidget`** provides consistent file selection, folder import, ordering, removal, and change callbacks.
-*   **Visible output controls** show the output path or folder before work starts.
-*   **Thread-safe queues** keep Tkinter responsive while worker threads process files.
-*   **Output actions** let users open the output folder or copy the output path after completion.
+- Shared file-list and output-action widgets for consistent workflows.
+- Worker threads and queues to keep Tkinter responsive.
+- Visible output paths before execution.
+- Structured reports for long-running or batch workflows.
+- Friendly error messages with recovery suggestions.
 
-## Installation
+## Development
 
-This project uses `uv` for dependency management, but standard `pip` also works.
-The repository includes `.python-version` with `3.12` so `uv` prefers Python
-3.12 when commands are run from the project folder.
-On macOS, use a Python build with modern Tkinter support. The built-in
-`/usr/bin/python3` can use an old Tcl/Tk runtime that opens a blank window on
-recent macOS releases.
-
-### macOS double-click launcher
-
-For friends or teammates who do not want to type commands in Terminal:
-
-1.  Download or clone this project, then unzip it if needed.
-2.  Open the project folder in Finder.
-3.  Double-click `run-macos.command`.
-4.  If macOS blocks the file the first time, right-click `run-macos.command`, choose **Open**, then confirm.
-5.  If macOS says the file is not executable, open Terminal in this folder and run:
+Install development dependencies:
 
 ```bash
-chmod +x run-macos.command
+uv sync --dev
 ```
 
-The launcher checks for `uv`, uses a Tk-enabled Python 3.12 runtime such as
-Homebrew `python-tk@3.12`, syncs the project dependencies, and starts the app.
-If the Tk-enabled Python runtime is missing, install it with:
-
-```bash
-brew install python-tk@3.12
-```
-
-If `uv` is missing, the launcher prints the install command and waits so the
-message stays visible.
-
-### Windows double-click launcher
-
-For friends or teammates on Windows:
-
-1.  Download or clone this project, then unzip it if needed.
-2.  Open the project folder in File Explorer.
-3.  Double-click `run-windows.bat`.
-4.  If Windows SmartScreen asks for confirmation, choose **More info** and then **Run anyway** only if you trust this project folder.
-
-The launcher checks for `uv`, installs Python 3.12 through `uv` if needed,
-syncs the project dependencies with Python 3.12, and starts the app. If `uv` is
-missing, it prints the Windows PowerShell install command and waits so the
-message stays visible.
-
-### Option A: uv
-
-```bash
-git clone https://github.com/YI-TING-EE13/Unified-PDF-Toolkit.git
-cd Unified-PDF-Toolkit
-uv sync
-uv run python src/app.py
-```
-
-On macOS, prefer the launcher or explicitly use the Homebrew Tk-enabled Python:
-
-```bash
-uv sync --python /opt/homebrew/bin/python3.12
-uv run --python /opt/homebrew/bin/python3.12 python src/app.py
-```
-
-### Option B: pip
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-pip install pymupdf pillow pdf2docx python-docx tkinterdnd2 pytesseract
-python src/app.py
-```
-
-OCR Text mode also requires the Tesseract executable. Install it separately and
-make sure `tesseract` is available on PATH. Install the relevant Tesseract
-language packs before selecting languages such as `chi_tra` or `chi_sim`.
-
-## Usage
-
-1.  Launch the app with `uv run python src/app.py`.
-2.  Select a tool from the sidebar.
-3.  Add source files or folders.
-4.  Review preview, settings, and output path.
-5.  Start the task and watch the progress/status area.
-
-Common workflows:
-
-*   **Compress**: Add files/folders -> select compression options -> click Start Compression.
-*   **Merge**: Add PDFs -> arrange order -> review merged preview -> optionally enable compression -> click Merge PDFs.
-*   **Split**: Add PDFs -> click one file to preview -> set page range -> click Split PDF.
-*   **PDF to Image**: Add PDFs -> set DPI and format -> click Convert to Images.
-*   **PDF to Word**: Add PDFs -> choose mode and optional page range -> click Convert to Word.
-*   **Image to PDF**: Add images -> arrange order -> choose compression -> click Convert to PDF.
-*   **Page Manager**: Add a PDF -> preview it -> edit pages -> click Save Modified PDF.
-*   **Batch Queue**: Add files -> choose operation -> Add Files to Queue -> Run Queue.
-*   **Diagnostics**: Run checks -> review warnings -> copy results if needed.
-*   **Settings / Recent**: Set output conflict behavior -> review recent paths and reports.
-
-## Testing
+Run the validation suite:
 
 ```bash
 uv run python -m unittest discover -s tests -v
 uv run python verify_install.py
 uv run python scripts/gui_smoke.py
-uv run python -m compileall -q src tests verify_install.py
+uv run python -m compileall -q src tests verify_install.py scripts
 uv build
 ```
 
-Release-specific checks are listed in `docs/release_checklist.md`.
+Release-specific checks are documented in
+[docs/release_checklist.md](docs/release_checklist.md). Manual GUI checks are
+documented in [docs/gui_smoke_checklist.md](docs/gui_smoke_checklist.md).
 
 ## Packaging
 
-Windows app bundle smoke build:
-
-```bash
-uv sync --dev
-uv run pyinstaller pdf-toolkit.spec --noconfirm
-```
-
-The generated folder is written under `dist/Unified PDF Toolkit/`.
-If Inno Setup 6 is installed, build the installer with:
+Build a Windows app bundle with the repository wrapper:
 
 ```powershell
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\UnifiedPDFToolkit.iss
+.\scripts\run_pyinstaller.ps1
 ```
 
-## GUI Smoke Checklist
+Build a Windows installer when Inno Setup 6 is installed:
 
-Before publishing a release, run through `docs/gui_smoke_checklist.md` after
-the automated tests pass.
+```powershell
+.\scripts\build_installer.ps1
+```
 
-## Roadmap Notes
+Tagged releases are handled by `.github/workflows/release.yml`.
 
-PDF to Word planning, implemented phases, references, and known conversion limits are documented in `docs/pdf_to_word_plan.md`.
+## Roadmap
+
+Useful next improvements include searchable PDF OCR output, watermark/page
+number tools, metadata privacy cleanup, broader Batch Queue coverage, and a CLI
+for automation.
+
+PDF to Word planning notes and known conversion limits are documented in
+[docs/pdf_to_word_plan.md](docs/pdf_to_word_plan.md).
+
+## Versioning Policy
+
+README should describe the current project, current stable release, installation
+paths, and major capabilities. Detailed historical release notes belong in
+[CHANGELOG.md](CHANGELOG.md). This keeps the project homepage readable while
+preserving a full version history for users who need it.
 
 ## License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
