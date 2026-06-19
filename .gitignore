@@ -38,6 +38,7 @@ coverage.xml
 
 # PyInstaller
 *.spec
+!pdf-toolkit.spec
 
 # IDE Settings
 .vscode/
