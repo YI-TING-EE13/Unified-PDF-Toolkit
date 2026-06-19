@@ -36,14 +36,22 @@ jobs:
       - name: Build Python package
         run: uv build
 
-      - name: Build Windows app bundle
+      - name: Prepare Windows packaging paths
         shell: pwsh
         run: |
           $dist = Join-Path $env:RUNNER_TEMP "pdf-toolkit-release-dist"
           $work = Join-Path $env:RUNNER_TEMP "pdf-toolkit-release-build"
           New-Item -ItemType Directory -Force -Path $dist, $work | Out-Null
-          uv run --with pyinstaller --with pyinstaller-hooks-contrib pyinstaller pdf-toolkit.spec --noconfirm --distpath $dist --workpath $work
+          "PYINSTALLER_DIST_PATH=$dist" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PYINSTALLER_WORK_PATH=$work" | Out-File -FilePath $env:GITHUB_ENV -Append
           "APP_BUNDLE_PATH=$dist\Unified PDF Toolkit" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Check PyInstaller
+        run: uv run --with pyinstaller --with pyinstaller-hooks-contrib pyinstaller --version
+
+      - name: Build Windows app bundle
+        shell: pwsh
+        run: uv run --with pyinstaller --with pyinstaller-hooks-contrib pyinstaller pdf-toolkit.spec --noconfirm --distpath "$env:PYINSTALLER_DIST_PATH" --workpath "$env:PYINSTALLER_WORK_PATH"
 
       - name: Package Windows app bundle
         shell: pwsh
