@@ -47,11 +47,11 @@ jobs:
           "APP_BUNDLE_PATH=$dist\Unified PDF Toolkit" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Check PyInstaller
-        run: uv run --with pyinstaller --with pyinstaller-hooks-contrib pyinstaller --version
+        run: .\.venv\Scripts\pyinstaller.exe --version
 
       - name: Build Windows app bundle
         shell: pwsh
-        run: uv run --with pyinstaller --with pyinstaller-hooks-contrib pyinstaller pdf-toolkit.spec --noconfirm --distpath "$env:PYINSTALLER_DIST_PATH" --workpath "$env:PYINSTALLER_WORK_PATH"
+        run: .\.venv\Scripts\pyinstaller.exe pdf-toolkit.spec --noconfirm --distpath "$env:PYINSTALLER_DIST_PATH" --workpath "$env:PYINSTALLER_WORK_PATH"
 
       - name: Package Windows app bundle
         shell: pwsh
