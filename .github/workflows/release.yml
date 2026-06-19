@@ -42,7 +42,7 @@ jobs:
           $dist = Join-Path $env:RUNNER_TEMP "pdf-toolkit-release-dist"
           $work = Join-Path $env:RUNNER_TEMP "pdf-toolkit-release-build"
           New-Item -ItemType Directory -Force -Path $dist, $work | Out-Null
-          uv run python -m PyInstaller pdf-toolkit.spec --noconfirm --distpath $dist --workpath $work
+          uv run --with pyinstaller --with pyinstaller-hooks-contrib pyinstaller pdf-toolkit.spec --noconfirm --distpath $dist --workpath $work
           "APP_BUNDLE_PATH=$dist\Unified PDF Toolkit" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Package Windows app bundle
