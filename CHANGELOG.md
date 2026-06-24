@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added architecture-only scaffolding for optional future advanced local AI OCR, including an ADR, OCR backend abstractions, consent validation structures, a fake Unlimited-OCR test backend, and safe optional-readiness diagnostics.
+
 ## 0.5.0 - 2026-06-19
 
 - Added a tag-driven GitHub Release workflow for Python packages, Windows ZIP bundles, and optional installer artifacts.

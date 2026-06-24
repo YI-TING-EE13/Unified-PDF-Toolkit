@@ -115,6 +115,19 @@ fidelity matters more than editability.
 - Review recent inputs, outputs, and reports.
 - Configure output conflict behavior.
 
+### Experimental Advanced Local AI OCR Architecture
+
+The codebase includes early architecture for an optional future advanced local
+AI OCR backend inspired by Baidu Unlimited-OCR. This is not real Unlimited-OCR
+inference yet: the default app does not download models, does not import
+Transformers or torch at startup, and does not add GPU/CUDA dependencies to the
+default install.
+
+Tesseract remains the default OCR Text engine for PDF to Word. Any future real
+AI OCR backend must stay local-first, require explicit consent, document model
+download and custom-code risks, and avoid uploading user files, rendered pages,
+or OCR text.
+
 ## Requirements
 
 - Python 3.10 or newer for source runs.
@@ -213,6 +226,7 @@ src/
     page_manager/
     batch_queue/
     diagnostics/
+  ocr/               # OCR backend contracts and optional-backend scaffolding
   handlers/           # Format-specific processing logic
   utils/              # File operations, settings, diagnostics, reports
 ```

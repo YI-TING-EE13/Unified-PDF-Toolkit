@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import platform
 import shutil
 import sys
@@ -25,6 +26,121 @@ class DiagnosticCheck:
 
 def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
+    checks: List[DiagnosticCheck] = [
+        DiagnosticCheck(
+            "Advanced OCR architecture",
+            "info",
+            "experimental optional backend wiring only; real Unlimited-OCR inference is not enabled",
+        )
+    ]
+
+    torch_available = _module_available("torch")
+    checks.append(
+        DiagnosticCheck(
+            "Advanced OCR torch",
+            "info" if torch_available else "warning",
+            "available" if torch_available else "not installed",
+            "Optional only. Do not install torch unless you are testing a future local AI OCR runtime."
+            if not torch_available
+            else "",
+        )
+    )
+
+    transformers_available = _module_available("transformers")
+    checks.append(
+        DiagnosticCheck(
+            "Advanced OCR transformers",
+            "info" if transformers_available else "warning",
+            "available" if transformers_available else "not installed",
+            "Optional only. Real Unlimited-OCR inference is not part of the default install."
+            if not transformers_available
+            else "",
+        )
+    )
+
+    if torch_available:
+        checks.extend(_torch_readiness_checks())
+    else:
+        checks.append(DiagnosticCheck("Advanced OCR CUDA", "info", "not checked because torch is not installed"))
+
+    cache_path = _unlimited_ocr_cache_path()
+    checks.append(
+        DiagnosticCheck(
+            "Advanced OCR model cache",
+            "info",
+            f"found at {cache_path}" if cache_path.exists() else "baidu/Unlimited-OCR cache not detected",
+            "This check is local-only and does not download models.",
+        )
+    )
+    return checks
+
+
+def _torch_readiness_checks() -> List[DiagnosticCheck]:
+    try:
+        import torch
+    except Exception as exc:
+        return [
+            DiagnosticCheck(
+                "Advanced OCR torch import",
+                "warning",
+                f"torch installed but import failed: {exc}",
+            )
+        ]
+
+    try:
+        cuda_available = bool(torch.cuda.is_available())
+    except Exception as exc:
+        return [
+            DiagnosticCheck(
+                "Advanced OCR CUDA",
+                "warning",
+                f"CUDA readiness check failed: {exc}",
+            )
+        ]
+
+    checks = [
+        DiagnosticCheck(
+            "Advanced OCR CUDA",
+            "info" if cuda_available else "warning",
+            "available" if cuda_available else "not available",
+            "Future real AI OCR may need an NVIDIA GPU with enough VRAM."
+            if not cuda_available
+            else "",
+        )
+    ]
+    if not cuda_available:
+        return checks
+
+    try:
+        index = torch.cuda.current_device()
+        props = torch.cuda.get_device_properties(index)
+        total_gb = props.total_memory / (1024**3)
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR GPU",
+                "info",
+                f"{props.name}, {total_gb:.1f} GB VRAM",
+            )
+        )
+    except Exception as exc:
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR GPU",
+                "warning",
+                f"GPU details unavailable: {exc}",
+            )
+        )
+    return checks
+
+
+def _unlimited_ocr_cache_path() -> Path:
+    base = os.environ.get("HF_HOME")
+    if base:
+        return Path(base) / "hub" / "models--baidu--Unlimited-OCR"
+    return Path.home() / ".cache" / "huggingface" / "hub" / "models--baidu--Unlimited-OCR"
 
 
 def collect_diagnostics() -> List[DiagnosticCheck]:
@@ -90,6 +206,7 @@ def collect_diagnostics() -> List[DiagnosticCheck]:
         )
     )
 
+    checks.extend(_optional_ai_ocr_checks())
     checks.append(_write_check("Default save folder", Path(get_default_save_dir("Diagnostics"))))
     checks.append(_write_check("Settings file folder", get_settings_path().parent))
     return checks

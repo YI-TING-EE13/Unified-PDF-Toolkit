@@ -23,6 +23,7 @@ from PIL import Image, ImageOps, ImageTk
 from tkinter import filedialog, messagebox, ttk
 
 from ...base.tool import BaseTool
+from ...ocr import OcrDependencyMissingError, OcrEngine, OcrRequest, get_backend
 from ...ui.components import FileListWidget, OutputActions
 from ...utils.errors import friendly_error_message
 from ...utils.file_ops import get_default_save_dir, resolve_output_path
@@ -634,15 +635,9 @@ class PDFToWordTool(BaseTool):
         ocr_dpi: int = 200,
         ocr_preprocess: str = "Grayscale",
     ) -> None:
-        try:
-            import pytesseract
-        except ImportError as exc:
-            raise RuntimeError(
-                "OCR Text mode requires pytesseract. Run uv sync and install Tesseract OCR."
-            ) from exc
-
         document = Document()
         document.add_heading(Path(input_path).stem, level=1)
+        backend = get_backend(OcrEngine.TESSERACT)
 
         with fitz.open(input_path) as doc:
             selected = cls._selected_pages(doc, page_indices)
@@ -654,12 +649,18 @@ class PDFToWordTool(BaseTool):
                 image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
                 image = cls.prepare_ocr_image(image, ocr_preprocess)
                 try:
-                    text = pytesseract.image_to_string(image, lang=ocr_lang).strip()
-                except pytesseract.pytesseract.TesseractNotFoundError as exc:
-                    raise RuntimeError(
-                        "OCR Text mode requires the Tesseract executable. "
-                        "Install Tesseract OCR and make sure it is on PATH."
-                    ) from exc
+                    result = backend.recognize(
+                        OcrRequest(
+                            engine=OcrEngine.TESSERACT,
+                            images=[image],
+                            source_path=input_path,
+                            page_numbers=[page_index + 1],
+                            language=ocr_lang,
+                        )
+                    )
+                except OcrDependencyMissingError as exc:
+                    raise RuntimeError(str(exc)) from exc
+                text = result.pages[0].text.strip() if result.pages else ""
                 document.add_paragraph(text or "[No OCR text detected on this page.]")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
