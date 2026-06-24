@@ -87,6 +87,21 @@ and test wiring only. It does not run the real model.
 - This UI does not enable real Unlimited-OCR inference, model downloads, GPU
   execution, file upload, screen OCR, or background OCR.
 
+## Implemented Follow-Up: Local Endpoint Backend Scaffold
+
+- A localhost-only endpoint backend scaffold now supports future user-managed
+  OCR servers through the shared `OcrBackend` contract.
+- The default endpoint is `http://127.0.0.1:<port>` style, and validation
+  rejects non-http schemes, missing ports, non-loopback hosts, `0.0.0.0`,
+  private LAN IPs, public IPs/domains, credentials, query strings, and malformed
+  URLs.
+- The scaffold requires valid advanced OCR consent before use, sends in-memory
+  page image payloads rather than source file paths, uses short timeouts, and
+  has mockable transport tests.
+- The app still does not start servers, run real Unlimited-OCR inference,
+  download models, add AI runtime dependencies, upload files, or add AI OCR
+  sidebar/batch workflows.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.

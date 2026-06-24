@@ -15,6 +15,7 @@ class OcrEngine(str, Enum):
 
     TESSERACT = "tesseract"
     UNLIMITED_OCR_FAKE = "unlimited_ocr_fake"
+    LOCAL_ENDPOINT = "local_endpoint"
 
 
 @dataclass(frozen=True)

@@ -6,6 +6,7 @@ from .exceptions import (
     OcrDependencyMissingError,
     OcrError,
 )
+from .local_endpoint import LocalEndpointOcrBackend
 from .models import OcrEngine, OcrPageResult, OcrRequest, OcrResult
 from .registry import get_backend, list_backends, register_backend
 
@@ -18,6 +19,7 @@ __all__ = [
     "OcrPageResult",
     "OcrRequest",
     "OcrResult",
+    "LocalEndpointOcrBackend",
     "get_backend",
     "list_backends",
     "register_backend",

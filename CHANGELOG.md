@@ -4,6 +4,7 @@
 
 - Added architecture-only scaffolding for optional future advanced local AI OCR, including an ADR, OCR backend abstractions, consent validation structures, a fake Unlimited-OCR test backend, and safe optional-readiness diagnostics.
 - Added Settings / Recent consent management for future optional advanced local AI OCR without enabling real model inference.
+- Added a localhost-only OCR endpoint backend scaffold for future user-managed OCR servers without adding model inference or AI runtime dependencies.
 
 ## 0.5.0 - 2026-06-19
 

@@ -14,6 +14,7 @@ from typing import Iterable, List
 
 from .file_ops import get_default_save_dir
 from .settings import get_settings_path
+from ..ocr.local_endpoint import get_local_endpoint_url, validate_local_endpoint_url
 
 
 @dataclass
@@ -75,6 +76,25 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
             "This check is local-only and does not download models.",
         )
     )
+    endpoint_url = get_local_endpoint_url()
+    try:
+        validate_local_endpoint_url(endpoint_url)
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR local endpoint URL",
+                "info",
+                f"{endpoint_url} is localhost-only; reachability not checked automatically",
+            )
+        )
+    except ValueError as exc:
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR local endpoint URL",
+                "warning",
+                f"{endpoint_url}: {exc}",
+                "Use an http://127.0.0.1:<port>, http://localhost:<port>, or http://[::1]:<port> endpoint.",
+            )
+        )
     return checks
 
 

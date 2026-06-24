@@ -1,4 +1,6 @@
 import builtins
+import json
+import sys
 import unittest
 from unittest import mock
 
@@ -12,6 +14,17 @@ from src.ocr import (
     get_backend,
 )
 from src.ocr.consent import AdvancedOcrConsent, require_valid_consent
+from src.ocr.exceptions import OcrBackendUnavailableError
+from src.ocr.local_endpoint import (
+    LOCAL_ENDPOINT_MODEL_ID,
+    LOCAL_ENDPOINT_PROVIDER,
+    DEFAULT_LOCAL_ENDPOINT_URL,
+    LOCAL_ENDPOINT_SETTING_KEY,
+    LocalEndpointOcrBackend,
+    get_local_endpoint_url,
+    set_local_endpoint_url,
+    validate_local_endpoint_url,
+)
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
     UNLIMITED_OCR_MODEL_ID,
@@ -111,6 +124,133 @@ class OcrBackendTests(unittest.TestCase):
         self.assertIn("page=2", result.pages[0].text)
         self.assertIn("size=12x8", result.pages[0].text)
         self.assertEqual(result.metadata["model_id"], UNLIMITED_OCR_MODEL_ID)
+
+
+class LocalEndpointBackendTests(unittest.TestCase):
+    def _valid_consent(self) -> AdvancedOcrConsent:
+        return AdvancedOcrConsent.create(
+            provider=LOCAL_ENDPOINT_PROVIDER,
+            model_id=LOCAL_ENDPOINT_MODEL_ID,
+            acknowledged_model_download_risk=True,
+            acknowledged_custom_code_risk=True,
+            acknowledged_gpu_vram_use=True,
+            acknowledged_temporary_page_images=True,
+        )
+
+    def test_endpoint_url_validation_allows_loopback_only(self):
+        self.assertEqual(validate_local_endpoint_url("http://127.0.0.1:8765"), "http://127.0.0.1:8765")
+        self.assertEqual(validate_local_endpoint_url("http://[::1]:8765"), "http://[::1]:8765")
+        with mock.patch(
+            "src.ocr.local_endpoint.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("127.0.0.1", 8765))],
+        ):
+            self.assertEqual(validate_local_endpoint_url("http://localhost:8765"), "http://localhost:8765")
+
+    def test_endpoint_url_validation_rejects_non_local_or_malformed_urls(self):
+        rejected = [
+            "https://127.0.0.1:8765",
+            "http://127.0.0.1",
+            "http://0.0.0.0:8765",
+            "http://192.168.1.2:8765",
+            "http://10.0.0.2:8765",
+            "http://172.16.0.2:8765",
+            "http://8.8.8.8:8765",
+            "http://example.com:8765",
+            "C:/tmp/file.png",
+            "not a url",
+            "http://127.0.0.1:bad",
+            "http://user:pass@127.0.0.1:8765",
+            "http://127.0.0.1:8765/ocr",
+            "http://127.0.0.1:8765/path?x=1",
+        ]
+
+        for url in rejected:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    validate_local_endpoint_url(url)
+
+    def test_endpoint_requires_valid_consent(self):
+        backend = LocalEndpointOcrBackend()
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_ENDPOINT,
+            images=[Image.new("RGB", (10, 10), "white")],
+        )
+
+        with self.assertRaises(OcrConsentRequiredError):
+            backend.recognize(request)
+
+    def test_endpoint_success_with_mocked_transport_does_not_send_source_path(self):
+        captured = {}
+
+        def fake_transport(url, payload, timeout):
+            captured["url"] = url
+            captured["payload"] = payload
+            captured["timeout"] = timeout
+            return {"pages": [{"page_number": 5, "text": "endpoint text", "confidence": 0.8}]}
+
+        backend = LocalEndpointOcrBackend(
+            endpoint_url=DEFAULT_LOCAL_ENDPOINT_URL,
+            consent=self._valid_consent(),
+            timeout_seconds=1.5,
+            transport=fake_transport,
+        )
+        result = backend.recognize(
+            OcrRequest(
+                engine=OcrEngine.LOCAL_ENDPOINT,
+                images=[Image.new("RGB", (12, 8), "white")],
+                source_path="C:/secret/source.pdf",
+                page_numbers=[5],
+                language="eng",
+                prompt="parse",
+            )
+        )
+
+        self.assertEqual(result.pages[0].text, "endpoint text")
+        self.assertEqual(result.pages[0].confidence, 0.8)
+        self.assertEqual(captured["url"], DEFAULT_LOCAL_ENDPOINT_URL)
+        self.assertEqual(captured["timeout"], 1.5)
+        payload_text = json.dumps(captured["payload"])
+        self.assertNotIn("C:/secret/source.pdf", payload_text)
+        self.assertIn("image_base64", captured["payload"]["pages"][0])
+
+    def test_endpoint_transport_errors_surface_as_backend_unavailable(self):
+        def failing_transport(url, payload, timeout):
+            raise OcrBackendUnavailableError("timeout")
+
+        backend = LocalEndpointOcrBackend(
+            consent=self._valid_consent(),
+            transport=failing_transport,
+        )
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_ENDPOINT,
+            images=[Image.new("RGB", (10, 10), "white")],
+        )
+
+        with self.assertRaises(OcrBackendUnavailableError):
+            backend.recognize(request)
+
+    def test_importing_local_endpoint_does_not_import_heavy_ai_modules(self):
+        for name in ("torch", "transformers", "sglang"):
+            self.assertNotIn(name, sys.modules)
+
+    def test_endpoint_url_setting_helpers_validate_before_saving(self):
+        store = {}
+
+        def fake_set(key, value):
+            store[key] = value
+
+        def fake_get(key, default=None):
+            return store.get(key, default)
+
+        with (
+            mock.patch("src.ocr.local_endpoint.set_setting", side_effect=fake_set),
+            mock.patch("src.ocr.local_endpoint.get_setting", side_effect=fake_get),
+        ):
+            set_local_endpoint_url("http://127.0.0.1:9999")
+            self.assertEqual(store[LOCAL_ENDPOINT_SETTING_KEY], "http://127.0.0.1:9999")
+            self.assertEqual(get_local_endpoint_url(), "http://127.0.0.1:9999")
+            with self.assertRaises(ValueError):
+                set_local_endpoint_url("http://example.com:9999")
 
 
 class AdvancedOcrConsentTests(unittest.TestCase):
@@ -270,6 +410,7 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         self.assertIn("Advanced OCR transformers", names)
         self.assertIn("Advanced OCR CUDA", names)
         self.assertIn("Advanced OCR model cache", names)
+        self.assertIn("Advanced OCR local endpoint URL", names)
         self.assertFalse([check for check in checks if check.status == "error"])
 
 
