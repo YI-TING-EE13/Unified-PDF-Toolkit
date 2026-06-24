@@ -5,6 +5,15 @@ from tkinter import messagebox, ttk
 from typing import Any, Dict, Optional
 
 from ...base.tool import BaseTool
+from ...ocr.consent import (
+    DEFAULT_ADVANCED_OCR_MODEL_ID,
+    DEFAULT_ADVANCED_OCR_PROVIDER,
+    clear_advanced_ocr_consent,
+    get_saved_advanced_ocr_consent,
+    load_advanced_ocr_consent,
+    save_advanced_ocr_consent,
+)
+from ...ui.advanced_ocr_consent import request_advanced_ocr_consent
 from ...utils.settings import (
     clear_recent_paths,
     get_recent_paths,
@@ -26,6 +35,7 @@ class SettingsTool(BaseTool):
     )
 
     def render(self, parent: ttk.Frame) -> None:
+        self.parent = parent
         prefs = ttk.LabelFrame(parent, text="Global Output Preferences", padding=10)
         prefs.pack(fill="x", pady=(0, 10))
 
@@ -41,6 +51,35 @@ class SettingsTool(BaseTool):
             width=12,
         ).pack(side="left", padx=10)
         ttk.Button(prefs, text="Save", command=self._save_preferences).pack(side="left")
+
+        consent_frame = ttk.LabelFrame(
+            parent, text="Experimental Advanced Local AI OCR Consent", padding=10
+        )
+        consent_frame.pack(fill="x", pady=(0, 10))
+        ttk.Label(
+            consent_frame,
+            text=(
+                "Real Unlimited-OCR inference is not implemented yet. "
+                "Consent only records acknowledgement for future optional local AI OCR."
+            ),
+            wraplength=900,
+        ).pack(anchor="w", pady=(0, 6))
+        self.advanced_ocr_status_var = tk.StringVar()
+        ttk.Label(consent_frame, textvariable=self.advanced_ocr_status_var).pack(
+            anchor="w", pady=(0, 8)
+        )
+        consent_actions = ttk.Frame(consent_frame)
+        consent_actions.pack(fill="x")
+        ttk.Button(
+            consent_actions,
+            text="Review / Save Consent",
+            command=self._review_advanced_ocr_consent,
+        ).pack(side="left")
+        ttk.Button(
+            consent_actions,
+            text="Reset Consent",
+            command=self._reset_advanced_ocr_consent,
+        ).pack(side="left", padx=(8, 0))
 
         self.lists: Dict[str, tk.Listbox] = {}
         recent_frame = ttk.Frame(parent)
@@ -76,10 +115,41 @@ class SettingsTool(BaseTool):
         messagebox.showinfo("Saved", "Output preference saved.")
 
     def _refresh(self) -> None:
+        self._refresh_advanced_ocr_status()
         for key, listbox in self.lists.items():
             listbox.delete(0, tk.END)
             for path in get_recent_paths(key):
                 listbox.insert(tk.END, path)
+
+    def _refresh_advanced_ocr_status(self) -> None:
+        valid = load_advanced_ocr_consent()
+        saved = get_saved_advanced_ocr_consent()
+        if valid:
+            self.advanced_ocr_status_var.set(
+                f"Valid consent saved for {valid.provider}/{valid.model_id} at {valid.timestamp_utc}."
+            )
+        elif saved:
+            self.advanced_ocr_status_var.set(
+                "Saved consent exists but is no longer valid for the current provider/model/version."
+            )
+        else:
+            self.advanced_ocr_status_var.set(
+                f"No valid consent saved for {DEFAULT_ADVANCED_OCR_PROVIDER}/{DEFAULT_ADVANCED_OCR_MODEL_ID}."
+            )
+
+    def _review_advanced_ocr_consent(self) -> None:
+        consent = request_advanced_ocr_consent(self.parent.winfo_toplevel())
+        if consent is None:
+            messagebox.showinfo("Consent Not Saved", "Advanced OCR consent was not saved.")
+        else:
+            save_advanced_ocr_consent(consent)
+            messagebox.showinfo("Saved", "Advanced OCR consent saved.")
+        self._refresh_advanced_ocr_status()
+
+    def _reset_advanced_ocr_consent(self) -> None:
+        clear_advanced_ocr_consent()
+        self._refresh_advanced_ocr_status()
+        messagebox.showinfo("Reset", "Advanced OCR consent cleared.")
 
     def _copy_selected(self, key: str) -> None:
         listbox = self.lists[key]

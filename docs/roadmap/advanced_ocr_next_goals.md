@@ -6,6 +6,7 @@ milestone explicitly changes user-facing options.
 
 ## 1. Consent UI and Settings Persistence
 
+- Status: Implemented for future-use consent management; no real AI OCR execution enabled.
 - Goal: Add a clear UI flow that records explicit consent for advanced local AI OCR.
 - Non-goals: No model inference, model download, or backend execution.
 - Acceptance criteria: Consent stores provider, model id, text version, all required acknowledgements, and timestamp through existing settings helpers.

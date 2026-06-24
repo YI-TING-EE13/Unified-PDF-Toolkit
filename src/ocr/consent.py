@@ -7,8 +7,19 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from .exceptions import OcrConsentRequiredError
+from ..utils.settings import get_setting, load_settings, save_settings, set_setting
 
 ADVANCED_OCR_CONSENT_TEXT_VERSION = "2026-06-24"
+ADVANCED_OCR_CONSENT_SETTING_KEY = "advanced_ocr.consent"
+DEFAULT_ADVANCED_OCR_PROVIDER = "baidu"
+DEFAULT_ADVANCED_OCR_MODEL_ID = "baidu/Unlimited-OCR"
+
+REQUIRED_ACKNOWLEDGEMENT_KEYS = (
+    "acknowledged_model_download_risk",
+    "acknowledged_custom_code_risk",
+    "acknowledged_gpu_vram_use",
+    "acknowledged_temporary_page_images",
+)
 
 
 @dataclass(frozen=True)
@@ -113,3 +124,66 @@ def require_valid_consent(
             "Advanced local AI OCR requires explicit consent for this provider, "
             "model, and consent text version."
         )
+
+
+def create_advanced_ocr_consent(
+    *,
+    provider: str = DEFAULT_ADVANCED_OCR_PROVIDER,
+    model_id: str = DEFAULT_ADVANCED_OCR_MODEL_ID,
+    consent_text_version: str = ADVANCED_OCR_CONSENT_TEXT_VERSION,
+    acknowledgements: Dict[str, bool],
+) -> AdvancedOcrConsent | None:
+    """Create consent only when every required acknowledgement is true."""
+
+    if not all(bool(acknowledgements.get(key)) for key in REQUIRED_ACKNOWLEDGEMENT_KEYS):
+        return None
+    return AdvancedOcrConsent.create(
+        provider=provider,
+        model_id=model_id,
+        consent_text_version=consent_text_version,
+        acknowledged_model_download_risk=True,
+        acknowledged_custom_code_risk=True,
+        acknowledged_gpu_vram_use=True,
+        acknowledged_temporary_page_images=True,
+    )
+
+
+def get_saved_advanced_ocr_consent() -> AdvancedOcrConsent | None:
+    """Load the stored consent record without treating invalid records as valid."""
+
+    value = get_setting(ADVANCED_OCR_CONSENT_SETTING_KEY)
+    if not isinstance(value, dict):
+        return None
+    return AdvancedOcrConsent.from_dict(value)
+
+
+def load_advanced_ocr_consent(
+    *,
+    provider: str = DEFAULT_ADVANCED_OCR_PROVIDER,
+    model_id: str = DEFAULT_ADVANCED_OCR_MODEL_ID,
+    consent_text_version: str = ADVANCED_OCR_CONSENT_TEXT_VERSION,
+) -> AdvancedOcrConsent | None:
+    """Load stored consent only when it matches the active provider/model/version."""
+
+    consent = get_saved_advanced_ocr_consent()
+    if consent and consent.is_valid_for(
+        provider=provider,
+        model_id=model_id,
+        consent_text_version=consent_text_version,
+    ):
+        return consent
+    return None
+
+
+def save_advanced_ocr_consent(consent: AdvancedOcrConsent) -> None:
+    """Persist consent using the repository's JSON settings file."""
+
+    set_setting(ADVANCED_OCR_CONSENT_SETTING_KEY, consent.to_dict())
+
+
+def clear_advanced_ocr_consent() -> None:
+    """Remove advanced OCR consent from settings."""
+
+    settings = load_settings()
+    settings.pop(ADVANCED_OCR_CONSENT_SETTING_KEY, None)
+    save_settings(settings)

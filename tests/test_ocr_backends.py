@@ -18,6 +18,7 @@ from src.ocr.unlimited_fake import (
     UNLIMITED_OCR_PROVIDER,
     FakeUnlimitedOcrBackend,
 )
+from src.tools.settings.tool import SettingsTool
 from src.utils import diagnostics
 
 
@@ -178,6 +179,86 @@ class AdvancedOcrConsentTests(unittest.TestCase):
             model_id=UNLIMITED_OCR_MODEL_ID,
         )
 
+    def test_consent_persistence_load_save_and_reset(self):
+        from src.ocr import consent as consent_module
+
+        store = {}
+
+        def fake_set(key, value):
+            store[key] = value
+
+        def fake_get(key, default=None):
+            return store.get(key, default)
+
+        def fake_load():
+            return dict(store)
+
+        def fake_save(value):
+            store.clear()
+            store.update(value)
+
+        consent = self._valid_consent()
+        with (
+            mock.patch.object(consent_module, "set_setting", side_effect=fake_set),
+            mock.patch.object(consent_module, "get_setting", side_effect=fake_get),
+            mock.patch.object(consent_module, "load_settings", side_effect=fake_load),
+            mock.patch.object(consent_module, "save_settings", side_effect=fake_save),
+        ):
+            consent_module.save_advanced_ocr_consent(consent)
+
+            loaded = consent_module.load_advanced_ocr_consent(
+                provider=UNLIMITED_OCR_PROVIDER,
+                model_id=UNLIMITED_OCR_MODEL_ID,
+            )
+            self.assertEqual(loaded, consent)
+
+            self.assertIsNone(
+                consent_module.load_advanced_ocr_consent(
+                    provider=UNLIMITED_OCR_PROVIDER,
+                    model_id="other/model",
+                )
+            )
+            self.assertIsNone(
+                consent_module.load_advanced_ocr_consent(
+                    provider=UNLIMITED_OCR_PROVIDER,
+                    model_id=UNLIMITED_OCR_MODEL_ID,
+                    consent_text_version="future-version",
+                )
+            )
+
+            consent_module.clear_advanced_ocr_consent()
+            self.assertNotIn(consent_module.ADVANCED_OCR_CONSENT_SETTING_KEY, store)
+            self.assertIsNone(consent_module.get_saved_advanced_ocr_consent())
+
+    def test_declined_consent_is_not_created(self):
+        from src.ocr.consent import create_advanced_ocr_consent
+
+        consent = create_advanced_ocr_consent(
+            provider=UNLIMITED_OCR_PROVIDER,
+            model_id=UNLIMITED_OCR_MODEL_ID,
+            acknowledgements={
+                "acknowledged_model_download_risk": True,
+                "acknowledged_custom_code_risk": True,
+                "acknowledged_gpu_vram_use": False,
+                "acknowledged_temporary_page_images": True,
+            },
+        )
+
+        self.assertIsNone(consent)
+
+
+class FakeStatusVar:
+    def __init__(self) -> None:
+        self.value = ""
+
+    def set(self, value: str) -> None:
+        self.value = value
+
+
+class FakeParent:
+    def winfo_toplevel(self):
+        return self
+
 
 class AdvancedOcrDiagnosticsTests(unittest.TestCase):
     def test_optional_ai_ocr_diagnostics_do_not_require_optional_dependencies(self):
@@ -190,6 +271,63 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         self.assertIn("Advanced OCR CUDA", names)
         self.assertIn("Advanced OCR model cache", names)
         self.assertFalse([check for check in checks if check.status == "error"])
+
+
+class SettingsConsentUiTests(unittest.TestCase):
+    def _tool(self) -> SettingsTool:
+        tool = SettingsTool()
+        tool.parent = FakeParent()
+        tool.advanced_ocr_status_var = FakeStatusVar()
+        return tool
+
+    def test_settings_consent_cancel_does_not_save(self):
+        tool = self._tool()
+
+        with (
+            mock.patch("src.tools.settings.tool.request_advanced_ocr_consent", return_value=None),
+            mock.patch("src.tools.settings.tool.save_advanced_ocr_consent") as save_mock,
+            mock.patch("src.tools.settings.tool.load_advanced_ocr_consent", return_value=None),
+            mock.patch("src.tools.settings.tool.get_saved_advanced_ocr_consent", return_value=None),
+            mock.patch("src.tools.settings.tool.messagebox.showinfo"),
+        ):
+            tool._review_advanced_ocr_consent()
+
+        save_mock.assert_not_called()
+
+    def test_settings_consent_accept_saves(self):
+        tool = self._tool()
+        consent = AdvancedOcrConsent.create(
+            provider=UNLIMITED_OCR_PROVIDER,
+            model_id=UNLIMITED_OCR_MODEL_ID,
+            acknowledged_model_download_risk=True,
+            acknowledged_custom_code_risk=True,
+            acknowledged_gpu_vram_use=True,
+            acknowledged_temporary_page_images=True,
+        )
+
+        with (
+            mock.patch("src.tools.settings.tool.request_advanced_ocr_consent", return_value=consent),
+            mock.patch("src.tools.settings.tool.save_advanced_ocr_consent") as save_mock,
+            mock.patch("src.tools.settings.tool.load_advanced_ocr_consent", return_value=consent),
+            mock.patch("src.tools.settings.tool.get_saved_advanced_ocr_consent", return_value=consent),
+            mock.patch("src.tools.settings.tool.messagebox.showinfo"),
+        ):
+            tool._review_advanced_ocr_consent()
+
+        save_mock.assert_called_once_with(consent)
+
+    def test_settings_consent_reset_clears(self):
+        tool = self._tool()
+
+        with (
+            mock.patch("src.tools.settings.tool.clear_advanced_ocr_consent") as clear_mock,
+            mock.patch("src.tools.settings.tool.load_advanced_ocr_consent", return_value=None),
+            mock.patch("src.tools.settings.tool.get_saved_advanced_ocr_consent", return_value=None),
+            mock.patch("src.tools.settings.tool.messagebox.showinfo"),
+        ):
+            tool._reset_advanced_ocr_consent()
+
+        clear_mock.assert_called_once_with()
 
 
 if __name__ == "__main__":

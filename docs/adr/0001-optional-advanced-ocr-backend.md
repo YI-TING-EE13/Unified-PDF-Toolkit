@@ -75,6 +75,18 @@ and test wiring only. It does not run the real model.
 5. Consider a separate AI OCR tool or Batch Queue jobs only after the backend is
    stable and clearly marked experimental.
 
+## Implemented Follow-Up: Consent Settings UI
+
+- Settings / Recent now exposes a reusable consent dialog entry point and reset
+  action for future advanced local AI OCR.
+- Consent records are stored through the existing JSON settings helper and
+  contain only provider/model id, consent text version, acknowledgements, and a
+  timestamp.
+- Cancelled or incomplete consent is not saved, and changing provider/model id
+  or consent text version invalidates stored consent.
+- This UI does not enable real Unlimited-OCR inference, model downloads, GPU
+  execution, file upload, screen OCR, or background OCR.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.

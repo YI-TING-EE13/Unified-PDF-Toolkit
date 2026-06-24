@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from .consent import AdvancedOcrConsent, require_valid_consent
+from .consent import (
+    DEFAULT_ADVANCED_OCR_MODEL_ID,
+    DEFAULT_ADVANCED_OCR_PROVIDER,
+    AdvancedOcrConsent,
+    require_valid_consent,
+)
 from .models import OcrEngine, OcrPageResult, OcrRequest, OcrResult
 
-UNLIMITED_OCR_PROVIDER = "baidu"
-UNLIMITED_OCR_MODEL_ID = "baidu/Unlimited-OCR"
+UNLIMITED_OCR_PROVIDER = DEFAULT_ADVANCED_OCR_PROVIDER
+UNLIMITED_OCR_MODEL_ID = DEFAULT_ADVANCED_OCR_MODEL_ID
 
 
 class FakeUnlimitedOcrBackend:
