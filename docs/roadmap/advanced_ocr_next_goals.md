@@ -33,6 +33,7 @@ milestone explicitly changes user-facing options.
 
 ## 4. GPU Acceptance Test Plan
 
+- Status: Implemented as manual, non-CI documentation in `docs/testing/advanced_ocr_gpu_acceptance.md` with a reusable run template.
 - Goal: Document manual GPU validation for any future real backend.
 - Non-goals: No GPU requirement in CI.
 - Acceptance criteria: Test plan covers dependency checks, memory expectations, cancellation, failure messages, and small sample PDFs.

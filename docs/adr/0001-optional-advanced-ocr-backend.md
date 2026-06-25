@@ -115,6 +115,21 @@ and test wiring only. It does not run the real model.
   endpoint backend, download models, start servers, import AI runtimes, upload
   files, perform screen OCR, run background OCR, or integrate with Batch Queue.
 
+## Implemented Follow-Up: Manual GPU Acceptance Test Plan
+
+- Manual, non-CI GPU acceptance documentation now lives under `docs/testing/`.
+- The plan covers required hardware/software, privacy and consent pre-checks,
+  loopback-only endpoint expectations, future model/runtime setup placeholders,
+  local endpoint validation, sample input guidance, expected output checks,
+  performance observations, failure modes, rollback steps, and acceptance
+  checklists.
+- A reusable manual run template records machine/GPU/runtime details, backend
+  mode, endpoint URL, sample characteristics, result summaries, warnings, and
+  privacy checklist results.
+- This documentation does not add real inference, model downloads, optional AI
+  dependencies, server management, endpoint calls, screen OCR, background OCR,
+  file upload, or Batch Queue integration.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.
