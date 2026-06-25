@@ -9,6 +9,7 @@
 - Added a manual, non-CI GPU acceptance test plan and run template for future advanced OCR backend validation.
 - Added advanced OCR privacy/security review and pre-integration checklist documentation for future real backend work.
 - Added optional advanced OCR runtime packaging/install docs and a local endpoint contract for future user-managed runtimes.
+- Added an advanced OCR maintainer guide summarizing architecture status, boundaries, and recommended next work.
 
 ## 0.5.0 - 2026-06-19
 

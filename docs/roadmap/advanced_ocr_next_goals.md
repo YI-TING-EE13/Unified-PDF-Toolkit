@@ -4,6 +4,8 @@ This roadmap keeps future optional advanced local OCR work reviewable without
 depending on chat history. Tesseract remains the default OCR path until a future
 milestone explicitly changes user-facing options.
 
+Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
+
 ## 1. Consent UI and Settings Persistence
 
 - Status: Implemented for future-use consent management; no real AI OCR execution enabled.

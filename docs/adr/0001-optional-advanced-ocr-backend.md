@@ -163,6 +163,18 @@ and test wiring only. It does not run the real model.
   dependencies, server lifecycle management, endpoint execution, screen OCR,
   background OCR, file upload, or Batch Queue integration.
 
+## Implemented Follow-Up: Maintainer Guide
+
+- `docs/advanced_ocr_maintainer_guide.md` now provides a single entry point for
+  maintainers, Codex sessions, and reviewers.
+- The guide summarizes current status, implemented milestones, key files,
+  production behavior, scaffolds, fake/dev-only wiring, documentation-only
+  gates, consent behavior, diagnostics coverage, privacy/security boundaries,
+  validation commands, unsupported claims, and recommended future work order.
+- The guide does not add real inference, model downloads, optional AI
+  dependencies, server lifecycle management, endpoint execution, screen OCR,
+  background OCR, file upload, or Batch Queue integration.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.
