@@ -5,13 +5,14 @@
 - Added architecture-only scaffolding for optional future advanced local AI OCR, including an ADR, OCR backend abstractions, consent validation structures, a fake Unlimited-OCR test backend, and safe optional-readiness diagnostics.
 - Added Settings / Recent consent management for future optional advanced local AI OCR without enabling real model inference.
 - Added a localhost-only OCR endpoint backend scaffold for future user-managed OCR servers without adding model inference or AI runtime dependencies.
-- Added developer-only fake AI OCR workflow wiring, hidden behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`, for local UI/workflow testing without real model inference.
+- Added developer-only Document OCR shell wiring, hidden behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`, for local fake-backend UI/workflow testing without real model inference.
 - Added a manual, non-CI GPU acceptance test plan and run template for future advanced OCR backend validation.
 - Added advanced OCR privacy/security review and pre-integration checklist documentation for future real backend work.
 - Added optional advanced OCR runtime packaging/install docs and a local endpoint contract for future user-managed runtimes.
 - Added an advanced OCR maintainer guide summarizing architecture status, boundaries, and recommended next work.
 - Hardened the local OCR endpoint scaffold with stricter mock-only response validation and sanitized transport errors.
 - Added mock-only advanced OCR workflow helpers for backend selection, consent gating, output writing, and user-safe error mapping.
+- Added a hidden dev-only Document OCR UI shell for fake-backend workflow testing without real model inference or live endpoint calls.
 
 ## 0.5.0 - 2026-06-19
 

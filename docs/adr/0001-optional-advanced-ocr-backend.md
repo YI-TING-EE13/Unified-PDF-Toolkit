@@ -115,7 +115,7 @@ and test wiring only. It does not run the real model.
   include source PDF/image file paths.
 - Tests remain mock-only and do not call a real endpoint or start a server.
 
-## Implemented Follow-Up: Developer-Only Fake AI OCR Workflow Wiring
+## Implemented Follow-Up: Developer-Only Document OCR Shell Wiring
 
 - A hidden developer/test tool can be enabled with
   `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` to exercise file selection, progress,
@@ -142,6 +142,22 @@ and test wiring only. It does not run the real model.
   Unlimited-OCR inference, start servers, download models, add AI runtime
   dependencies, upload files, perform screen OCR, run background OCR, or add
   Batch Queue integration.
+
+## Implemented Follow-Up: Dev-Only Document OCR UI Shell
+
+- The hidden developer workflow is now presented as `[Dev] Document OCR Shell`
+  when `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` is set.
+- The shell exercises future Document OCR UI plumbing: file selection, output
+  folder selection, TXT/Markdown output options, backend selection, consent
+  gating, progress/cancel handling, output actions, and user-safe error
+  display.
+- The UI exposes only the fake Unlimited-OCR backend. Local endpoint behavior
+  remains mock-only through injected transports in tests and is not callable
+  from the dev UI.
+- This shell does not expose production AI OCR, run real Unlimited-OCR
+  inference, call a real endpoint, start servers, download models, add AI
+  runtime dependencies, upload files, perform screen OCR, run background OCR, or
+  add Batch Queue integration.
 
 ## Implemented Follow-Up: Manual GPU Acceptance Test Plan
 

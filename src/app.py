@@ -39,6 +39,30 @@ def developer_tools_enabled() -> bool:
     }
 
 
+def build_tools_list() -> list[BaseTool]:
+    """Build tool instances, including developer-only tools when enabled."""
+
+    tools_list: list[BaseTool] = [
+        CompressorTool(),
+        MergerTool(),
+        SplitterTool(),
+        ConverterTool(),
+        PDFToWordTool(),
+        Image2PDFTool(),
+        PageManagerTool(),
+        BatchQueueTool(),
+        DiagnosticsTool(),
+        SettingsTool(),
+    ]
+
+    if developer_tools_enabled():
+        from src.tools.ai_ocr_test.tool import DevDocumentOcrTool
+
+        tools_list.append(DevDocumentOcrTool())
+
+    return tools_list
+
+
 class PDFToolkitApp(_BaseTk):
     """
     The Main Application Shell for the Unified PDF Toolkit.
@@ -161,25 +185,7 @@ class PDFToolkitApp(_BaseTk):
 
     def _register_tools(self) -> None:
         """Instantiates and registers all available tools."""
-        tools_list = [
-            CompressorTool(),
-            MergerTool(),
-            SplitterTool(),
-            ConverterTool(),
-            PDFToWordTool(),
-            Image2PDFTool(),
-            PageManagerTool(),
-            BatchQueueTool(),
-            DiagnosticsTool(),
-            SettingsTool(),
-        ]
-
-        if developer_tools_enabled():
-            from src.tools.ai_ocr_test.tool import FakeAiOcrTestTool
-
-            tools_list.append(FakeAiOcrTestTool())
-        
-        for tool in tools_list:
+        for tool in build_tools_list():
             self.tools[tool.name] = tool
 
     def switch_view(self, tool_id: str) -> None:

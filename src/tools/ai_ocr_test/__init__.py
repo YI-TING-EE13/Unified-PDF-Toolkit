@@ -1,1 +1,1 @@
-"""Developer-only fake AI OCR workflow wiring."""
+"""Developer-only Document OCR shell wiring."""

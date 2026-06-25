@@ -18,7 +18,7 @@ Implemented today:
 - Fake Unlimited-OCR backend for tests and developer-only workflow wiring.
 - Consent records, settings persistence, and Settings / Recent consent UI.
 - Local endpoint backend scaffold with loopback-only URL validation.
-- Developer-only fake AI OCR workflow gated by
+- Developer-only Document OCR UI shell gated by
   `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`.
 - Optional advanced OCR diagnostics/readiness checks.
 - Manual GPU acceptance test plan and run template.
@@ -46,9 +46,9 @@ Not implemented today:
   through Settings / Recent.
 - Local endpoint scaffold: validates loopback-only endpoints and supports
   mockable request/response tests with strict response-shape validation.
-- Developer fake workflow: hidden dev tool exercises file selection, progress,
-  cancellation, local TXT/Markdown output, and output actions using only the
-  fake backend.
+- Developer Document OCR shell: hidden dev tool exercises file selection,
+  backend selection, consent gating, progress, cancellation, local TXT/Markdown
+  output, user-safe errors, and output actions using only the fake backend.
 - Documentation gates: GPU acceptance, security review, optional runtime guide,
   and endpoint contract.
 
@@ -88,7 +88,7 @@ Not implemented today:
 | --- | --- |
 | Production behavior | Tesseract-backed PDF to Word OCR Text remains the only real OCR path. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local endpoint client. |
-| Fake/dev-only | Fake Unlimited-OCR backend and hidden fake AI OCR workflow. |
+| Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract. |
 | Not supported | Real Unlimited-OCR inference, GPU OCR, model download, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
@@ -124,9 +124,9 @@ Changing provider, model id, or consent text version invalidates prior consent.
 Consent records must not store OCR text, rendered page images, source file
 paths, output contents, or document content.
 
-## Developer-Only Fake AI OCR Tool
+## Developer-Only Document OCR Shell
 
-The fake AI OCR workflow is hidden by default. To expose it in a development
+The Document OCR shell is hidden by default. To expose it in a development
 session, set:
 
 ```powershell
@@ -136,15 +136,19 @@ $env:PDF_TOOLKIT_ENABLE_DEV_TOOLS = "1"
 Then launch the app normally. The sidebar should include:
 
 ```text
-[Dev] Fake AI OCR Test
+[Dev] Document OCR Shell
 ```
 
 This tool:
 
 - Uses only `FakeUnlimitedOcrBackend`.
+- Shows a backend selection control, but exposes only the fake backend.
+- Keeps local endpoint mode out of the UI; endpoint coverage remains
+  unit-test/mock-only until a later reviewed milestone.
 - Requires valid advanced OCR consent.
 - Writes deterministic local TXT/Markdown placeholder outputs.
 - Supports progress and cancellation.
+- Displays OCR failures through `user_safe_ocr_error_message()`.
 - Does not run real inference.
 - Does not call the local endpoint backend.
 - Does not import torch, transformers, SGLang, CUDA, or model runtimes.

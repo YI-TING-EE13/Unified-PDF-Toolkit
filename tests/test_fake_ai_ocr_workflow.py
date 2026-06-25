@@ -7,10 +7,15 @@ from unittest import mock
 
 from PIL import Image
 
-from src.ocr import OcrConsentRequiredError
+from src.ocr import OcrBackendUnavailableError, OcrConsentRequiredError
 from src.ocr.consent import AdvancedOcrConsent
 from src.ocr.unlimited_fake import UNLIMITED_OCR_MODEL_ID, UNLIMITED_OCR_PROVIDER
-from src.tools.ai_ocr_test.tool import run_fake_ai_ocr_workflow
+from src.ocr.workflow import AdvancedOcrBackendChoice
+from src.tools.ai_ocr_test.tool import (
+    FAKE_BACKEND_LABEL,
+    DevDocumentOcrTool,
+    run_fake_ai_ocr_workflow,
+)
 
 
 def _valid_fake_consent() -> AdvancedOcrConsent:
@@ -22,6 +27,14 @@ def _valid_fake_consent() -> AdvancedOcrConsent:
         acknowledged_gpu_vram_use=True,
         acknowledged_temporary_page_images=True,
     )
+
+
+class _FakeVar:
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    def get(self) -> str:
+        return self.value
 
 
 class FakeAiOcrWorkflowTests(unittest.TestCase):
@@ -101,6 +114,32 @@ class FakeAiOcrWorkflowTests(unittest.TestCase):
             self.assertFalse(app.developer_tools_enabled())
         with mock.patch.dict(os.environ, {"PDF_TOOLKIT_ENABLE_DEV_TOOLS": "1"}):
             self.assertTrue(app.developer_tools_enabled())
+
+    def test_developer_document_ocr_tool_registration_is_env_gated(self):
+        from src import app
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            tool_names = [tool.name for tool in app.build_tools_list()]
+            self.assertNotIn("[Dev] Document OCR Shell", tool_names)
+
+        with mock.patch.dict(os.environ, {"PDF_TOOLKIT_ENABLE_DEV_TOOLS": "1"}):
+            tool_names = [tool.name for tool in app.build_tools_list()]
+            self.assertIn("[Dev] Document OCR Shell", tool_names)
+
+    def test_developer_document_ocr_shell_selects_fake_backend_only(self):
+        tool = DevDocumentOcrTool()
+        tool.backend_var = _FakeVar(FAKE_BACKEND_LABEL)
+
+        selection = tool._backend_selection()
+
+        self.assertEqual(selection.choice, AdvancedOcrBackendChoice.FAKE_UNLIMITED)
+
+    def test_developer_document_ocr_shell_rejects_unknown_backend_label(self):
+        tool = DevDocumentOcrTool()
+        tool.backend_var = _FakeVar("Local endpoint backend")
+
+        with self.assertRaises(OcrBackendUnavailableError):
+            tool._backend_selection()
 
 
 if __name__ == "__main__":

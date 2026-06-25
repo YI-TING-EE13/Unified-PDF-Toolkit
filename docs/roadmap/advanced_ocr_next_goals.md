@@ -24,14 +24,23 @@ Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 - Required tests: Mock HTTP/client tests with no live network dependency.
 - Safety/privacy checks: No user files, rendered pages, or OCR text leave localhost by default.
 
-## 3. Developer-Only Fake AI OCR UI Wiring
+## 3. Developer-Only Document OCR UI Wiring
 
-- Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; now uses reusable mock-only workflow helpers for backend selection, consent gating, output writing, and error mapping.
+- Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; evolved into a dev-only Document OCR shell that uses reusable mock-only workflow helpers for backend selection, consent gating, output writing, and error mapping.
 - Goal: Wire the fake backend into controlled UI tests so flows can be exercised without a model.
 - Non-goals: No user-facing claim that AI OCR is supported.
 - Acceptance criteria: Fake backend is clearly labeled and unavailable in release-facing normal workflows unless explicitly enabled for development.
 - Required tests: GUI or unit tests proving fake output is deterministic and local.
 - Safety/privacy checks: Fake backend must not import torch/transformers, download models, or upload data.
+
+## Supporting Milestone: Dev-Only Document OCR UI Shell
+
+- Status: Implemented as a hidden developer-only shell exposed only when `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`.
+- Goal: Prepare future Document OCR UI integration with file selection, output folder selection, TXT/Markdown output options, backend selection, consent gating, progress/cancel handling, output actions, and user-safe error display.
+- Non-goals: No production AI OCR sidebar, live local endpoint calls, real model inference, server execution, model download, AI runtime dependency, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: The shell is clearly labeled developer/testing-only, exposes only the fake backend in the UI, and keeps local endpoint behavior mock-only in tests.
+- Required tests: Registration is env-gated, fake backend selection works, unknown backend selections are rejected, fake workflow output remains deterministic, consent denial remains blocking, cancellation works, and no heavy AI runtime is imported.
+- Safety/privacy checks: OCR text is written only to selected local outputs; workflow reports and errors must not include document content, image bytes/base64, or source paths.
 
 ## Supporting Milestone: Mock-Only Workflow Selection Foundation
 
