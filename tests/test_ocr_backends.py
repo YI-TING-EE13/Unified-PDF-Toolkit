@@ -22,6 +22,7 @@ from src.ocr.local_endpoint import (
     LOCAL_ENDPOINT_SETTING_KEY,
     LocalEndpointOcrBackend,
     get_local_endpoint_url,
+    post_json,
     set_local_endpoint_url,
     validate_local_endpoint_url,
 )
@@ -148,7 +149,10 @@ class LocalEndpointBackendTests(unittest.TestCase):
 
     def test_endpoint_url_validation_rejects_non_local_or_malformed_urls(self):
         rejected = [
+            "",
+            "   ",
             "https://127.0.0.1:8765",
+            "http://127.0.0.1:0",
             "http://127.0.0.1",
             "http://0.0.0.0:8765",
             "http://192.168.1.2:8765",
@@ -168,6 +172,14 @@ class LocalEndpointBackendTests(unittest.TestCase):
             with self.subTest(url=url):
                 with self.assertRaises(ValueError):
                     validate_local_endpoint_url(url)
+
+    def test_endpoint_url_validation_rejects_localhost_resolving_to_non_loopback(self):
+        with mock.patch(
+            "src.ocr.local_endpoint.socket.getaddrinfo",
+            return_value=[(None, None, None, None, ("192.168.1.2", 8765))],
+        ):
+            with self.assertRaises(ValueError):
+                validate_local_endpoint_url("http://localhost:8765")
 
     def test_endpoint_requires_valid_consent(self):
         backend = LocalEndpointOcrBackend()
@@ -207,10 +219,12 @@ class LocalEndpointBackendTests(unittest.TestCase):
 
         self.assertEqual(result.pages[0].text, "endpoint text")
         self.assertEqual(result.pages[0].confidence, 0.8)
+        self.assertEqual(result.metadata["provider"], LOCAL_ENDPOINT_PROVIDER)
         self.assertEqual(captured["url"], DEFAULT_LOCAL_ENDPOINT_URL)
         self.assertEqual(captured["timeout"], 1.5)
         payload_text = json.dumps(captured["payload"])
         self.assertNotIn("C:/secret/source.pdf", payload_text)
+        self.assertNotIn("source_path", captured["payload"])
         self.assertIn("image_base64", captured["payload"]["pages"][0])
 
     def test_endpoint_transport_errors_surface_as_backend_unavailable(self):
@@ -228,6 +242,79 @@ class LocalEndpointBackendTests(unittest.TestCase):
 
         with self.assertRaises(OcrBackendUnavailableError):
             backend.recognize(request)
+
+    def test_endpoint_transport_timeout_and_connection_errors_are_sanitized(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_ENDPOINT,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        for exc, expected in (
+            (TimeoutError("contains details"), "timed out"),
+            (ConnectionError("C:/secret/source.pdf"), "connection failed"),
+            (RuntimeError("C:/secret/source.pdf"), "request failed"),
+        ):
+            with self.subTest(exc=type(exc).__name__):
+                backend = LocalEndpointOcrBackend(
+                    consent=self._valid_consent(),
+                    transport=lambda url, payload, timeout, err=exc: (_ for _ in ()).throw(err),
+                )
+                with self.assertRaises(OcrBackendUnavailableError) as raised:
+                    backend.recognize(request)
+                self.assertIn(expected, str(raised.exception))
+                self.assertNotIn("C:/secret/source.pdf", str(raised.exception))
+
+    def test_endpoint_rejects_malformed_response_shapes(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_ENDPOINT,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        bad_responses = [
+            [],
+            {},
+            {"pages": {}},
+            {"pages": []},
+            {"pages": ["bad"]},
+            {"pages": [{"page_number": 1}]},
+            {"pages": [{"text": "ok"}]},
+            {"pages": [{"page_number": 2, "text": "ok"}]},
+            {"pages": [{"page_number": 1, "text": 123}]},
+            {"pages": [{"page_number": True, "text": "ok"}]},
+            {"pages": [{"page_number": 1, "text": "ok", "confidence": "bad"}]},
+            {"pages": [{"page_number": 1, "text": "ok", "warnings": "bad"}]},
+            {"pages": [{"page_number": 1, "text": "ok"}], "warnings": "bad"},
+            {"pages": [{"page_number": 1, "text": "ok"}], "metadata": "bad"},
+        ]
+
+        for response in bad_responses:
+            with self.subTest(response=response):
+                backend = LocalEndpointOcrBackend(
+                    consent=self._valid_consent(),
+                    transport=lambda url, payload, timeout, value=response: value,
+                )
+                with self.assertRaises(OcrBackendUnavailableError):
+                    backend.recognize(request)
+
+    def test_endpoint_rejects_empty_page_requests(self):
+        backend = LocalEndpointOcrBackend(consent=self._valid_consent())
+        request = OcrRequest(engine=OcrEngine.LOCAL_ENDPOINT, images=[])
+
+        with self.assertRaises(OcrBackendUnavailableError):
+            backend.recognize(request)
+
+    def test_post_json_sanitizes_timeout_and_connection_failures(self):
+        class FakeTimeout:
+            def __enter__(self):
+                raise TimeoutError("C:/secret/source.pdf")
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        with mock.patch("src.ocr.local_endpoint.request.urlopen", return_value=FakeTimeout()):
+            with self.assertRaises(OcrBackendUnavailableError) as raised:
+                post_json(DEFAULT_LOCAL_ENDPOINT_URL, {"pages": []}, 0.01)
+            self.assertNotIn("C:/secret/source.pdf", str(raised.exception))
 
     def test_importing_local_endpoint_does_not_import_heavy_ai_modules(self):
         for name in ("torch", "transformers", "sglang"):

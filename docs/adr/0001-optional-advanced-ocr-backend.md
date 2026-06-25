@@ -102,6 +102,19 @@ and test wiring only. It does not run the real model.
   download models, add AI runtime dependencies, upload files, or add AI OCR
   sidebar/batch workflows.
 
+## Implemented Follow-Up: Local Endpoint Hardening
+
+- The local endpoint scaffold now validates mocked response shape more strictly:
+  response page count, required page fields, page-number order, confidence
+  types, warning shapes, and metadata shape are checked before producing OCR
+  results.
+- Transport timeout, connection, and unexpected failures are converted to
+  `OcrBackendUnavailableError` messages that avoid leaking source file paths,
+  OCR text, image bytes, base64 payloads, or document content.
+- Request payloads continue to contain in-memory page images only and never
+  include source PDF/image file paths.
+- Tests remain mock-only and do not call a real endpoint or start a server.
+
 ## Implemented Follow-Up: Developer-Only Fake AI OCR Workflow Wiring
 
 - A hidden developer/test tool can be enabled with

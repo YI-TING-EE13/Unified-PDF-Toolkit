@@ -45,7 +45,7 @@ Not implemented today:
 - Consent persistence and UI: consent records can be reviewed, saved, and reset
   through Settings / Recent.
 - Local endpoint scaffold: validates loopback-only endpoints and supports
-  mockable request/response tests.
+  mockable request/response tests with strict response-shape validation.
 - Developer fake workflow: hidden dev tool exercises file selection, progress,
   cancellation, local TXT/Markdown output, and output actions using only the
   fake backend.
@@ -157,8 +157,10 @@ It does:
 - Require valid advanced OCR consent.
 - Use in-memory image payload expectations.
 - Avoid sending source file paths.
-- Support mockable tests.
-- Surface timeout/backend errors through OCR exceptions.
+- Support mockable tests with no live server dependency.
+- Validate response page count, required fields, page-number order, confidence
+  type, warning shape, and metadata shape.
+- Surface timeout/backend errors through sanitized OCR exceptions.
 
 It does not:
 

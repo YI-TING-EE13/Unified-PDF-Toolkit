@@ -98,10 +98,16 @@ Expected minimal response shape:
 Rules:
 
 - Page numbers should match the request when possible.
+- The response page count must match the request page count.
+- Every page result must include a positive integer `page_number` and string
+  `text`.
+- `confidence`, when present, must be numeric.
+- Top-level and page-level `warnings`, when present, must be lists of strings.
 - Text belongs only in user-selected output files, not logs or diagnostics.
 - Missing confidence is allowed.
 - Warnings must not include OCR text, image bytes, base64 payloads, or document
-  content.
+  content. The current scaffold validates warning shape but does not propagate
+  endpoint warning text into result logs or reports by default.
 - Malformed responses must produce clear user-facing errors.
 
 ## Timeout and Error Behavior
@@ -114,6 +120,9 @@ The client must handle:
 - invalid JSON
 - missing pages
 - missing text fields
+- mismatched page counts
+- mismatched page numbers
+- invalid confidence or warning fields
 - server-side failure status
 - cancellation before or during page processing
 

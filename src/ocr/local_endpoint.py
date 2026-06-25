@@ -44,6 +44,8 @@ def set_local_endpoint_url(url: str) -> None:
 def validate_local_endpoint_url(url: str) -> str:
     """Validate and normalize a localhost-only HTTP endpoint URL."""
 
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("Local OCR endpoint must be a non-empty URL.")
     parsed = urlparse(url)
     if parsed.scheme != "http":
         raise ValueError("Local OCR endpoint must use http.")
@@ -55,6 +57,8 @@ def validate_local_endpoint_url(url: str) -> str:
         raise ValueError("Local OCR endpoint must include a valid port.") from exc
     if port is None:
         raise ValueError("Local OCR endpoint must include an explicit port.")
+    if port <= 0:
+        raise ValueError("Local OCR endpoint port must be greater than zero.")
     if parsed.username or parsed.password:
         raise ValueError("Local OCR endpoint must not include credentials.")
     if parsed.path not in {"", "/"}:
@@ -93,8 +97,12 @@ def post_json(url: str, payload: Dict[str, Any], timeout_seconds: float) -> Dict
     try:
         with request.urlopen(req, timeout=timeout_seconds) as response:
             body = response.read()
+    except TimeoutError as exc:
+        raise OcrBackendUnavailableError("Local OCR endpoint request timed out.") from exc
     except error.URLError as exc:
-        raise OcrBackendUnavailableError(f"Local OCR endpoint request failed: {exc}") from exc
+        raise OcrBackendUnavailableError("Local OCR endpoint request failed.") from exc
+    except OSError as exc:
+        raise OcrBackendUnavailableError("Local OCR endpoint connection failed.") from exc
     try:
         parsed = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -120,6 +128,8 @@ class LocalEndpointOcrBackend:
     ) -> None:
         self.endpoint_url = validate_local_endpoint_url(endpoint_url)
         self.consent = consent
+        if timeout_seconds <= 0:
+            raise ValueError("Local OCR endpoint timeout must be greater than zero.")
         self.timeout_seconds = timeout_seconds
         self.transport = transport
 
@@ -131,10 +141,23 @@ class LocalEndpointOcrBackend:
             consent_text_version=ADVANCED_OCR_CONSENT_TEXT_VERSION,
         )
         payload = self._build_payload(request_data)
-        response = self.transport(self.endpoint_url, payload, self.timeout_seconds)
+        try:
+            response = self.transport(self.endpoint_url, payload, self.timeout_seconds)
+        except OcrBackendUnavailableError:
+            raise
+        except TimeoutError as exc:
+            raise OcrBackendUnavailableError("Local OCR endpoint request timed out.") from exc
+        except (ConnectionError, OSError) as exc:
+            raise OcrBackendUnavailableError("Local OCR endpoint connection failed.") from exc
+        except Exception as exc:
+            raise OcrBackendUnavailableError("Local OCR endpoint request failed.") from exc
+        if not isinstance(response, dict):
+            raise OcrBackendUnavailableError("Local OCR endpoint returned a non-object response.")
         return self._parse_response(response, request_data)
 
     def _build_payload(self, request_data: OcrRequest) -> Dict[str, Any]:
+        if not request_data.images:
+            raise OcrBackendUnavailableError("Local OCR endpoint request must include at least one page image.")
         page_numbers = list(request_data.page_numbers)
         pages = []
         for index, image in enumerate(request_data.images):
@@ -156,24 +179,67 @@ class LocalEndpointOcrBackend:
         }
 
     def _parse_response(self, response: Dict[str, Any], request_data: OcrRequest) -> OcrResult:
+        warnings = response.get("warnings", [])
+        if warnings is not None and (
+            not isinstance(warnings, list) or not all(isinstance(item, str) for item in warnings)
+        ):
+            raise OcrBackendUnavailableError("Local OCR endpoint warnings must be a list of strings.")
+        metadata = response.get("metadata", {})
+        if metadata is not None and not isinstance(metadata, dict):
+            raise OcrBackendUnavailableError("Local OCR endpoint metadata must be an object.")
+
         raw_pages = response.get("pages")
         if not isinstance(raw_pages, list):
             raise OcrBackendUnavailableError("Local OCR endpoint response must include a pages list.")
+        expected_count = len(request_data.images)
+        if len(raw_pages) != expected_count:
+            raise OcrBackendUnavailableError(
+                "Local OCR endpoint response page count must match the request page count."
+            )
 
         pages: List[OcrPageResult] = []
+        expected_page_numbers = list(request_data.page_numbers)
         for index, raw_page in enumerate(raw_pages):
             if not isinstance(raw_page, dict):
                 raise OcrBackendUnavailableError("Local OCR endpoint page result must be an object.")
-            text = raw_page.get("text", "")
+            if "text" not in raw_page:
+                raise OcrBackendUnavailableError("Local OCR endpoint page result must include text.")
+            text = raw_page.get("text")
             if not isinstance(text, str):
                 raise OcrBackendUnavailableError("Local OCR endpoint page text must be a string.")
-            page_number_value = raw_page.get("page_number", index + 1)
+            if "page_number" not in raw_page:
+                raise OcrBackendUnavailableError("Local OCR endpoint page result must include page_number.")
+            page_number_value = raw_page.get("page_number")
+            if isinstance(page_number_value, bool):
+                raise OcrBackendUnavailableError("Local OCR endpoint page_number must be an integer.")
             try:
                 page_number = int(page_number_value)
             except (TypeError, ValueError) as exc:
                 raise OcrBackendUnavailableError("Local OCR endpoint page_number must be an integer.") from exc
+            if page_number <= 0:
+                raise OcrBackendUnavailableError("Local OCR endpoint page_number must be positive.")
+            expected_page_number = (
+                expected_page_numbers[index] if index < len(expected_page_numbers) else index + 1
+            )
+            if page_number != expected_page_number:
+                raise OcrBackendUnavailableError(
+                    "Local OCR endpoint page_number must match the request page order."
+                )
             confidence_value = raw_page.get("confidence")
-            confidence = float(confidence_value) if confidence_value is not None else None
+            if isinstance(confidence_value, bool):
+                raise OcrBackendUnavailableError("Local OCR endpoint confidence must be numeric.")
+            try:
+                confidence = float(confidence_value) if confidence_value is not None else None
+            except (TypeError, ValueError) as exc:
+                raise OcrBackendUnavailableError("Local OCR endpoint confidence must be numeric.") from exc
+            page_warnings = raw_page.get("warnings", [])
+            if page_warnings is not None and (
+                not isinstance(page_warnings, list)
+                or not all(isinstance(item, str) for item in page_warnings)
+            ):
+                raise OcrBackendUnavailableError(
+                    "Local OCR endpoint page warnings must be a list of strings."
+                )
             pages.append(
                 OcrPageResult(
                     page_number=page_number,
@@ -187,4 +253,10 @@ class LocalEndpointOcrBackend:
             pages=pages,
             source_path=request_data.source_path,
             warnings=["Local endpoint backend scaffold; no server is started by this app."],
+            metadata={
+                "provider": LOCAL_ENDPOINT_PROVIDER,
+                "model_id": LOCAL_ENDPOINT_MODEL_ID,
+                "endpoint_url": self.endpoint_url,
+                "omitted_endpoint_warning_count": len(warnings or []),
+            },
         )

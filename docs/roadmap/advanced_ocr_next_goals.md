@@ -17,7 +17,7 @@ Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 
 ## 2. Local Endpoint Client Backend
 
-- Status: Implemented as a localhost-only backend scaffold; no real server is started or required.
+- Status: Implemented as a localhost-only backend scaffold and hardened with mock-only request/response validation; no real server is started or required.
 - Goal: Add an optional backend client for future Unlimited-OCR-compatible local servers.
 - Non-goals: No hosted endpoint defaults, remote upload support, server launcher, or public-network target.
 - Acceptance criteria: Endpoint defaults to `127.0.0.1` only and refuses non-loopback addresses unless a later reviewed policy allows them.
