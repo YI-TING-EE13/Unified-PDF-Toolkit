@@ -148,6 +148,21 @@ and test wiring only. It does not run the real model.
   execution, screen OCR, background OCR, file upload, or Batch Queue
   integration.
 
+## Implemented Follow-Up: Optional Runtime Documentation
+
+- Optional AI runtime documentation now lives under `docs/runtime/`.
+- The guide records the default lightweight install boundary, Windows installer
+  boundary, user-managed runtime expectation, supported future modes, hardware
+  expectations, CUDA/GPU caveats, model download caveats, custom-code risks,
+  local-first privacy expectations, troubleshooting, and rollback guidance.
+- The local endpoint contract documents loopback-only endpoint expectations, no
+  source file paths, in-memory image payloads, response shape, timeout/error
+  behavior, logging restrictions, consent requirements, and diagnostics
+  constraints.
+- This documentation does not add real inference, model downloads, optional AI
+  dependencies, server lifecycle management, endpoint execution, screen OCR,
+  background OCR, file upload, or Batch Queue integration.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.

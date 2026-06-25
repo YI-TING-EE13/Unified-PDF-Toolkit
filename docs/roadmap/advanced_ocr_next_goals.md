@@ -66,6 +66,7 @@ milestone explicitly changes user-facing options.
 
 ## 8. Packaging and Install Documentation
 
+- Status: Implemented as optional runtime documentation in `docs/runtime/advanced_ocr_optional_runtime.md` and `docs/runtime/local_ocr_endpoint_contract.md`.
 - Goal: Document optional AI runtime setup without bloating default installs.
 - Non-goals: No bundling torch, transformers, CUDA, models, SGLang, or vLLM into the default app or installer.
 - Acceptance criteria: Docs clearly separate default install from optional advanced OCR runtime setup.

@@ -8,6 +8,7 @@
 - Added developer-only fake AI OCR workflow wiring, hidden behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`, for local UI/workflow testing without real model inference.
 - Added a manual, non-CI GPU acceptance test plan and run template for future advanced OCR backend validation.
 - Added advanced OCR privacy/security review and pre-integration checklist documentation for future real backend work.
+- Added optional advanced OCR runtime packaging/install docs and a local endpoint contract for future user-managed runtimes.
 
 ## 0.5.0 - 2026-06-19
 
