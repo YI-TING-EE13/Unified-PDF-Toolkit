@@ -13,6 +13,15 @@ from ...ocr.consent import (
     load_advanced_ocr_consent,
     save_advanced_ocr_consent,
 )
+from ...ocr.local_model import (
+    LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+    LOCAL_MODEL_MODE_WORKER_PROCESS,
+    LocalModelRuntimeConfig,
+    clear_local_model_runtime_config,
+    load_local_model_runtime_config,
+    save_local_model_runtime_config,
+)
 from ...ui.advanced_ocr_consent import request_advanced_ocr_consent
 from ...utils.settings import (
     clear_recent_paths,
@@ -81,6 +90,78 @@ class SettingsTool(BaseTool):
             command=self._reset_advanced_ocr_consent,
         ).pack(side="left", padx=(8, 0))
 
+        runtime_frame = ttk.LabelFrame(
+            parent, text="Future Local Model OCR Runtime", padding=10
+        )
+        runtime_frame.pack(fill="x", pady=(0, 10))
+        ttk.Label(
+            runtime_frame,
+            text=(
+                "Future AI OCR is intended to run on this computer. Real "
+                "Unlimited-OCR inference is not implemented yet; these settings "
+                "only record local runtime readiness hints. There is no model "
+                "download or server start action here."
+            ),
+            wraplength=900,
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        self.local_model_status_var = tk.StringVar()
+        ttk.Label(runtime_frame, textvariable=self.local_model_status_var).grid(
+            row=1, column=0, columnspan=4, sticky="w", pady=(0, 8)
+        )
+        self.local_model_enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            runtime_frame,
+            text="Enable future local model runtime configuration",
+            variable=self.local_model_enabled_var,
+        ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(0, 6))
+        self.local_model_mode_var = tk.StringVar(value=LOCAL_MODEL_MODE_DISABLED)
+        self.local_model_id_var = tk.StringVar(value=DEFAULT_ADVANCED_OCR_MODEL_ID)
+        self.local_model_path_var = tk.StringVar()
+        self.local_model_python_var = tk.StringVar()
+        self.local_model_worker_var = tk.StringVar()
+        ttk.Label(runtime_frame, text="Runtime mode:").grid(row=3, column=0, sticky="w")
+        ttk.Combobox(
+            runtime_frame,
+            textvariable=self.local_model_mode_var,
+            values=[
+                LOCAL_MODEL_MODE_DISABLED,
+                LOCAL_MODEL_MODE_WORKER_PROCESS,
+                LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+            ],
+            state="readonly",
+            width=20,
+        ).grid(row=3, column=1, sticky="ew", padx=(8, 12), pady=2)
+        ttk.Label(runtime_frame, text="Model id:").grid(row=3, column=2, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_id_var).grid(
+            row=3, column=3, sticky="ew", padx=(8, 0), pady=2
+        )
+        ttk.Label(runtime_frame, text="Local model folder:").grid(row=4, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_path_var).grid(
+            row=4, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
+        )
+        ttk.Label(runtime_frame, text="Worker Python path:").grid(row=5, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_python_var).grid(
+            row=5, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
+        )
+        ttk.Label(runtime_frame, text="Worker script path:").grid(row=6, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_worker_var).grid(
+            row=6, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
+        )
+        runtime_frame.columnconfigure(1, weight=1)
+        runtime_frame.columnconfigure(3, weight=1)
+        runtime_actions = ttk.Frame(runtime_frame)
+        runtime_actions.grid(row=7, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ttk.Button(
+            runtime_actions,
+            text="Save Runtime Settings",
+            command=self._save_local_model_runtime_settings,
+        ).pack(side="left")
+        ttk.Button(
+            runtime_actions,
+            text="Reset Runtime Settings",
+            command=self._reset_local_model_runtime_settings,
+        ).pack(side="left", padx=(8, 0))
+
         self.lists: Dict[str, tk.Listbox] = {}
         recent_frame = ttk.Frame(parent)
         recent_frame.pack(fill="both", expand=True)
@@ -116,6 +197,7 @@ class SettingsTool(BaseTool):
 
     def _refresh(self) -> None:
         self._refresh_advanced_ocr_status()
+        self._refresh_local_model_runtime_status()
         for key, listbox in self.lists.items():
             listbox.delete(0, tk.END)
             for path in get_recent_paths(key):
@@ -150,6 +232,50 @@ class SettingsTool(BaseTool):
         clear_advanced_ocr_consent()
         self._refresh_advanced_ocr_status()
         messagebox.showinfo("Reset", "Advanced OCR consent cleared.")
+
+    def _load_local_model_runtime_config_from_vars(self) -> LocalModelRuntimeConfig:
+        mode = self.local_model_mode_var.get()
+        enabled = bool(self.local_model_enabled_var.get()) and mode != LOCAL_MODEL_MODE_DISABLED
+        return LocalModelRuntimeConfig(
+            enabled=enabled,
+            mode=mode,
+            model_id=self.local_model_id_var.get(),
+            model_path=self.local_model_path_var.get(),
+            python_executable=self.local_model_python_var.get(),
+            worker_script_path=self.local_model_worker_var.get(),
+        )
+
+    def _apply_local_model_runtime_config(self, config: LocalModelRuntimeConfig) -> None:
+        self.local_model_enabled_var.set(config.enabled)
+        self.local_model_mode_var.set(config.mode)
+        self.local_model_id_var.set(config.model_id)
+        self.local_model_path_var.set(config.model_path or "")
+        self.local_model_python_var.set(config.python_executable or "")
+        self.local_model_worker_var.set(config.worker_script_path or "")
+
+    def _refresh_local_model_runtime_status(self) -> None:
+        config = load_local_model_runtime_config()
+        self._apply_local_model_runtime_config(config)
+        if not config.enabled or config.mode == LOCAL_MODEL_MODE_DISABLED:
+            self.local_model_status_var.set("Local model OCR runtime is disabled.")
+        else:
+            self.local_model_status_var.set(
+                f"Future local model runtime configured as {config.mode}; real inference is not implemented."
+            )
+
+    def _save_local_model_runtime_settings(self) -> None:
+        config = self._load_local_model_runtime_config_from_vars()
+        save_local_model_runtime_config(config)
+        self._refresh_local_model_runtime_status()
+        messagebox.showinfo(
+            "Saved",
+            "Local model OCR runtime settings saved. Real AI OCR inference is still not implemented.",
+        )
+
+    def _reset_local_model_runtime_settings(self) -> None:
+        clear_local_model_runtime_config()
+        self._refresh_local_model_runtime_status()
+        messagebox.showinfo("Reset", "Local model OCR runtime settings cleared.")
 
     def _copy_selected(self, key: str) -> None:
         listbox = self.lists[key]

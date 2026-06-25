@@ -28,9 +28,16 @@ from src.ocr.local_endpoint import (
 )
 from src.ocr.local_model import (
     LOCAL_MODEL_MODEL_ID,
+    LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+    LOCAL_MODEL_MODE_WORKER_PROCESS,
     LOCAL_MODEL_PROVIDER,
+    LOCAL_MODEL_RUNTIME_SETTING_KEY,
     LocalModelOcrBackend,
     LocalModelRuntimeConfig,
+    clear_local_model_runtime_config,
+    load_local_model_runtime_config,
+    save_local_model_runtime_config,
 )
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
@@ -375,15 +382,30 @@ class LocalModelBackendTests(unittest.TestCase):
         cases = [
             (
                 LocalModelRuntimeConfig(),
-                "runtime is not installed or configured",
+                "runtime is disabled",
             ),
             (
-                LocalModelRuntimeConfig(runtime_path="C:/runtime/python.exe"),
+                LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                ),
                 "model path is not configured",
             ),
             (
-                LocalModelRuntimeConfig(mode="remote_server"),
-                "runtime mode is unsupported",
+                LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                    model_path="C:/models/unlimited-ocr",
+                ),
+                "worker Python executable is not configured",
+            ),
+            (
+                LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+                    model_path="C:/models/unlimited-ocr",
+                ),
+                "in-process runtime is not implemented",
             ),
         ]
 
@@ -400,6 +422,86 @@ class LocalModelBackendTests(unittest.TestCase):
     def test_importing_local_model_does_not_import_heavy_ai_modules(self):
         for name in ("torch", "transformers", "sglang"):
             self.assertNotIn(name, sys.modules)
+
+    def test_local_model_config_defaults_to_disabled_and_round_trips(self):
+        config = LocalModelRuntimeConfig()
+        self.assertFalse(config.enabled)
+        self.assertEqual(config.mode, LOCAL_MODEL_MODE_DISABLED)
+
+        loaded = LocalModelRuntimeConfig.from_dict(
+            {
+                "enabled": True,
+                "mode": LOCAL_MODEL_MODE_WORKER_PROCESS,
+                "model_id": LOCAL_MODEL_MODEL_ID,
+                "model_path": "C:/models/unlimited-ocr",
+                "python_executable": "C:/runtime/python.exe",
+                "worker_script_path": "C:/runtime/worker.py",
+                "options": {"future": "value"},
+            }
+        )
+
+        self.assertTrue(loaded.enabled)
+        self.assertEqual(loaded.mode, LOCAL_MODEL_MODE_WORKER_PROCESS)
+        self.assertEqual(loaded.model_path, "C:/models/unlimited-ocr")
+        self.assertEqual(loaded.to_dict()["options"], {"future": "value"})
+
+    def test_local_model_config_does_not_store_forbidden_document_content(self):
+        config = LocalModelRuntimeConfig.from_dict(
+            {
+                "enabled": True,
+                "mode": LOCAL_MODEL_MODE_WORKER_PROCESS,
+                "model_path": "C:/models/unlimited-ocr",
+                "ocr_text": "secret OCR text",
+                "source_path": "C:/secret/source.pdf",
+                "image_base64": "abc123",
+                "rendered_page_path": "C:/tmp/page.png",
+            }
+        )
+
+        stored = config.to_dict()
+        self.assertNotIn("ocr_text", stored)
+        self.assertNotIn("source_path", stored)
+        self.assertNotIn("image_base64", stored)
+        self.assertNotIn("rendered_page_path", stored)
+
+    def test_local_model_config_persistence_load_save_and_clear(self):
+        store = {}
+
+        def fake_set(key, value):
+            store[key] = value
+
+        def fake_get(key, default=None):
+            return store.get(key, default)
+
+        def fake_load():
+            return dict(store)
+
+        def fake_save(value):
+            store.clear()
+            store.update(value)
+
+        config = LocalModelRuntimeConfig(
+            enabled=True,
+            mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+            model_path="C:/models/unlimited-ocr",
+            python_executable="C:/runtime/python.exe",
+            worker_script_path="C:/runtime/worker.py",
+        )
+        with (
+            mock.patch("src.ocr.local_model.set_setting", side_effect=fake_set),
+            mock.patch("src.ocr.local_model.get_setting", side_effect=fake_get),
+            mock.patch("src.ocr.local_model.load_settings", side_effect=fake_load),
+            mock.patch("src.ocr.local_model.save_settings", side_effect=fake_save),
+        ):
+            save_local_model_runtime_config(config)
+            loaded = load_local_model_runtime_config()
+            self.assertTrue(loaded.enabled)
+            self.assertEqual(loaded.mode, config.mode)
+            self.assertEqual(loaded.model_path, config.model_path)
+            self.assertEqual(loaded.python_executable, config.python_executable)
+            self.assertEqual(loaded.worker_script_path, config.worker_script_path)
+            clear_local_model_runtime_config()
+            self.assertNotIn(LOCAL_MODEL_RUNTIME_SETTING_KEY, store)
 
 
 class AdvancedOcrConsentTests(unittest.TestCase):
@@ -543,6 +645,9 @@ class FakeStatusVar:
     def set(self, value: str) -> None:
         self.value = value
 
+    def get(self):
+        return self.value
+
 
 class FakeParent:
     def winfo_toplevel(self):
@@ -551,16 +656,41 @@ class FakeParent:
 
 class AdvancedOcrDiagnosticsTests(unittest.TestCase):
     def test_optional_ai_ocr_diagnostics_do_not_require_optional_dependencies(self):
-        with mock.patch.object(diagnostics, "_module_available", return_value=False):
+        with (
+            mock.patch.object(diagnostics, "_module_available", return_value=False),
+            mock.patch.object(diagnostics, "load_local_model_runtime_config", return_value=LocalModelRuntimeConfig()),
+        ):
             checks = diagnostics._optional_ai_ocr_checks()
 
         names = [check.name for check in checks]
         self.assertIn("Advanced OCR torch", names)
         self.assertIn("Advanced OCR transformers", names)
         self.assertIn("Advanced OCR CUDA", names)
+        self.assertIn("Advanced OCR local model runtime", names)
         self.assertIn("Advanced OCR model cache", names)
         self.assertIn("Advanced OCR local endpoint URL", names)
         self.assertFalse([check for check in checks if check.status == "error"])
+
+    def test_local_model_runtime_diagnostics_report_disabled_and_missing_paths(self):
+        disabled = diagnostics._local_model_runtime_checks(LocalModelRuntimeConfig())
+        self.assertEqual(disabled[0].detail, "disabled")
+
+        configured = diagnostics._local_model_runtime_checks(
+            LocalModelRuntimeConfig(
+                enabled=True,
+                mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                model_path="C:/missing/model",
+                python_executable="C:/missing/python.exe",
+                worker_script_path="C:/missing/worker.py",
+            )
+        )
+
+        names = [check.name for check in configured]
+        self.assertIn("Advanced OCR local model runtime", names)
+        self.assertIn("Advanced OCR local model path", names)
+        self.assertIn("Advanced OCR worker Python", names)
+        self.assertIn("Advanced OCR worker script", names)
+        self.assertTrue([check for check in configured if check.status == "warning"])
 
 
 class SettingsConsentUiTests(unittest.TestCase):
@@ -568,6 +698,13 @@ class SettingsConsentUiTests(unittest.TestCase):
         tool = SettingsTool()
         tool.parent = FakeParent()
         tool.advanced_ocr_status_var = FakeStatusVar()
+        tool.local_model_status_var = FakeStatusVar()
+        tool.local_model_enabled_var = FakeStatusVar()
+        tool.local_model_mode_var = FakeStatusVar()
+        tool.local_model_id_var = FakeStatusVar()
+        tool.local_model_path_var = FakeStatusVar()
+        tool.local_model_python_var = FakeStatusVar()
+        tool.local_model_worker_var = FakeStatusVar()
         return tool
 
     def test_settings_consent_cancel_does_not_save(self):
@@ -616,6 +753,45 @@ class SettingsConsentUiTests(unittest.TestCase):
             mock.patch("src.tools.settings.tool.messagebox.showinfo"),
         ):
             tool._reset_advanced_ocr_consent()
+
+        clear_mock.assert_called_once_with()
+
+    def test_settings_local_model_runtime_save_and_reset(self):
+        tool = self._tool()
+        tool.local_model_enabled_var.set(True)
+        tool.local_model_mode_var.set(LOCAL_MODEL_MODE_WORKER_PROCESS)
+        tool.local_model_id_var.set(LOCAL_MODEL_MODEL_ID)
+        tool.local_model_path_var.set("C:/models/unlimited-ocr")
+        tool.local_model_python_var.set("C:/runtime/python.exe")
+        tool.local_model_worker_var.set("C:/runtime/worker.py")
+
+        with (
+            mock.patch("src.tools.settings.tool.save_local_model_runtime_config") as save_mock,
+            mock.patch(
+                "src.tools.settings.tool.load_local_model_runtime_config",
+                return_value=LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                    model_path="C:/models/unlimited-ocr",
+                    python_executable="C:/runtime/python.exe",
+                    worker_script_path="C:/runtime/worker.py",
+                ),
+            ),
+            mock.patch("src.tools.settings.tool.messagebox.showinfo"),
+        ):
+            tool._save_local_model_runtime_settings()
+
+        saved = save_mock.call_args.args[0]
+        self.assertTrue(saved.enabled)
+        self.assertEqual(saved.mode, LOCAL_MODEL_MODE_WORKER_PROCESS)
+        self.assertEqual(saved.model_path, "C:/models/unlimited-ocr")
+
+        with (
+            mock.patch("src.tools.settings.tool.clear_local_model_runtime_config") as clear_mock,
+            mock.patch("src.tools.settings.tool.load_local_model_runtime_config", return_value=LocalModelRuntimeConfig()),
+            mock.patch("src.tools.settings.tool.messagebox.showinfo"),
+        ):
+            tool._reset_local_model_runtime_settings()
 
         clear_mock.assert_called_once_with()
 

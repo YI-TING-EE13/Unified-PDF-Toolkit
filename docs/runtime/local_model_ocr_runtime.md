@@ -134,6 +134,7 @@ Risks:
 - `LocalModelOcrBackend`
 - `LocalModelRuntimeConfig`
 - provider/model constants for the future Baidu Unlimited-OCR-compatible path
+- load/save/clear helpers for safe runtime configuration
 
 The scaffold:
 
@@ -143,6 +144,46 @@ The scaffold:
 - downloads no model,
 - runs no inference,
 - reports runtime/model-not-configured errors clearly.
+
+## Runtime Configuration
+
+The current settings record stores only safe local runtime hints:
+
+- enabled flag
+- runtime mode: `disabled`, `worker_process`, or `in_process_future`
+- provider/model id
+- local model folder path
+- optional Python executable path for a future worker process
+- optional worker script path
+
+Defaults keep local model OCR disabled. The settings record must not store OCR
+text, document content, source file paths, image bytes/base64, rendered page
+paths, or output contents.
+
+Settings / Recent may expose these fields for future readiness planning, but it
+must not provide a model download button, server start button, or "run model"
+action until real inference is separately reviewed.
+
+## Readiness Diagnostics
+
+Diagnostics may report:
+
+- whether local model runtime config is disabled or enabled;
+- whether the configured local model path exists;
+- whether the configured worker Python path exists;
+- whether the configured worker script path exists;
+- optional torch/transformers presence through safe detection only.
+
+Missing model/runtime paths are warning/info states for the optional backend,
+not app startup failures. Diagnostics must not download models or start worker
+processes.
+
+## Worker Contract
+
+The future worker-process IPC contract is documented in
+`docs/runtime/local_model_worker_contract.md`. It defines request payload
+limits, temporary file policy, response shape, error shape, timeout/cancel
+expectations, and logging restrictions.
 
 ## Failure Handling
 

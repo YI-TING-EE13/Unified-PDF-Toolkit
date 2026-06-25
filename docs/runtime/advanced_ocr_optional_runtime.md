@@ -65,6 +65,15 @@ Expected properties:
 See `docs/runtime/local_model_ocr_runtime.md` for the local model runtime
 design.
 
+Current scaffold status:
+
+- Settings / Recent can store disabled-by-default local model runtime hints.
+- Diagnostics can report configured path readiness without starting a worker.
+- The future worker-process contract is documented in
+  `docs/runtime/local_model_worker_contract.md`.
+- No real model inference, model download, worker process execution, or AI
+  runtime dependency is implemented.
+
 ### Advanced Local Endpoint Mode
 
 The current scaffold supports a future local endpoint client. It is intended for
@@ -166,6 +175,8 @@ Use this checklist for future optional runtime issues:
 - Confirm diagnostics show optional dependency status without crashing.
 - Confirm local model runtime and model path are configured when local model
   mode is selected.
+- Confirm worker Python and worker script paths are configured only for a
+  future worker-process mode and are not executed by current diagnostics.
 - Confirm endpoint URL is loopback-only when advanced endpoint mode is selected.
 - Confirm any local server is user-managed and reachable only on loopback, if
   used.

@@ -31,12 +31,21 @@ an advanced/developer loopback option, not the main product path.
 
 ## Supporting Milestone: Local Model Runtime Direction and Scaffold
 
-- Status: Implemented as a safe scaffold in `src/ocr/local_model.py` with runtime design documentation in `docs/runtime/local_model_ocr_runtime.md`; real inference is still future work.
+- Status: Implemented as a safe scaffold in `src/ocr/local_model.py` with runtime design documentation in `docs/runtime/local_model_ocr_runtime.md`; runtime settings and readiness diagnostics are implemented, but real inference is still future work.
 - Goal: Make user-owned local model execution the primary future advanced OCR path.
 - Non-goals: No real Unlimited-OCR inference, model download, AI runtime dependency, server process, endpoint call, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
 - Acceptance criteria: Backend scaffold fits `OcrBackend`, requires valid advanced OCR consent, imports no heavy AI runtime, downloads no model, and reports runtime/model-not-configured errors clearly.
 - Required tests: Unit tests for consent gating, clean unavailable errors, workflow selection, and no torch/transformers/SGLang imports.
 - Safety/privacy checks: Future local model execution must stay on the user's computer, require explicit consent for model download/custom code/GPU use, and avoid OCR content in logs/reports.
+
+## Supporting Milestone: Local Model Runtime Settings and Readiness
+
+- Status: Implemented as safe configuration, Settings / Recent affordances, diagnostics readiness checks, and worker-process contract documentation.
+- Goal: Make the local model runtime path concrete and testable without real model inference.
+- Non-goals: No model download, real Unlimited-OCR inference, worker process execution, server management, endpoint call, heavy dependency import, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Defaults keep runtime disabled; settings store only safe runtime fields; Settings UI states that real inference is future work; diagnostics report disabled/configured/path readiness as warning/info; backend returns clear disabled/not-configured errors.
+- Required tests: Config defaults/load/save/clear, forbidden-content exclusion from config, diagnostics disabled/missing/configured paths, backend consent/unavailable behavior, settings save/reset, and no heavy imports.
+- Safety/privacy checks: Settings do not store OCR text, source paths, document content, rendered page paths, image bytes/base64, or output contents.
 
 ## 3. Developer-Only Document OCR UI Wiring
 

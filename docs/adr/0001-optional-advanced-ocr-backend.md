@@ -128,6 +128,23 @@ as the main product direction.
 - Local endpoint remains available only as an advanced/developer loopback
   scaffold and is not the main user-facing architecture.
 
+## Implemented Follow-Up: Local Model Runtime Settings and Readiness
+
+- Local model runtime configuration now stores only safe future-readiness
+  fields: enabled flag, runtime mode, model id, local model folder path, Python
+  executable path, and worker script path.
+- Defaults keep local model OCR disabled, and settings must not store OCR text,
+  document content, source file paths, image bytes/base64, rendered page paths,
+  or output contents.
+- Settings / Recent now exposes a minimal experimental local model runtime
+  section without model download, server start, or inference actions.
+- Diagnostics report disabled/configured state and local path readiness without
+  downloading models, starting workers, or importing heavy AI runtimes at app
+  startup.
+- `docs/runtime/local_model_worker_contract.md` documents the future
+  worker-process contract for request payloads, temporary file cleanup,
+  response/error shapes, timeout/cancel behavior, and logging restrictions.
+
 ## Implemented Follow-Up: Local Endpoint Hardening
 
 - The local endpoint scaffold now validates mocked response shape more strictly:

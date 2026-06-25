@@ -128,8 +128,9 @@ Tesseract remains the default OCR Text engine for PDF to Word. Any future real
 AI OCR backend must stay local-first, run on user-owned local runtime paths,
 require explicit consent, document model download and custom-code risks, and
 avoid uploading user files, rendered pages, or OCR text. Settings / Recent
-includes consent management for this future optional capability, but saving
-consent does not enable real AI OCR inference in the current app.
+includes consent management and safe local model runtime settings for this
+future optional capability, but saving consent or runtime paths does not enable
+real AI OCR inference in the current app.
 
 For development and UI-flow testing only, setting
 `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes the hidden `[Dev] Document OCR Shell`.

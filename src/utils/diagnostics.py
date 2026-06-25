@@ -15,6 +15,13 @@ from typing import Iterable, List
 from .file_ops import get_default_save_dir
 from .settings import get_settings_path
 from ..ocr.local_endpoint import get_local_endpoint_url, validate_local_endpoint_url
+from ..ocr.local_model import (
+    LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+    LOCAL_MODEL_MODE_WORKER_PROCESS,
+    LocalModelRuntimeConfig,
+    load_local_model_runtime_config,
+)
 
 
 @dataclass
@@ -67,6 +74,8 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
     else:
         checks.append(DiagnosticCheck("Advanced OCR CUDA", "info", "not checked because torch is not installed"))
 
+    checks.extend(_local_model_runtime_checks(load_local_model_runtime_config()))
+
     cache_path = _unlimited_ocr_cache_path()
     checks.append(
         DiagnosticCheck(
@@ -96,6 +105,85 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
             )
         )
     return checks
+
+
+def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[DiagnosticCheck]:
+    checks: List[DiagnosticCheck] = []
+    if not config.enabled or config.mode == LOCAL_MODEL_MODE_DISABLED:
+        return [
+            DiagnosticCheck(
+                "Advanced OCR local model runtime",
+                "info",
+                "disabled",
+                "Enable only after installing a reviewed local model runtime. Real inference is not implemented yet.",
+            )
+        ]
+
+    checks.append(
+        DiagnosticCheck(
+            "Advanced OCR local model runtime",
+            "warning",
+            f"{config.mode} configured; real inference is not implemented yet",
+            "This configuration is for future local runtime readiness only.",
+        )
+    )
+    checks.append(
+        _path_readiness_check(
+            "Advanced OCR local model path",
+            config.model_path,
+            expect_file=False,
+        )
+    )
+    if config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
+        checks.append(
+            _path_readiness_check(
+                "Advanced OCR worker Python",
+                config.python_executable,
+                expect_file=True,
+            )
+        )
+        checks.append(
+            _path_readiness_check(
+                "Advanced OCR worker script",
+                config.worker_script_path,
+                expect_file=True,
+            )
+        )
+    elif config.mode == LOCAL_MODEL_MODE_IN_PROCESS_FUTURE:
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR in-process runtime",
+                "warning",
+                "selected for future review only; not implemented",
+                "Use only after security and dependency review.",
+            )
+        )
+    else:
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR local model mode",
+                "warning",
+                f"unsupported mode: {config.mode}",
+            )
+        )
+    return checks
+
+
+def _path_readiness_check(
+    name: str,
+    value: str | None,
+    *,
+    expect_file: bool,
+) -> DiagnosticCheck:
+    if not value:
+        return DiagnosticCheck(name, "warning", "not configured")
+    path = Path(value)
+    exists = path.is_file() if expect_file else path.exists()
+    return DiagnosticCheck(
+        name,
+        "info" if exists else "warning",
+        f"{path} exists" if exists else f"{path} not found",
+    )
 
 
 def _torch_readiness_checks() -> List[DiagnosticCheck]:

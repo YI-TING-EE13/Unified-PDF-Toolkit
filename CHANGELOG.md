@@ -16,6 +16,7 @@
 - Added Document OCR production UI design review and readiness checklist documentation.
 - Added Document OCR fake-backend smoke test plan and manual run template documentation.
 - Pivoted advanced OCR direction toward a user-owned local model runtime and added a safe local model backend scaffold without real inference or AI runtime dependencies.
+- Added safe local model OCR runtime settings, readiness diagnostics, and worker-process contract documentation without enabling real inference.
 
 ## 0.5.0 - 2026-06-19
 

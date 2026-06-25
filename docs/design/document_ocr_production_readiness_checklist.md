@@ -55,6 +55,10 @@ not a hosted OCR service.
 - [ ] Custom model code or `trust_remote_code` requires explicit acknowledgement.
 - [ ] Missing local runtime, missing model path, missing GPU, or insufficient
   VRAM produce user-safe errors.
+- [ ] Local model runtime settings default to disabled and saving paths does
+  not start a worker, download a model, or enable real inference by itself.
+- [ ] Future worker-process request/response behavior matches
+  `docs/runtime/local_model_worker_contract.md`.
 - [ ] Heavy AI libraries are not imported at app startup.
 
 ## Endpoint Loopback Enforcement
@@ -94,6 +98,8 @@ If local endpoint mode is exposed:
 - [ ] Model cache presence is best-effort and failure-safe.
 - [ ] Endpoint URL validity is reported without sending document content.
 - [ ] Endpoint reachability, if checked, is explicit and short-timeout.
+- [ ] Local model runtime path readiness is reported without starting a worker
+  process or importing torch, transformers, SGLang, CUDA, or model code.
 
 ## Output Correctness
 
