@@ -26,6 +26,12 @@ from src.ocr.local_endpoint import (
     set_local_endpoint_url,
     validate_local_endpoint_url,
 )
+from src.ocr.local_model import (
+    LOCAL_MODEL_MODEL_ID,
+    LOCAL_MODEL_PROVIDER,
+    LocalModelOcrBackend,
+    LocalModelRuntimeConfig,
+)
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
     UNLIMITED_OCR_MODEL_ID,
@@ -338,6 +344,62 @@ class LocalEndpointBackendTests(unittest.TestCase):
             self.assertEqual(get_local_endpoint_url(), "http://127.0.0.1:9999")
             with self.assertRaises(ValueError):
                 set_local_endpoint_url("http://example.com:9999")
+
+
+class LocalModelBackendTests(unittest.TestCase):
+    def _valid_consent(self) -> AdvancedOcrConsent:
+        return AdvancedOcrConsent.create(
+            provider=LOCAL_MODEL_PROVIDER,
+            model_id=LOCAL_MODEL_MODEL_ID,
+            acknowledged_model_download_risk=True,
+            acknowledged_custom_code_risk=True,
+            acknowledged_gpu_vram_use=True,
+            acknowledged_temporary_page_images=True,
+        )
+
+    def test_local_model_requires_valid_consent(self):
+        backend = LocalModelOcrBackend()
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+        )
+
+        with self.assertRaises(OcrConsentRequiredError):
+            backend.recognize(request)
+
+    def test_local_model_reports_runtime_or_model_not_configured(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+        )
+        cases = [
+            (
+                LocalModelRuntimeConfig(),
+                "runtime is not installed or configured",
+            ),
+            (
+                LocalModelRuntimeConfig(runtime_path="C:/runtime/python.exe"),
+                "model path is not configured",
+            ),
+            (
+                LocalModelRuntimeConfig(mode="remote_server"),
+                "runtime mode is unsupported",
+            ),
+        ]
+
+        for config, expected in cases:
+            with self.subTest(expected=expected):
+                backend = LocalModelOcrBackend(
+                    consent=self._valid_consent(),
+                    config=config,
+                )
+                with self.assertRaises(OcrBackendUnavailableError) as raised:
+                    backend.recognize(request)
+                self.assertIn(expected, str(raised.exception))
+
+    def test_importing_local_model_does_not_import_heavy_ai_modules(self):
+        for name in ("torch", "transformers", "sglang"):
+            self.assertNotIn(name, sys.modules)
 
 
 class AdvancedOcrConsentTests(unittest.TestCase):

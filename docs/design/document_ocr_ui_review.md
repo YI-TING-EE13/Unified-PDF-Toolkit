@@ -11,6 +11,10 @@ Unlimited-OCR inference, download models, start servers, call endpoints, add AI
 runtime dependencies, add screen OCR, add background OCR, upload files, or add
 Batch Queue integration.
 
+The intended future AI OCR product direction is local model execution on the
+user's own computer. Unified PDF Toolkit should not become a hosted OCR service
+and does not plan to operate a server for user documents.
+
 ## Current Dev-Only Status
 
 The current Document OCR shell is hidden unless
@@ -85,8 +89,11 @@ Production UI must present only reviewed backends.
 Possible future choices:
 
 - Tesseract fallback or existing Tesseract OCR path.
-- Local endpoint backend for a user-managed loopback-only OCR server.
+- Local model backend running on the user's own computer.
+- Worker-process local model runtime as the preferred first real AI path.
 - In-process Transformers backend only after separate security approval.
+- Local endpoint backend only as an advanced/developer loopback option for a
+  user-managed local OCR runtime.
 
 Do not expose yet:
 
@@ -97,6 +104,7 @@ Do not expose yet:
 - Public internet endpoint targets.
 - SGLang/vLLM/Transformers server launchers.
 - Unreviewed local endpoint calls.
+- Hosted OCR service choices.
 
 The local endpoint option, if added, must:
 
@@ -199,6 +207,8 @@ Production UI copy should clearly state:
 
 - Processing is local-first.
 - The app does not upload files or OCR text for this feature.
+- Future AI OCR is intended to run on the user's own computer.
+- The project does not operate a hosted OCR server for users.
 - Local endpoint mode, if enabled, is loopback-only.
 - User-managed model runtimes are optional and not bundled in the default app.
 - Tesseract remains the default existing OCR path unless the user opts into an

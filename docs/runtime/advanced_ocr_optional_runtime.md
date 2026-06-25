@@ -3,7 +3,7 @@
 This guide documents the intended packaging and installation boundary for future
 advanced local AI OCR runtimes. It is documentation only. Unified PDF Toolkit
 does not currently include real Unlimited-OCR inference, model downloads, GPU
-runtime packages, or a production AI OCR server.
+runtime packages, a hosted OCR service, or a production AI OCR server.
 
 ## Default Install Remains Lightweight
 
@@ -33,7 +33,8 @@ later reviewed packaging decision explicitly changes this policy.
 
 ## User-Managed Optional Runtime
 
-Any future advanced OCR runtime is expected to be user-managed:
+Any future advanced OCR runtime is expected to be user-managed and local to the
+user's own computer:
 
 - Users or developers install optional runtime dependencies outside the default
   app dependency set.
@@ -46,10 +47,29 @@ Any future advanced OCR runtime is expected to be user-managed:
 
 ## Supported Future Modes
 
-### Local Endpoint Mode
+### Local Model Runtime Mode
+
+The preferred future product direction is local model execution on the user's
+own machine, not a hosted endpoint service.
+
+Expected properties:
+
+- The model/runtime is optional.
+- The app does not upload files, rendered pages, or OCR text.
+- The app does not operate a server for users.
+- A future worker-process runtime is preferred for first real integration.
+- In-process runtime is allowed only after security and dependency review.
+- Model downloads and custom model code require explicit consent.
+- Missing runtime/model/GPU produces user-safe errors.
+
+See `docs/runtime/local_model_ocr_runtime.md` for the local model runtime
+design.
+
+### Advanced Local Endpoint Mode
 
 The current scaffold supports a future local endpoint client. It is intended for
-user-managed local OCR servers only.
+advanced/developer use with user-managed local OCR servers only. It is not the
+main product path and must not become a hosted or shared OCR service.
 
 Expected properties:
 
@@ -144,8 +164,11 @@ Use this checklist for future optional runtime issues:
 - Confirm the default app starts without optional AI runtime packages.
 - Confirm advanced OCR consent is valid for the selected provider/model/version.
 - Confirm diagnostics show optional dependency status without crashing.
-- Confirm endpoint URL is loopback-only when endpoint mode is selected.
-- Confirm local server is user-managed and reachable only on loopback, if used.
+- Confirm local model runtime and model path are configured when local model
+  mode is selected.
+- Confirm endpoint URL is loopback-only when advanced endpoint mode is selected.
+- Confirm any local server is user-managed and reachable only on loopback, if
+  used.
 - Confirm model cache exists only if the selected backend requires it.
 - Confirm GPU driver/runtime versions match the future backend documentation.
 - Confirm output folder is writable.
@@ -164,5 +187,5 @@ Future runtime rollback must support:
 - Stopping any user-managed local OCR server outside the app.
 - Preserving existing PDF tools and default install behavior.
 
-The app should not manage server lifecycle or delete user-managed model caches
+The app should not delete user-managed model caches or manage server lifecycle
 without an explicit future design and user confirmation.

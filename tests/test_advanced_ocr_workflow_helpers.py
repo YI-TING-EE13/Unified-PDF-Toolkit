@@ -13,6 +13,11 @@ from src.ocr.local_endpoint import (
     LOCAL_ENDPOINT_PROVIDER,
     DEFAULT_LOCAL_ENDPOINT_URL,
 )
+from src.ocr.local_model import (
+    LOCAL_MODEL_MODEL_ID,
+    LOCAL_MODEL_PROVIDER,
+    LocalModelOcrBackend,
+)
 from src.ocr.models import OcrPageResult, OcrResult
 from src.ocr.unlimited_fake import UNLIMITED_OCR_MODEL_ID, UNLIMITED_OCR_PROVIDER
 from src.ocr.workflow import (
@@ -20,6 +25,7 @@ from src.ocr.workflow import (
     AdvancedOcrBackendSelection,
     create_backend_for_selection,
     fake_backend_selection,
+    local_model_future_selection,
     local_endpoint_mock_selection,
     normalise_output_formats,
     provider_model_for_selection,
@@ -52,6 +58,17 @@ def _endpoint_consent() -> AdvancedOcrConsent:
     )
 
 
+def _local_model_consent() -> AdvancedOcrConsent:
+    return AdvancedOcrConsent.create(
+        provider=LOCAL_MODEL_PROVIDER,
+        model_id=LOCAL_MODEL_MODEL_ID,
+        acknowledged_model_download_risk=True,
+        acknowledged_custom_code_risk=True,
+        acknowledged_gpu_vram_use=True,
+        acknowledged_temporary_page_images=True,
+    )
+
+
 class AdvancedOcrWorkflowHelperTests(unittest.TestCase):
     def test_backend_selection_provider_model_mapping(self):
         self.assertEqual(
@@ -67,17 +84,32 @@ class AdvancedOcrWorkflowHelperTests(unittest.TestCase):
             ),
             (LOCAL_ENDPOINT_PROVIDER, LOCAL_ENDPOINT_MODEL_ID),
         )
+        self.assertEqual(
+            provider_model_for_selection(local_model_future_selection()),
+            (LOCAL_MODEL_PROVIDER, LOCAL_MODEL_MODEL_ID),
+        )
 
     def test_consent_gate_allows_matching_and_rejects_missing_or_wrong_consent(self):
         require_consent_for_selection(_fake_consent(), fake_backend_selection())
+        require_consent_for_selection(_local_model_consent(), local_model_future_selection())
 
         with self.assertRaises(OcrConsentRequiredError):
             require_consent_for_selection(None, fake_backend_selection())
+        with self.assertRaises(OcrConsentRequiredError):
+            require_consent_for_selection(_endpoint_consent(), local_model_future_selection())
         with self.assertRaises(OcrConsentRequiredError):
             require_consent_for_selection(_fake_consent(), local_endpoint_mock_selection(
                 endpoint_url=DEFAULT_LOCAL_ENDPOINT_URL,
                 transport=lambda url, payload, timeout: {"pages": []},
             ))
+
+    def test_local_model_future_selection_creates_scaffold_backend(self):
+        backend = create_backend_for_selection(
+            local_model_future_selection(),
+            consent=_local_model_consent(),
+        )
+
+        self.assertIsInstance(backend, LocalModelOcrBackend)
 
     def test_local_endpoint_selection_requires_mock_transport(self):
         selection = AdvancedOcrBackendSelection(
@@ -158,6 +190,14 @@ class AdvancedOcrWorkflowHelperTests(unittest.TestCase):
                 OcrBackendUnavailableError("Local OCR endpoint request timed out.")
             ),
             "The selected OCR backend timed out.",
+        )
+        self.assertEqual(
+            user_safe_ocr_error_message(
+                OcrBackendUnavailableError(
+                    "Local AI OCR model runtime is not installed or configured."
+                )
+            ),
+            "The local AI OCR model runtime is not installed or configured.",
         )
         self.assertEqual(
             user_safe_ocr_error_message(RuntimeError("C:/secret/source.pdf")),

@@ -6,6 +6,11 @@ milestone explicitly changes user-facing options.
 
 Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 
+Primary future direction: optional local AI OCR should run on the user's own
+computer. This project does not plan a hosted OCR service, cloud upload path, or
+project-operated server for user documents. The local endpoint scaffold remains
+an advanced/developer loopback option, not the main product path.
+
 ## 1. Consent UI and Settings Persistence
 
 - Status: Implemented for future-use consent management; no real AI OCR execution enabled.
@@ -17,12 +22,21 @@ Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 
 ## 2. Local Endpoint Client Backend
 
-- Status: Implemented as a localhost-only backend scaffold and hardened with mock-only request/response validation; no real server is started or required.
+- Status: Implemented as a localhost-only backend scaffold and hardened with mock-only request/response validation; retained as an advanced/developer loopback option, not the primary product direction.
 - Goal: Add an optional backend client for future Unlimited-OCR-compatible local servers.
 - Non-goals: No hosted endpoint defaults, remote upload support, server launcher, or public-network target.
 - Acceptance criteria: Endpoint defaults to `127.0.0.1` only and refuses non-loopback addresses unless a later reviewed policy allows them.
 - Required tests: Mock HTTP/client tests with no live network dependency.
 - Safety/privacy checks: No user files, rendered pages, or OCR text leave localhost by default.
+
+## Supporting Milestone: Local Model Runtime Direction and Scaffold
+
+- Status: Implemented as a safe scaffold in `src/ocr/local_model.py` with runtime design documentation in `docs/runtime/local_model_ocr_runtime.md`; real inference is still future work.
+- Goal: Make user-owned local model execution the primary future advanced OCR path.
+- Non-goals: No real Unlimited-OCR inference, model download, AI runtime dependency, server process, endpoint call, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Backend scaffold fits `OcrBackend`, requires valid advanced OCR consent, imports no heavy AI runtime, downloads no model, and reports runtime/model-not-configured errors clearly.
+- Required tests: Unit tests for consent gating, clean unavailable errors, workflow selection, and no torch/transformers/SGLang imports.
+- Safety/privacy checks: Future local model execution must stay on the user's computer, require explicit consent for model download/custom code/GPU use, and avoid OCR content in logs/reports.
 
 ## 3. Developer-Only Document OCR UI Wiring
 

@@ -118,23 +118,24 @@ fidelity matters more than editability.
 ### Experimental Advanced Local AI OCR Architecture
 
 The codebase includes early architecture for an optional future advanced local
-AI OCR backend inspired by Baidu Unlimited-OCR. This is not real Unlimited-OCR
-inference yet: the default app does not download models, does not import
-Transformers or torch at startup, and does not add GPU/CUDA dependencies to the
-default install.
+AI OCR backend inspired by Baidu Unlimited-OCR. The intended future path is a
+model runtime on the user's own computer, not a hosted OCR service or cloud
+upload feature. This is not real Unlimited-OCR inference yet: the default app
+does not download models, does not import Transformers or torch at startup, and
+does not add GPU/CUDA dependencies to the default install.
 
 Tesseract remains the default OCR Text engine for PDF to Word. Any future real
-AI OCR backend must stay local-first, require explicit consent, document model
-download and custom-code risks, and avoid uploading user files, rendered pages,
-or OCR text. Settings / Recent includes consent management for this future
-optional capability, but saving consent does not enable real AI OCR inference in
-the current app.
+AI OCR backend must stay local-first, run on user-owned local runtime paths,
+require explicit consent, document model download and custom-code risks, and
+avoid uploading user files, rendered pages, or OCR text. Settings / Recent
+includes consent management for this future optional capability, but saving
+consent does not enable real AI OCR inference in the current app.
 
 For development and UI-flow testing only, setting
-`PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes a hidden fake AI OCR test workflow. It
-uses deterministic placeholder output from the fake backend, requires the same
-advanced OCR consent record, and still performs no real Unlimited-OCR inference,
-model download, endpoint call, GPU execution, or network upload.
+`PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes the hidden `[Dev] Document OCR Shell`.
+It uses deterministic placeholder output from the fake backend, requires the
+same advanced OCR consent record, and still performs no real Unlimited-OCR
+inference, model download, endpoint call, GPU execution, or network upload.
 
 ## Requirements
 

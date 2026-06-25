@@ -7,6 +7,7 @@ from .exceptions import (
     OcrError,
 )
 from .local_endpoint import LocalEndpointOcrBackend
+from .local_model import LocalModelOcrBackend, LocalModelRuntimeConfig
 from .models import OcrEngine, OcrPageResult, OcrRequest, OcrResult
 from .registry import get_backend, list_backends, register_backend
 
@@ -20,6 +21,8 @@ __all__ = [
     "OcrRequest",
     "OcrResult",
     "LocalEndpointOcrBackend",
+    "LocalModelOcrBackend",
+    "LocalModelRuntimeConfig",
     "get_backend",
     "list_backends",
     "register_backend",

@@ -6,6 +6,8 @@ Use this checklist before exposing any Document OCR tool outside
 This checklist is a release gate. Passing it does not by itself approve real
 Unlimited-OCR inference, model download, GPU runtime bundling, remote endpoint
 support, screen OCR, background OCR, file upload, or Batch Queue integration.
+The intended AI OCR direction is local model execution on the user's computer,
+not a hosted OCR service.
 
 ## Feature Exposure
 
@@ -40,6 +42,20 @@ support, screen OCR, background OCR, file upload, or Batch Queue integration.
 - [ ] No screen capture, screen OCR, global hotkey, or background OCR is
   exposed.
 - [ ] Any endpoint mode is explicitly local and loopback-only.
+- [ ] No hosted OCR service or project-operated user OCR server is presented as
+  an option.
+
+## Local Model Runtime Direction
+
+- [ ] The primary future AI OCR path is local model execution on the user's own
+  computer.
+- [ ] Local model runtime dependencies remain optional and outside the default
+  install.
+- [ ] Model downloads require explicit user action and consent.
+- [ ] Custom model code or `trust_remote_code` requires explicit acknowledgement.
+- [ ] Missing local runtime, missing model path, missing GPU, or insufficient
+  VRAM produce user-safe errors.
+- [ ] Heavy AI libraries are not imported at app startup.
 
 ## Endpoint Loopback Enforcement
 

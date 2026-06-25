@@ -2,15 +2,22 @@
 
 This document describes the intended high-level contract for the scaffolded
 local OCR endpoint backend. It is not a production server specification, and the
-project does not currently include or launch a real OCR server.
+project does not currently include, launch, or operate a real OCR server.
+
+The primary future advanced OCR product direction is a local model runtime on
+the user's own computer. This endpoint contract is retained only for
+advanced/developer loopback integrations and user-managed local runtime
+experiments.
 
 ## Status
 
 - Client scaffold exists for future local endpoint integration.
+- Endpoint mode is not the primary product direction.
 - No production server is included.
 - No real Unlimited-OCR inference is implemented.
 - No endpoint is called by default.
 - No server process is started or managed by the app.
+- No hosted/shared OCR service is planned.
 
 ## Endpoint Locality
 

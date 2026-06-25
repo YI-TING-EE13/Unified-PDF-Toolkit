@@ -17,6 +17,8 @@ Implemented today:
 - Tesseract backend wrapper used by the existing PDF to Word OCR Text path.
 - Fake Unlimited-OCR backend for tests and developer-only workflow wiring.
 - Consent records, settings persistence, and Settings / Recent consent UI.
+- Local model backend scaffold for future user-owned Baidu Unlimited-OCR-
+  compatible runtime.
 - Local endpoint backend scaffold with loopback-only URL validation.
 - Developer-only Document OCR UI shell gated by
   `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`.
@@ -34,6 +36,7 @@ Not implemented today:
 - Model download.
 - Production local OCR server.
 - In-process Transformers runtime.
+- Hosted OCR service or project-operated OCR server.
 - AI OCR / Document OCR production sidebar tool.
 - Batch Queue AI OCR jobs.
 - Screen OCR, background OCR, global hotkeys, or automatic capture.
@@ -48,6 +51,8 @@ Not implemented today:
   through Settings / Recent.
 - Local endpoint scaffold: validates loopback-only endpoints and supports
   mockable request/response tests with strict response-shape validation.
+- Local model scaffold: represents the preferred future local AI OCR runtime
+  path without importing AI runtimes, downloading models, or running inference.
 - Developer Document OCR shell: hidden dev tool exercises file selection,
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
@@ -66,6 +71,9 @@ Not implemented today:
 - `src/ocr/unlimited_fake.py`: deterministic fake backend for tests/dev wiring.
   It must not import AI runtimes or download models.
 - `src/ocr/consent.py`: consent model, validation, load/save/reset helpers.
+- `src/ocr/local_model.py`: preferred future local model backend scaffold.
+  It must not import AI runtimes, download models, or run real inference until
+  reviewed local runtime support exists.
 - `src/ocr/local_endpoint.py`: localhost-only endpoint client scaffold.
 - `src/ocr/workflow.py`: mock-only advanced OCR workflow helpers for backend
   selection, consent gating, input loading, TXT/Markdown output writing, and
@@ -82,6 +90,8 @@ Not implemented today:
 - `docs/security/advanced_ocr_security_review.md`: threat model and release
   gates.
 - `docs/runtime/advanced_ocr_optional_runtime.md`: optional runtime boundary.
+- `docs/runtime/local_model_ocr_runtime.md`: primary future local model runtime
+  architecture.
 - `docs/runtime/local_ocr_endpoint_contract.md`: future endpoint contract.
 - `docs/design/document_ocr_ui_review.md`: production Document OCR UX and
   release-gate review.
@@ -97,10 +107,10 @@ Not implemented today:
 | Category | Current state |
 | --- | --- |
 | Production behavior | Tesseract-backed PDF to Word OCR Text remains the only real OCR path. |
-| Scaffold | OCR backend abstraction, consent model, diagnostics, local endpoint client. |
+| Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
-| Not supported | Real Unlimited-OCR inference, GPU OCR, model download, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
+| Not supported | Real Unlimited-OCR inference, GPU OCR, model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
 
@@ -185,6 +195,26 @@ This helper layer is not a production Document OCR feature. It is intended to
 let future UI work share backend selection, consent, output, and error handling
 without adding real inference or live endpoint calls.
 
+## Local Model Runtime Direction
+
+The preferred future advanced OCR path is local model execution on the user's
+own computer. Unified PDF Toolkit should not become a hosted OCR service, and
+the project does not plan to operate a server for users.
+
+`src/ocr/local_model.py` currently provides only a scaffold:
+
+- `LocalModelOcrBackend`
+- `LocalModelRuntimeConfig`
+- provider/model constants for the future Baidu Unlimited-OCR-compatible path
+
+The scaffold requires advanced OCR consent and then reports runtime/model
+configuration errors. It does not import torch, transformers, SGLang, CUDA, or
+model code; it does not download models and does not run inference.
+
+Future real local model support should prefer a worker process first. An
+in-process runtime is allowed only after security, dependency, packaging, and
+manual GPU acceptance review.
+
 ## Production Document OCR UI Review
 
 Production Document OCR is still future work. The release-gate design review is
@@ -214,7 +244,8 @@ OCR.
 ## Local Endpoint Backend Scaffold
 
 The local endpoint backend is a client scaffold for future user-managed local
-OCR servers. It is not production OCR support.
+OCR servers. It is not production OCR support and is not the primary advanced
+OCR product direction.
 
 It does:
 
@@ -257,6 +288,7 @@ states, not app startup failures.
 Keep these boundaries intact:
 
 - No external upload by default.
+- No hosted OCR service or project-operated user OCR server.
 - No source file paths sent to OCR endpoints.
 - No OCR text, rendered image bytes, base64 payloads, or document content in
   logs, diagnostics, or workflow reports by default.
@@ -308,6 +340,7 @@ Do not claim:
 - The app bundles AI models or a GPU runtime.
 - Endpoint OCR is production-ready.
 - A production local OCR server is included.
+- The project operates an OCR server for users.
 - Screen OCR exists.
 - Background OCR exists.
 - Batch Queue supports AI OCR.
@@ -319,13 +352,14 @@ Do not claim:
 | Future item | Prerequisites | Main risks | Recommended order |
 | --- | --- | --- | --- |
 | Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
-| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 2 |
+| Local model runtime scaffold hardening | Local model runtime design, security checklist, fake smoke tests, consent tests | Dependency bloat, model download risk, custom-code execution risk | 2 |
 | AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke | User confusion, OCR text in reports, partial output handling | 3 |
-| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 4 |
-| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 5 |
-| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 6 |
+| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 4 |
+| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 5 |
+| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 6 |
+| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 7 |
 
 Recommended next milestone: build a hidden or explicitly developer-only
 Document OCR UI shell using `src/ocr/workflow.py`, the fake backend, and mocked
-local endpoint transport before any production endpoint or model runtime is
+local model scaffold before any production endpoint or real model runtime is
 introduced.

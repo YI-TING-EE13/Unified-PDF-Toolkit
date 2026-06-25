@@ -15,10 +15,17 @@ Baidu Unlimited-OCR is treated as a future optional backend, not a replacement
 for Tesseract. This MVP creates the architecture, consent model, diagnostics,
 and test wiring only. It does not run the real model.
 
+The primary future advanced OCR path is local model execution on the user's own
+computer. Unified PDF Toolkit is not planning a hosted OCR service, cloud OCR
+upload path, or project-operated OCR server for user documents. The local
+endpoint scaffold is retained only as an advanced/developer loopback option, not
+as the main product direction.
+
 ## Privacy and Security Boundaries
 
 - User files, rendered page images, screenshots, and OCR text must not be
   uploaded by default.
+- No hosted OCR service or project-operated server for user documents.
 - No automatic screen capture, screen OCR, global hotkeys, background OCR, or
   ambient monitoring.
 - OCR text and rendered page images must not be written to logs or workflow
@@ -61,6 +68,9 @@ and test wiring only. It does not run the real model.
   Tesseract backend while preserving the current public behavior.
 - Keep heavy optional AI imports out of app startup and out of default
   dependencies.
+- Prefer a future local model backend running on the user's machine. A separate
+  worker process is the preferred first real-runtime direction; in-process
+  execution requires separate security and dependency approval.
 - Extend diagnostics with optional advanced OCR readiness checks that never
   require GPU, CUDA, model cache, torch, transformers, internet, or model
   downloads.
@@ -68,9 +78,9 @@ and test wiring only. It does not run the real model.
 ## Future Phases
 
 1. Add a real consent UI and settings persistence for advanced local AI OCR.
-2. Add optional installation documentation for the selected AI runtime.
-3. Add a real backend behind the same `OcrBackend` contract only after consent,
-   dependency, and GPU readiness gates are implemented.
+2. Add optional installation documentation for the selected local model runtime.
+3. Add a real local model backend behind the same `OcrBackend` contract only
+   after consent, dependency, security, and GPU readiness gates are implemented.
 4. Add GPU/manual acceptance tests outside CI.
 5. Consider a separate AI OCR tool or Batch Queue jobs only after the backend is
    stable and clearly marked experimental.
@@ -91,6 +101,8 @@ and test wiring only. It does not run the real model.
 
 - A localhost-only endpoint backend scaffold now supports future user-managed
   OCR servers through the shared `OcrBackend` contract.
+- This is an advanced/developer loopback option, not the primary product
+  direction and not a hosted service.
 - The default endpoint is `http://127.0.0.1:<port>` style, and validation
   rejects non-http schemes, missing ports, non-loopback hosts, `0.0.0.0`,
   private LAN IPs, public IPs/domains, credentials, query strings, and malformed
@@ -101,6 +113,20 @@ and test wiring only. It does not run the real model.
 - The app still does not start servers, run real Unlimited-OCR inference,
   download models, add AI runtime dependencies, upload files, or add AI OCR
   sidebar/batch workflows.
+
+## Implemented Follow-Up: Local Model Backend Scaffold
+
+- `src/ocr/local_model.py` now defines the preferred future local model backend
+  boundary for Baidu Unlimited-OCR-compatible execution on the user's own
+  computer.
+- The scaffold fits the existing `OcrBackend` contract, requires valid advanced
+  OCR consent, and reports runtime/model-not-configured errors.
+- The scaffold does not import torch, transformers, SGLang, CUDA helpers, or
+  model code; it does not download models and does not run inference.
+- Workflow backend selection can represent the future local model path without
+  invoking real runtime execution.
+- Local endpoint remains available only as an advanced/developer loopback
+  scaffold and is not the main user-facing architecture.
 
 ## Implemented Follow-Up: Local Endpoint Hardening
 

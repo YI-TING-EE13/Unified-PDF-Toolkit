@@ -15,6 +15,7 @@
 - Added a hidden dev-only Document OCR UI shell for fake-backend workflow testing without real model inference or live endpoint calls.
 - Added Document OCR production UI design review and readiness checklist documentation.
 - Added Document OCR fake-backend smoke test plan and manual run template documentation.
+- Pivoted advanced OCR direction toward a user-owned local model runtime and added a safe local model backend scaffold without real inference or AI runtime dependencies.
 
 ## 0.5.0 - 2026-06-19
 

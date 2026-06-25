@@ -15,6 +15,7 @@ class OcrEngine(str, Enum):
 
     TESSERACT = "tesseract"
     UNLIMITED_OCR_FAKE = "unlimited_ocr_fake"
+    LOCAL_MODEL = "local_model"
     LOCAL_ENDPOINT = "local_endpoint"
 
 

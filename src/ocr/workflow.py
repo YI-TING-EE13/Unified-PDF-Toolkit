@@ -1,8 +1,8 @@
 """Reusable advanced OCR workflow helpers for future UI wiring.
 
-The local endpoint path in this module is mock-only by default. It requires an
-injected transport and does not call a real server unless a future reviewed
-workflow deliberately changes that policy.
+The future production advanced OCR direction is a user-owned local model
+runtime. The endpoint path in this module remains mock-only by default and
+requires an injected transport.
 """
 
 from __future__ import annotations
@@ -29,6 +29,12 @@ from .local_endpoint import (
     LOCAL_ENDPOINT_PROVIDER,
     LocalEndpointOcrBackend,
 )
+from .local_model import (
+    LOCAL_MODEL_MODEL_ID,
+    LOCAL_MODEL_PROVIDER,
+    LocalModelOcrBackend,
+    LocalModelRuntimeConfig,
+)
 from .models import OcrEngine, OcrRequest, OcrResult
 from .unlimited_fake import (
     UNLIMITED_OCR_MODEL_ID,
@@ -47,6 +53,7 @@ class AdvancedOcrBackendChoice(str, Enum):
     """Safe backend choices for mock-only advanced OCR workflow wiring."""
 
     FAKE_UNLIMITED = "fake_unlimited"
+    LOCAL_MODEL_FUTURE = "local_model_future"
     LOCAL_ENDPOINT_MOCK = "local_endpoint_mock"
 
 
@@ -57,6 +64,7 @@ class AdvancedOcrBackendSelection:
     choice: AdvancedOcrBackendChoice
     endpoint_url: str | None = None
     transport: EndpointTransport | None = None
+    local_model_config: LocalModelRuntimeConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +96,22 @@ def fake_backend_selection() -> AdvancedOcrBackendSelection:
     return AdvancedOcrBackendSelection(AdvancedOcrBackendChoice.FAKE_UNLIMITED)
 
 
+def local_model_future_selection(
+    *,
+    config: LocalModelRuntimeConfig | None = None,
+) -> AdvancedOcrBackendSelection:
+    """Return the future local model selection.
+
+    This selection creates only the safe scaffold backend. It does not import AI
+    runtimes, download models, or run real inference.
+    """
+
+    return AdvancedOcrBackendSelection(
+        AdvancedOcrBackendChoice.LOCAL_MODEL_FUTURE,
+        local_model_config=config,
+    )
+
+
 def local_endpoint_mock_selection(
     *,
     endpoint_url: str,
@@ -113,6 +137,8 @@ def provider_model_for_selection(
 
     if selection.choice == AdvancedOcrBackendChoice.FAKE_UNLIMITED:
         return UNLIMITED_OCR_PROVIDER, UNLIMITED_OCR_MODEL_ID
+    if selection.choice == AdvancedOcrBackendChoice.LOCAL_MODEL_FUTURE:
+        return LOCAL_MODEL_PROVIDER, LOCAL_MODEL_MODEL_ID
     if selection.choice == AdvancedOcrBackendChoice.LOCAL_ENDPOINT_MOCK:
         return LOCAL_ENDPOINT_PROVIDER, LOCAL_ENDPOINT_MODEL_ID
     raise OcrBackendUnavailableError("Unsupported advanced OCR backend selection.")
@@ -138,6 +164,11 @@ def create_backend_for_selection(
     require_consent_for_selection(consent, selection)
     if selection.choice == AdvancedOcrBackendChoice.FAKE_UNLIMITED:
         return FakeUnlimitedOcrBackend(consent=consent)
+    if selection.choice == AdvancedOcrBackendChoice.LOCAL_MODEL_FUTURE:
+        return LocalModelOcrBackend(
+            consent=consent,
+            config=selection.local_model_config,
+        )
     if selection.choice == AdvancedOcrBackendChoice.LOCAL_ENDPOINT_MOCK:
         if selection.transport is None:
             raise OcrBackendUnavailableError(
@@ -266,6 +297,8 @@ def user_safe_ocr_error_message(exc: Exception) -> str:
         return "The selected OCR backend is missing an optional dependency."
     if isinstance(exc, OcrBackendUnavailableError):
         detail = str(exc)
+        if "Local AI OCR model" in detail:
+            return "The local AI OCR model runtime is not installed or configured."
         if "timed out" in detail:
             return "The selected OCR backend timed out."
         if "connection failed" in detail or "request failed" in detail:
