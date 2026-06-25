@@ -26,12 +26,21 @@ Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 
 ## 3. Developer-Only Fake AI OCR UI Wiring
 
-- Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; uses only the fake backend and writes local TXT/Markdown test outputs.
+- Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; now uses reusable mock-only workflow helpers for backend selection, consent gating, output writing, and error mapping.
 - Goal: Wire the fake backend into controlled UI tests so flows can be exercised without a model.
 - Non-goals: No user-facing claim that AI OCR is supported.
 - Acceptance criteria: Fake backend is clearly labeled and unavailable in release-facing normal workflows unless explicitly enabled for development.
 - Required tests: GUI or unit tests proving fake output is deterministic and local.
 - Safety/privacy checks: Fake backend must not import torch/transformers, download models, or upload data.
+
+## Supporting Milestone: Mock-Only Workflow Selection Foundation
+
+- Status: Implemented in `src/ocr/workflow.py`; supports fake backend and mocked local endpoint selection only.
+- Goal: Prepare future Document OCR UI work with shared backend selection, consent gating, local output writing, and user-safe error mapping.
+- Non-goals: No production endpoint OCR, real model inference, server execution, model download, or normal-user AI OCR sidebar.
+- Acceptance criteria: Unit tests cover backend selection, consent allowed/denied behavior, TXT/Markdown output writing, mocked endpoint workflow, and error message mapping.
+- Required tests: Mock-only tests with no live network, GPU, model, or optional AI runtime dependency.
+- Safety/privacy checks: OCR text is written only to selected local outputs; errors must not leak document content, image bytes, base64 payloads, or source paths.
 
 ## 4. GPU Acceptance Test Plan
 

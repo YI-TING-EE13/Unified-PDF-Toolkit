@@ -11,6 +11,7 @@
 - Added optional advanced OCR runtime packaging/install docs and a local endpoint contract for future user-managed runtimes.
 - Added an advanced OCR maintainer guide summarizing architecture status, boundaries, and recommended next work.
 - Hardened the local OCR endpoint scaffold with stricter mock-only response validation and sanitized transport errors.
+- Added mock-only advanced OCR workflow helpers for backend selection, consent gating, output writing, and user-safe error mapping.
 
 ## 0.5.0 - 2026-06-19
 

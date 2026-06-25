@@ -10,138 +10,28 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
-from dataclasses import dataclass, field
-from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Callable, Dict, Iterable, List, Optional, Sequence
 
-import fitz
-from PIL import Image
-
 from ...base.tool import BaseTool
-from ...ocr import OcrConsentRequiredError, OcrEngine, OcrRequest
-from ...ocr.consent import load_advanced_ocr_consent, require_valid_consent
-from ...ocr.unlimited_fake import (
-    UNLIMITED_OCR_MODEL_ID,
-    UNLIMITED_OCR_PROVIDER,
-    FakeUnlimitedOcrBackend,
+from ...ocr import OcrConsentRequiredError
+from ...ocr.consent import load_advanced_ocr_consent
+from ...ocr.workflow import (
+    AdvancedOcrOutput as FakeAiOcrOutput,
+    AdvancedOcrWorkflowResult as FakeAiOcrWorkflowResult,
+    fake_backend_selection,
+    run_advanced_ocr_workflow,
 )
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import get_default_save_dir
 from ...utils.settings import get_setting, set_setting
-from ...utils.workflow import CancellationToken, get_conflict_policy, remember_inputs
+from ...utils.workflow import CancellationToken, remember_inputs
 
 SUPPORTED_INPUT_TYPES = [
     ("PDF and Images", "*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.bmp"),
     ("PDF", "*.pdf"),
     ("Images", "*.png *.jpg *.jpeg *.tif *.tiff *.bmp"),
 ]
-SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
-SUPPORTED_OUTPUT_FORMATS = {"txt", "md"}
-DEFAULT_PROMPT = "developer fake document parsing."
-
-
-@dataclass(frozen=True)
-class FakeAiOcrOutput:
-    """One local output written by the fake OCR workflow."""
-
-    source: str
-    path: str
-    format: str
-
-
-@dataclass(frozen=True)
-class FakeAiOcrWorkflowResult:
-    """Summary returned by the fake OCR workflow without OCR text."""
-
-    outputs: List[FakeAiOcrOutput] = field(default_factory=list)
-    failed: List[str] = field(default_factory=list)
-    skipped: List[str] = field(default_factory=list)
-    cancelled: bool = False
-
-    @property
-    def success_count(self) -> int:
-        return len({output.source for output in self.outputs})
-
-
-def _normalise_formats(formats: Iterable[str]) -> List[str]:
-    selected = []
-    for output_format in formats:
-        value = output_format.lower().lstrip(".")
-        if value not in SUPPORTED_OUTPUT_FORMATS:
-            raise ValueError(f"Unsupported output format: {output_format}")
-        if value not in selected:
-            selected.append(value)
-    if not selected:
-        raise ValueError("Select at least one output format.")
-    return selected
-
-
-def _render_pdf_pages(path: Path) -> tuple[List[Image.Image], List[int]]:
-    images: List[Image.Image] = []
-    page_numbers: List[int] = []
-    with fitz.open(path) as doc:
-        for index, page in enumerate(doc, start=1):
-            pixmap = page.get_pixmap(alpha=False)
-            images.append(
-                Image.frombytes(
-                    "RGB", (pixmap.width, pixmap.height), pixmap.samples
-                )
-            )
-            page_numbers.append(index)
-    return images, page_numbers
-
-
-def _load_input_images(path: Path) -> tuple[List[Image.Image], List[int]]:
-    suffix = path.suffix.lower()
-    if suffix == ".pdf":
-        return _render_pdf_pages(path)
-    if suffix in SUPPORTED_IMAGE_EXTENSIONS:
-        with Image.open(path) as image:
-            return [image.convert("RGB").copy()], [1]
-    raise ValueError(f"Unsupported input type: {path.suffix or path.name}")
-
-
-def _text_output(source_name: str, result) -> str:
-    lines = [
-        "Developer-only fake AI OCR output",
-        "No real Unlimited-OCR inference was performed.",
-        f"Source: {source_name}",
-        "",
-    ]
-    for page in result.pages:
-        lines.extend([f"Page {page.page_number}", page.text, ""])
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def _markdown_output(source_name: str, result) -> str:
-    lines = [
-        "# Developer-only Fake AI OCR Output",
-        "",
-        "**No real Unlimited-OCR inference was performed.**",
-        "",
-        f"- Source: `{source_name}`",
-        "- Backend: fake Unlimited-OCR test backend",
-        "",
-    ]
-    for page in result.pages:
-        lines.extend([f"## Page {page.page_number}", "", page.text, ""])
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def _write_output(path: Path, output_format: str, source_name: str, result) -> str | None:
-    requested = path / f"{source_name.rsplit('.', 1)[0]}_fake_ai_ocr.{output_format}"
-    output_path = resolve_output_path(str(requested), get_conflict_policy())
-    if output_path is None:
-        return None
-
-    content = (
-        _markdown_output(source_name, result)
-        if output_format == "md"
-        else _text_output(source_name, result)
-    )
-    Path(output_path).write_text(content, encoding="utf-8")
-    return output_path
 
 
 def run_fake_ai_ocr_workflow(
@@ -153,68 +43,17 @@ def run_fake_ai_ocr_workflow(
     cancellation_check: Optional[Callable[[], bool]] = None,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
 ) -> FakeAiOcrWorkflowResult:
-    """Run deterministic fake OCR for selected files and write local outputs.
+    """Run deterministic fake OCR for selected files and write local outputs."""
 
-    The result intentionally omits OCR text. OCR-like text is written only to
-    the requested local output files.
-    """
-
-    require_valid_consent(
-        consent,
-        provider=UNLIMITED_OCR_PROVIDER,
-        model_id=UNLIMITED_OCR_MODEL_ID,
+    return run_advanced_ocr_workflow(
+        files,
+        output_dir,
+        formats,
+        selection=fake_backend_selection(),
+        consent=consent,
+        cancellation_check=cancellation_check,
+        progress_callback=progress_callback,
     )
-    selected_formats = _normalise_formats(formats)
-    output_root = Path(output_dir)
-    output_root.mkdir(parents=True, exist_ok=True)
-
-    backend = FakeUnlimitedOcrBackend(consent=consent)
-    is_cancelled = cancellation_check or (lambda: False)
-    outputs: List[FakeAiOcrOutput] = []
-    failed: List[str] = []
-    skipped: List[str] = []
-    total = len(files)
-
-    for index, file_path in enumerate(files, start=1):
-        if is_cancelled():
-            return FakeAiOcrWorkflowResult(
-                outputs=outputs, failed=failed, skipped=skipped, cancelled=True
-            )
-
-        source = Path(file_path)
-        source_name = source.name
-        if progress_callback:
-            progress_callback(index - 1, total, f"Preparing {source_name}")
-
-        try:
-            images, page_numbers = _load_input_images(source)
-            request = OcrRequest(
-                engine=OcrEngine.UNLIMITED_OCR_FAKE,
-                images=images,
-                source_path=str(source),
-                page_numbers=page_numbers,
-                prompt=DEFAULT_PROMPT,
-            )
-            result = backend.recognize(request)
-            for output_format in selected_formats:
-                output_path = _write_output(output_root, output_format, source_name, result)
-                if output_path is None:
-                    skipped.append(f"{source_name}.{output_format}")
-                else:
-                    outputs.append(
-                        FakeAiOcrOutput(
-                            source=source_name,
-                            path=output_path,
-                            format=output_format,
-                        )
-                    )
-        except Exception as exc:
-            failed.append(f"{source_name}: {exc}")
-
-        if progress_callback:
-            progress_callback(index, total, f"Processed {source_name}")
-
-    return FakeAiOcrWorkflowResult(outputs=outputs, failed=failed, skipped=skipped)
 
 
 class FakeAiOcrTestTool(BaseTool):

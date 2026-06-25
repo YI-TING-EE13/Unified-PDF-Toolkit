@@ -128,6 +128,21 @@ and test wiring only. It does not run the real model.
   endpoint backend, download models, start servers, import AI runtimes, upload
   files, perform screen OCR, run background OCR, or integrate with Batch Queue.
 
+## Implemented Follow-Up: Mock-Only Workflow Selection Foundation
+
+- `src/ocr/workflow.py` now centralizes reusable advanced OCR workflow pieces:
+  backend selection, consent gating, PDF/image loading, TXT/Markdown output
+  writing, and user-safe error mapping.
+- The supported selections are the fake backend and local endpoint with injected
+  mocked transport only; this keeps tests and future UI wiring free of live
+  endpoint calls.
+- The developer-only fake AI OCR tool now uses this helper layer while keeping
+  its hidden/dev-only behavior.
+- This foundation does not expose production endpoint OCR, run real
+  Unlimited-OCR inference, start servers, download models, add AI runtime
+  dependencies, upload files, perform screen OCR, run background OCR, or add
+  Batch Queue integration.
+
 ## Implemented Follow-Up: Manual GPU Acceptance Test Plan
 
 - Manual, non-CI GPU acceptance documentation now lives under `docs/testing/`.

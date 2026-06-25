@@ -65,9 +65,13 @@ Not implemented today:
   It must not import AI runtimes or download models.
 - `src/ocr/consent.py`: consent model, validation, load/save/reset helpers.
 - `src/ocr/local_endpoint.py`: localhost-only endpoint client scaffold.
+- `src/ocr/workflow.py`: mock-only advanced OCR workflow helpers for backend
+  selection, consent gating, input loading, TXT/Markdown output writing, and
+  user-safe error mapping.
 - `src/ui/advanced_ocr_consent.py`: reusable consent dialog.
 - `src/tools/settings/tool.py`: Settings / Recent consent UI integration.
-- `src/tools/ai_ocr_test/tool.py`: developer-only fake AI OCR test workflow.
+- `src/tools/ai_ocr_test/tool.py`: developer-only fake AI OCR test workflow
+  that uses `src/ocr/workflow.py`.
 - `src/tools/pdf2word/tool.py`: existing production PDF to Word OCR path.
 - `src/utils/diagnostics.py`: optional advanced OCR readiness diagnostics.
 - `docs/adr/0001-optional-advanced-ocr-backend.md`: design record.
@@ -145,6 +149,27 @@ This tool:
 - Does not call the local endpoint backend.
 - Does not import torch, transformers, SGLang, CUDA, or model runtimes.
 - Does not upload files or OCR text.
+
+## Mock-Only Workflow Helpers
+
+`src/ocr/workflow.py` contains reusable pieces for future UI integration:
+
+- `AdvancedOcrBackendSelection` and `AdvancedOcrBackendChoice` model safe
+  backend choices.
+- `fake_backend_selection()` selects the fake backend for developer tests.
+- `local_endpoint_mock_selection()` requires an injected transport so tests can
+  exercise the endpoint path without live network calls.
+- `require_consent_for_selection()` validates consent before backend creation.
+- `run_advanced_ocr_workflow()` loads selected local PDFs/images, creates an OCR
+  request, runs the selected mock-safe backend, and writes local outputs.
+- `write_ocr_outputs()` writes TXT/Markdown output files without putting OCR
+  text into workflow reports.
+- `user_safe_ocr_error_message()` maps consent, backend, malformed response,
+  timeout, transport, and unsupported-file failures to user-safe text.
+
+This helper layer is not a production Document OCR feature. It is intended to
+let future UI work share backend selection, consent, output, and error handling
+without adding real inference or live endpoint calls.
 
 ## Local Endpoint Backend Scaffold
 
@@ -253,12 +278,14 @@ Do not claim:
 
 | Future item | Prerequisites | Main risks | Recommended order |
 | --- | --- | --- | --- |
-| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 1 |
-| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke | User confusion, OCR text in reports, partial output handling | 2 |
-| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 3 |
-| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 4 |
-| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 5 |
+| Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
+| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 2 |
+| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke | User confusion, OCR text in reports, partial output handling | 3 |
+| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 4 |
+| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 5 |
+| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 6 |
 
-Recommended next milestone: productionize the local endpoint path only as a
-fake/mocked integration first, then add a user-facing Document OCR tool using
-fake/local mock backends before any real model runtime is introduced.
+Recommended next milestone: build a hidden or explicitly developer-only
+Document OCR UI shell using `src/ocr/workflow.py`, the fake backend, and mocked
+local endpoint transport before any production endpoint or model runtime is
+introduced.
