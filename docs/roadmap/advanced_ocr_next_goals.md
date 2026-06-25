@@ -86,6 +86,15 @@ Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 - Required tests: Documentation review plus future implementation tests listed in the production readiness checklist.
 - Safety/privacy checks: Checklist gates consent, local-only behavior, loopback endpoint enforcement, no source path leakage, no OCR content in logs/reports, diagnostics, output correctness, cancellation, error quality, accessibility, manual acceptance, and rollback.
 
+## Supporting Milestone: Production Document OCR Fake-Backend Smoke Plan
+
+- Status: Implemented as documentation/test planning only in `docs/testing/document_ocr_fake_backend_smoke_plan.md` and `docs/testing/manual_document_ocr_smoke_template.md`.
+- Goal: Define how a future production Document OCR UI should be smoke-tested with fake/mock backends before exposure to normal users.
+- Non-goals: No production UI implementation, dev-shell promotion, real Unlimited-OCR inference, model download, AI runtime dependency, server execution, live endpoint calls, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Plan covers current dev-only shell relationship, production UI assumptions, fake backend matrix, consent scenarios, diagnostics/readiness scenarios, TXT/Markdown outputs, progress/cancel behavior, user-safe errors, rollback/hide-feature behavior, and no-real-model/non-CI boundaries.
+- Required tests: Future smoke tests must use fake backend or mocked transport only and must not require internet, GPU, CUDA, model download, OCR server, torch, transformers, or SGLang.
+- Safety/privacy checks: Manual template avoids OCR text, image bytes/base64 payloads, source file paths, and document content; production readiness checklist requires fake-backend smoke completion before exposure.
+
 ## 7. Batch Queue Integration
 
 - Goal: Add optional batch jobs for approved advanced OCR backends.

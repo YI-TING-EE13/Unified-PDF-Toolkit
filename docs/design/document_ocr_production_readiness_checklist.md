@@ -16,6 +16,7 @@ support, screen OCR, background OCR, file upload, or Batch Queue integration.
 - [ ] The production tool is clearly labeled experimental if advanced OCR is
   not yet stable.
 - [ ] A rollback or hide-feature switch is documented and tested.
+- [ ] Fake-backend UI smoke testing is completed before production exposure.
 
 ## Consent Gate
 
@@ -128,13 +129,19 @@ If local endpoint mode is exposed:
 - [ ] Unit tests cover user-safe error mapping.
 - [ ] Import-boundary tests confirm no heavy AI runtime import at app startup.
 - [ ] UI smoke tests use fake backend only.
+- [ ] UI smoke tests cover file selection, output folder selection, output
+  format selection, consent blocking, readiness messaging, progress,
+  cancellation, output actions, and user-safe errors.
 - [ ] Local endpoint tests use mocked transport only.
 - [ ] CI requires no internet, GPU, CUDA, model download, OCR server, torch,
   transformers, or SGLang.
 
 ## Manual Acceptance
 
-- [ ] Manual fake-backend UI smoke run completed.
+- [ ] Manual fake-backend UI smoke run completed using
+  `docs/testing/document_ocr_fake_backend_smoke_plan.md`.
+- [ ] Manual smoke run details recorded with
+  `docs/testing/manual_document_ocr_smoke_template.md`.
 - [ ] Manual local endpoint run completed only if endpoint production mode is
   being reviewed.
 - [ ] Manual GPU acceptance completed only if a real GPU backend is being

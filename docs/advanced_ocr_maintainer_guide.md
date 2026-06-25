@@ -25,6 +25,7 @@ Implemented today:
 - Privacy/security review and pre-integration checklist.
 - Optional runtime packaging/install docs and local endpoint contract.
 - Production Document OCR UI design review and readiness checklist.
+- Fake-backend Document OCR smoke test plan and manual run template.
 
 Not implemented today:
 
@@ -51,7 +52,7 @@ Not implemented today:
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
 - Documentation gates: GPU acceptance, security review, optional runtime guide,
-  endpoint contract, and production UI review.
+  endpoint contract, production UI review, and fake-backend smoke test plan.
 
 ## Key Files and Responsibilities
 
@@ -86,6 +87,10 @@ Not implemented today:
   release-gate review.
 - `docs/design/document_ocr_production_readiness_checklist.md`: checklist for
   exposing any Document OCR tool outside dev mode.
+- `docs/testing/document_ocr_fake_backend_smoke_plan.md`: fake/mock-only smoke
+  test plan for a future production Document OCR UI.
+- `docs/testing/manual_document_ocr_smoke_template.md`: manual smoke run record
+  template that avoids OCR text, image payloads, and document content.
 
 ## Behavior Categories
 
@@ -94,7 +99,7 @@ Not implemented today:
 | Production behavior | Tesseract-backed PDF to Word OCR Text remains the only real OCR path. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
-| Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review. |
+| Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
 | Not supported | Real Unlimited-OCR inference, GPU OCR, model download, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
@@ -198,6 +203,8 @@ must verify:
   mandatory.
 - Progress, cancellation, output correctness, accessibility basics, and
   user-safe error handling are tested.
+- Fake-backend smoke testing is completed with the documented smoke plan and
+  manual template.
 - Manual acceptance and rollback/hide-feature procedures are complete.
 
 The design review does not approve real model integration, GPU OCR, endpoint
