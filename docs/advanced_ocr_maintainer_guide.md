@@ -24,6 +24,7 @@ Implemented today:
 - Manual GPU acceptance test plan and run template.
 - Privacy/security review and pre-integration checklist.
 - Optional runtime packaging/install docs and local endpoint contract.
+- Production Document OCR UI design review and readiness checklist.
 
 Not implemented today:
 
@@ -50,7 +51,7 @@ Not implemented today:
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
 - Documentation gates: GPU acceptance, security review, optional runtime guide,
-  and endpoint contract.
+  endpoint contract, and production UI review.
 
 ## Key Files and Responsibilities
 
@@ -81,6 +82,10 @@ Not implemented today:
   gates.
 - `docs/runtime/advanced_ocr_optional_runtime.md`: optional runtime boundary.
 - `docs/runtime/local_ocr_endpoint_contract.md`: future endpoint contract.
+- `docs/design/document_ocr_ui_review.md`: production Document OCR UX and
+  release-gate review.
+- `docs/design/document_ocr_production_readiness_checklist.md`: checklist for
+  exposing any Document OCR tool outside dev mode.
 
 ## Behavior Categories
 
@@ -89,7 +94,7 @@ Not implemented today:
 | Production behavior | Tesseract-backed PDF to Word OCR Text remains the only real OCR path. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
-| Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract. |
+| Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review. |
 | Not supported | Real Unlimited-OCR inference, GPU OCR, model download, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
@@ -174,6 +179,30 @@ This tool:
 This helper layer is not a production Document OCR feature. It is intended to
 let future UI work share backend selection, consent, output, and error handling
 without adding real inference or live endpoint calls.
+
+## Production Document OCR UI Review
+
+Production Document OCR is still future work. The release-gate design review is
+documented in `docs/design/document_ocr_ui_review.md`, with the checklist in
+`docs/design/document_ocr_production_readiness_checklist.md`.
+
+Before any user-facing production Document OCR tool is exposed, maintainers
+must verify:
+
+- Consent UX is reviewed and blocks stale/missing consent.
+- Local-only guarantees are visible and test-backed.
+- Endpoint mode, if exposed, remains loopback-only and sends no source paths.
+- OCR text, image bytes/base64 payloads, and document content stay out of logs,
+  diagnostics, and reports by default.
+- Diagnostics/readiness UX is clear without making optional AI dependencies
+  mandatory.
+- Progress, cancellation, output correctness, accessibility basics, and
+  user-safe error handling are tested.
+- Manual acceptance and rollback/hide-feature procedures are complete.
+
+The design review does not approve real model integration, GPU OCR, endpoint
+productionization, screen OCR, background OCR, file upload, or Batch Queue AI
+OCR.
 
 ## Local Endpoint Backend Scaffold
 

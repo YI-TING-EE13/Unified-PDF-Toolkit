@@ -13,6 +13,7 @@
 - Hardened the local OCR endpoint scaffold with stricter mock-only response validation and sanitized transport errors.
 - Added mock-only advanced OCR workflow helpers for backend selection, consent gating, output writing, and user-safe error mapping.
 - Added a hidden dev-only Document OCR UI shell for fake-backend workflow testing without real model inference or live endpoint calls.
+- Added Document OCR production UI design review and readiness checklist documentation.
 
 ## 0.5.0 - 2026-06-19
 

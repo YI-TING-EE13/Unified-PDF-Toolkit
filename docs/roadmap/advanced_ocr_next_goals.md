@@ -70,11 +70,21 @@ Maintainer entry point: `docs/advanced_ocr_maintainer_guide.md`.
 
 ## 6. AI OCR / Document OCR Sidebar Tool
 
+- Status: Production UI design review completed in `docs/design/document_ocr_ui_review.md`; production implementation is still future work.
 - Goal: Add an optional tool for document OCR outputs such as text, Markdown, or JSON.
 - Non-goals: No screen OCR, global hotkeys, automatic capture, or background OCR.
 - Acceptance criteria: The tool requires explicit file selection, visible output paths, and clear experimental labeling.
 - Required tests: UI-level smoke tests with fake backend and unit tests for output writing.
 - Safety/privacy checks: Reports must not include OCR text or rendered page images by default.
+
+## Supporting Milestone: Production Document OCR UI Design Review
+
+- Status: Implemented as documentation/review only in `docs/design/`.
+- Goal: Define production UX requirements, release gates, safety requirements, and promotion criteria for any future user-facing Document OCR tool.
+- Non-goals: No production tool exposure, real Unlimited-OCR inference, model download, AI runtime dependency, server execution, live endpoint calls, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Review covers current dev-only shell status, intended value, supported inputs, output formats, backend choices, consent UX, diagnostics/readiness UX, error handling, progress/cancel behavior, privacy messaging, experimental labeling, hidden/dev-only boundaries, and release gates.
+- Required tests: Documentation review plus future implementation tests listed in the production readiness checklist.
+- Safety/privacy checks: Checklist gates consent, local-only behavior, loopback endpoint enforcement, no source path leakage, no OCR content in logs/reports, diagnostics, output correctness, cancellation, error quality, accessibility, manual acceptance, and rollback.
 
 ## 7. Batch Queue Integration
 
