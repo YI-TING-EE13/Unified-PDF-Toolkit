@@ -102,6 +102,19 @@ and test wiring only. It does not run the real model.
   download models, add AI runtime dependencies, upload files, or add AI OCR
   sidebar/batch workflows.
 
+## Implemented Follow-Up: Developer-Only Fake AI OCR Workflow Wiring
+
+- A hidden developer/test tool can be enabled with
+  `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` to exercise file selection, progress,
+  cancellation, local output writing, and output actions through the fake
+  Unlimited-OCR backend.
+- The workflow is explicitly labeled developer/test-only, requires the existing
+  advanced OCR consent record, writes local TXT/Markdown placeholder outputs,
+  and does not write OCR text into workflow reports.
+- The workflow does not run real Unlimited-OCR inference, call the local
+  endpoint backend, download models, start servers, import AI runtimes, upload
+  files, perform screen OCR, run background OCR, or integrate with Batch Queue.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.

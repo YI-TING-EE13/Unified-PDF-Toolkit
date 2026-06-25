@@ -29,6 +29,16 @@ from src.tools.settings.tool import SettingsTool
 _BaseTk = TkinterDnD.Tk if TkinterDnD else tk.Tk
 
 
+def developer_tools_enabled() -> bool:
+    """Return true only when developer-only tools are explicitly enabled."""
+
+    return os.environ.get("PDF_TOOLKIT_ENABLE_DEV_TOOLS", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 class PDFToolkitApp(_BaseTk):
     """
     The Main Application Shell for the Unified PDF Toolkit.
@@ -163,6 +173,11 @@ class PDFToolkitApp(_BaseTk):
             DiagnosticsTool(),
             SettingsTool(),
         ]
+
+        if developer_tools_enabled():
+            from src.tools.ai_ocr_test.tool import FakeAiOcrTestTool
+
+            tools_list.append(FakeAiOcrTestTool())
         
         for tool in tools_list:
             self.tools[tool.name] = tool

@@ -130,6 +130,12 @@ or OCR text. Settings / Recent includes consent management for this future
 optional capability, but saving consent does not enable real AI OCR inference in
 the current app.
 
+For development and UI-flow testing only, setting
+`PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes a hidden fake AI OCR test workflow. It
+uses deterministic placeholder output from the fake backend, requires the same
+advanced OCR consent record, and still performs no real Unlimited-OCR inference,
+model download, endpoint call, GPU execution, or network upload.
+
 ## Requirements
 
 - Python 3.10 or newer for source runs.

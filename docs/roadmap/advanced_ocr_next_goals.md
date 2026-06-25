@@ -24,6 +24,7 @@ milestone explicitly changes user-facing options.
 
 ## 3. Developer-Only Fake AI OCR UI Wiring
 
+- Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; uses only the fake backend and writes local TXT/Markdown test outputs.
 - Goal: Wire the fake backend into controlled UI tests so flows can be exercised without a model.
 - Non-goals: No user-facing claim that AI OCR is supported.
 - Acceptance criteria: Fake backend is clearly labeled and unavailable in release-facing normal workflows unless explicitly enabled for development.
