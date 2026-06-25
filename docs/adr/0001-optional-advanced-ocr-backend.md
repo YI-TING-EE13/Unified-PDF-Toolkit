@@ -130,6 +130,24 @@ and test wiring only. It does not run the real model.
   dependencies, server management, endpoint calls, screen OCR, background OCR,
   file upload, or Batch Queue integration.
 
+## Implemented Follow-Up: Privacy and Security Review
+
+- Pre-integration security documentation now lives under `docs/security/`.
+- The review defines protected assets, trust boundaries, threat model, privacy
+  risks, supply-chain risks, `trust_remote_code` risks, local endpoint risks,
+  temporary file/image risks, logging/reporting risks, consent requirements,
+  diagnostics requirements, packaging/runtime risks, release gates, and rollback
+  requirements.
+- A concise checklist records pass/fail gates for no external upload,
+  loopback-only endpoint behavior, no source paths sent to backends, no OCR
+  text/image payloads in logs, temp cleanup, consent gating, dependency
+  isolation, no heavy startup imports, failure handling, documentation, GPU
+  manual acceptance, and rollback readiness.
+- This documentation does not approve or add real Unlimited-OCR inference,
+  model downloads, optional AI runtime dependencies, server management, endpoint
+  execution, screen OCR, background OCR, file upload, or Batch Queue
+  integration.
+
 ## Acceptance Criteria
 
 - Existing Tesseract OCR remains the default PDF to Word OCR behavior.

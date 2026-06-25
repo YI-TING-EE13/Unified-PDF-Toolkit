@@ -7,6 +7,7 @@
 - Added a localhost-only OCR endpoint backend scaffold for future user-managed OCR servers without adding model inference or AI runtime dependencies.
 - Added developer-only fake AI OCR workflow wiring, hidden behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`, for local UI/workflow testing without real model inference.
 - Added a manual, non-CI GPU acceptance test plan and run template for future advanced OCR backend validation.
+- Added advanced OCR privacy/security review and pre-integration checklist documentation for future real backend work.
 
 ## 0.5.0 - 2026-06-19
 

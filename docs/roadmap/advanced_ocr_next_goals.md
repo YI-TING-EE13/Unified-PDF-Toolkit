@@ -74,6 +74,7 @@ milestone explicitly changes user-facing options.
 
 ## 9. Privacy and Security Review
 
+- Status: Implemented as pre-integration documentation in `docs/security/advanced_ocr_security_review.md` and `docs/security/advanced_ocr_preintegration_checklist.md`.
 - Goal: Complete a formal review before any real model integration is enabled.
 - Non-goals: No implementation bypass around consent, dependency, or locality checks.
 - Acceptance criteria: Review covers data flow, temp files, logs, reports, endpoint policy, model code execution, and dependency provenance.
