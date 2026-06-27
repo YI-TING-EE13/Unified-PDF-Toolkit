@@ -5,8 +5,9 @@ run an optional AI OCR model on the user's own computer. Unified PDF Toolkit is
 not planning a hosted OCR service, cloud OCR upload path, or project-operated
 server for user documents.
 
-This document is a design boundary and scaffold reference. Real Baidu
-Unlimited-OCR inference is not implemented yet.
+This document is a design boundary and scaffold reference. An experimental real
+Baidu Unlimited-OCR local backend path exists, but it is disabled by default,
+requires user-managed optional runtime/model files, and is not production-ready.
 
 ## Product Direction
 
@@ -224,7 +225,14 @@ Manual validation helper:
 That command prints readiness only. To run real OCR, maintainers must provide a
 local model directory, a small local image/PDF, and explicit acknowledgement:
 
+If Hugging Face dynamic module cache is not writable on the machine, set
+`HF_HOME` and `HF_MODULES_CACHE` to a user-writable local directory before the
+real run. Those cache locations must remain outside the repo and must not be
+committed.
+
 ```powershell
+$env:HF_HOME = "$env:TEMP\pdf_toolkit_ocr_validation\hf_home"
+$env:HF_MODULES_CACHE = "$env:TEMP\pdf_toolkit_ocr_validation\hf_modules"
 .\.venv\Scripts\python.exe scripts\manual_unlimited_ocr_local_check.py `
   --model-path C:\path\to\Unlimited-OCR `
   --input C:\path\to\sample.png `

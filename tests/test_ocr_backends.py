@@ -1,4 +1,6 @@
 import builtins
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -751,6 +753,7 @@ class LocalModelBackendTests(unittest.TestCase):
 
             def infer(self, *args, **kwargs):
                 self.kwargs = kwargs
+                print("mock OCR text must not leak")
                 return "mock Unlimited-OCR text"
 
         class FakeModelFactory:
@@ -780,24 +783,29 @@ class LocalModelBackendTests(unittest.TestCase):
                 side_effect=fake_import,
             ),
         ):
-            result = unlimited_ocr_local.run_unlimited_ocr_local(
-                OcrRequest(
-                    engine=OcrEngine.LOCAL_MODEL,
-                    images=[Image.new("RGB", (10, 10), "white")],
-                    page_numbers=[7],
-                ),
-                config=LocalModelRuntimeConfig(
-                    enabled=True,
-                    mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
-                    model_path=model_dir,
-                    options={"local_files_only": "true"},
-                ),
-            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                result = unlimited_ocr_local.run_unlimited_ocr_local(
+                    OcrRequest(
+                        engine=OcrEngine.LOCAL_MODEL,
+                        images=[Image.new("RGB", (10, 10), "white")],
+                        page_numbers=[7],
+                    ),
+                    config=LocalModelRuntimeConfig(
+                        enabled=True,
+                        mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+                        model_path=model_dir,
+                        options={"local_files_only": "true"},
+                    ),
+                )
 
         self.assertEqual(result.pages[0].page_number, 7)
         self.assertEqual(result.pages[0].text, "mock Unlimited-OCR text")
         self.assertEqual(result.metadata["runtime"], "local_unlimited_ocr")
         self.assertTrue(result.metadata["real_inference"])
+        self.assertNotIn("mock OCR text must not leak", stdout.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
 
 
 class AdvancedOcrConsentTests(unittest.TestCase):

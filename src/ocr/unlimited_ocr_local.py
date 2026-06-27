@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import contextlib
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
@@ -63,24 +64,25 @@ def run_unlimited_ocr_local(request_data: OcrRequest, *, config: Any) -> OcrResu
             image_paths.append(image_path)
 
         try:
-            tokenizer, model = _load_model(
-                transformers_module,
-                torch_module,
-                model_path,
-                local_files_only=_bool_option(
-                    getattr(config, "options", None),
-                    "local_files_only",
-                    default=True,
-                ),
-            )
-            model = _move_model_to_device(model, device)
-            returned = _run_model_inference(
-                model,
-                tokenizer,
-                image_paths=image_paths,
-                output_dir=output_dir,
-                options=getattr(config, "options", None),
-            )
+            with _suppress_model_console_output():
+                tokenizer, model = _load_model(
+                    transformers_module,
+                    torch_module,
+                    model_path,
+                    local_files_only=_bool_option(
+                        getattr(config, "options", None),
+                        "local_files_only",
+                        default=True,
+                    ),
+                )
+                model = _move_model_to_device(model, device)
+                returned = _run_model_inference(
+                    model,
+                    tokenizer,
+                    image_paths=image_paths,
+                    output_dir=output_dir,
+                    options=getattr(config, "options", None),
+                )
             texts = _collect_text_outputs(
                 returned,
                 output_dir=output_dir,
@@ -121,6 +123,24 @@ def run_unlimited_ocr_local(request_data: OcrRequest, *, config: Any) -> OcrResu
             "real_inference": True,
         },
     )
+
+
+class _NullTextSink:
+    """Drop model console output so OCR text is not logged by default."""
+
+    def write(self, value: str) -> int:
+        return len(value)
+
+    def flush(self) -> None:
+        return None
+
+
+def _suppress_model_console_output() -> contextlib.ExitStack:
+    sink = _NullTextSink()
+    stack = contextlib.ExitStack()
+    stack.enter_context(contextlib.redirect_stdout(sink))
+    stack.enter_context(contextlib.redirect_stderr(sink))
+    return stack
 
 
 def _required_existing_model_path(value: str | None) -> str:

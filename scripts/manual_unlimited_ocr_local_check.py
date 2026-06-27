@@ -27,6 +27,7 @@ from src.ocr.local_model import (  # noqa: E402
     LocalModelOcrBackend,
     LocalModelRuntimeConfig,
 )
+from src.ocr.exceptions import OcrError  # noqa: E402
 from src.ocr.models import OcrEngine, OcrRequest  # noqa: E402
 
 
@@ -99,14 +100,21 @@ def main() -> int:
             device_preference=args.device,
         ),
     )
-    result = backend.recognize(
-        OcrRequest(
-            engine=OcrEngine.LOCAL_MODEL,
-            images=images,
-            source_path=str(Path(args.input)),
-            page_numbers=page_numbers,
+    try:
+        result = backend.recognize(
+            OcrRequest(
+                engine=OcrEngine.LOCAL_MODEL,
+                images=images,
+                source_path=str(Path(args.input)),
+                page_numbers=page_numbers,
+            )
         )
-    )
+    except OcrError as exc:
+        print(f"OCR failed: {exc}")
+        return 1
+    except Exception:
+        print("OCR failed unexpectedly. Check the optional runtime and model configuration.")
+        return 1
     print(f"OCR pages: {len(result.pages)}")
     print(f"Runtime: {result.metadata.get('runtime')}")
     print(f"Device: {result.metadata.get('device')}")
