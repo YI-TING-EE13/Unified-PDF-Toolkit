@@ -2,8 +2,7 @@
 
 This module intentionally does not import torch, transformers, SGLang, CUDA
 helpers, or model code. It defines the future local model backend boundary and
-fails with clear runtime/model-not-configured errors until a reviewed runtime is
-implemented.
+allows only an explicit developer/test fake worker path.
 """
 
 from __future__ import annotations
@@ -17,6 +16,10 @@ from .consent import (
     require_valid_consent,
 )
 from .exceptions import OcrBackendUnavailableError
+from .local_worker import (
+    default_fake_worker_script_path,
+    run_local_model_worker_process,
+)
 from .models import OcrEngine, OcrRequest, OcrResult
 from ..utils.settings import get_setting, load_settings, save_settings, set_setting
 
@@ -24,10 +27,12 @@ LOCAL_MODEL_PROVIDER = "baidu"
 LOCAL_MODEL_MODEL_ID = "baidu/Unlimited-OCR"
 LOCAL_MODEL_RUNTIME_SETTING_KEY = "advanced_ocr.local_model_runtime"
 LOCAL_MODEL_MODE_DISABLED = "disabled"
+LOCAL_MODEL_MODE_FAKE_WORKER = "fake_worker"
 LOCAL_MODEL_MODE_WORKER_PROCESS = "worker_process"
 LOCAL_MODEL_MODE_IN_PROCESS_FUTURE = "in_process_future"
 LOCAL_MODEL_RUNTIME_MODES = (
     LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
 )
@@ -38,7 +43,8 @@ class LocalModelRuntimeConfig:
     """Future local model runtime configuration.
 
     The default is disabled. Paths are user-managed local runtime hints and
-    must not trigger downloads or worker execution in this scaffold.
+    must not trigger downloads. Only `fake_worker` mode may execute the
+    repo-local deterministic fake worker.
     """
 
     enabled: bool = False
@@ -131,7 +137,7 @@ class LocalModelOcrBackend:
         self.config = config or load_local_model_runtime_config()
 
     def recognize(self, request_data: OcrRequest) -> OcrResult:
-        """Validate consent, then report that runtime integration is pending."""
+        """Validate consent, then run only explicitly configured fake/dev paths."""
 
         require_valid_consent(
             self.consent,
@@ -139,6 +145,21 @@ class LocalModelOcrBackend:
             model_id=LOCAL_MODEL_MODEL_ID,
             consent_text_version=ADVANCED_OCR_CONSENT_TEXT_VERSION,
         )
+        if self.config.mode == LOCAL_MODEL_MODE_FAKE_WORKER:
+            self._validate_fake_worker_config()
+            return run_local_model_worker_process(
+                request_data,
+                model_id=self.config.model_id or LOCAL_MODEL_MODEL_ID,
+                runtime_mode=LOCAL_MODEL_MODE_FAKE_WORKER,
+                python_executable=self.config.python_executable,
+                worker_script_path=(
+                    self.config.worker_script_path or default_fake_worker_script_path()
+                ),
+                timeout_seconds=_float_option(
+                    self.config.options, "timeout_seconds", default=10.0
+                ),
+                options=self.config.options,
+            )
         self._validate_runtime_config()
         raise OcrBackendUnavailableError(
             "Local AI OCR model runtime is not installed or configured."
@@ -153,6 +174,9 @@ class LocalModelOcrBackend:
             raise OcrBackendUnavailableError(
                 "Local AI OCR model runtime mode is unsupported."
             )
+        if self.config.mode == LOCAL_MODEL_MODE_FAKE_WORKER:
+            self._validate_fake_worker_config()
+            return
         if not self.config.model_path:
             raise OcrBackendUnavailableError(
                 "Local AI OCR model path is not configured."
@@ -173,3 +197,27 @@ class LocalModelOcrBackend:
             raise OcrBackendUnavailableError(
                 "Local AI OCR worker process execution is not implemented."
             )
+
+    def _validate_fake_worker_config(self) -> None:
+        if not self.config.enabled:
+            raise OcrBackendUnavailableError(
+                "Local AI OCR fake worker runtime is disabled."
+            )
+        if not self.config.worker_script_path and not default_fake_worker_script_path():
+            raise OcrBackendUnavailableError(
+                "Local AI OCR fake worker script path is not configured."
+            )
+
+
+def _float_option(
+    options: Mapping[str, str] | None,
+    key: str,
+    *,
+    default: float,
+) -> float:
+    if not options or key not in options:
+        return default
+    try:
+        return float(options[key])
+    except (TypeError, ValueError):
+        return default

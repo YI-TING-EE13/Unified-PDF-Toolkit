@@ -21,6 +21,8 @@ Implemented today:
   compatible runtime.
 - Safe local model runtime settings and readiness diagnostics. These settings
   are disabled by default and do not execute a model.
+- Developer/test-only fake local model worker subprocess prototype for IPC,
+  timeout, cancellation, and response validation.
 - Local endpoint backend scaffold with loopback-only URL validation.
 - Developer-only Document OCR UI shell gated by
   `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`.
@@ -58,6 +60,9 @@ Not implemented today:
 - Local model runtime settings: Settings / Recent can store disabled-by-default
   runtime hints and diagnostics can report path readiness without starting a
   worker or importing AI libraries.
+- Fake local model worker prototype: `fake_worker` mode can launch the
+  repo-local deterministic fake worker only when explicitly configured and
+  consent-gated.
 - Developer Document OCR shell: hidden dev tool exercises file selection,
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
@@ -79,7 +84,12 @@ Not implemented today:
 - `src/ocr/local_model.py`: preferred future local model backend scaffold and
   safe runtime settings helpers. It must not import AI runtimes, download
   models, start worker processes, or run real inference until reviewed local
-  runtime support exists.
+  runtime support exists. The current `fake_worker` path is developer/test-only
+  and returns deterministic fake text.
+- `src/ocr/local_worker.py`: one-shot fake worker controller for sanitized IPC,
+  timeout, cancellation, response validation, and user-safe errors.
+- `src/ocr/workers/fake_local_model_worker.py`: standard-library fake worker
+  subprocess target. It must not import AI runtimes or read source documents.
 - `src/ocr/local_endpoint.py`: localhost-only endpoint client scaffold.
 - `src/ocr/workflow.py`: mock-only advanced OCR workflow helpers for backend
   selection, consent gating, input loading, TXT/Markdown output writing, and
@@ -118,6 +128,7 @@ Not implemented today:
 | Production behavior | Tesseract-backed PDF to Word OCR Text remains the only real OCR path. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend/settings, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
+| Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
 | Not supported | Real Unlimited-OCR inference, GPU OCR, model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
@@ -225,7 +236,8 @@ start a worker process, or run inference.
 Settings / Recent can store safe runtime planning fields:
 
 - enabled flag
-- runtime mode: `disabled`, `worker_process`, or `in_process_future`
+- runtime mode: `disabled`, `fake_worker`, `worker_process`, or
+  `in_process_future`
 - provider/model id
 - local model folder path
 - optional future worker Python executable path
@@ -238,6 +250,31 @@ enable real AI OCR.
 Future real local model support should prefer a worker process first. An
 in-process runtime is allowed only after security, dependency, packaging, and
 manual GPU acceptance review.
+
+### Fake Local Model Worker
+
+`src/ocr/local_worker.py` and `src/ocr/workers/fake_local_model_worker.py`
+implement a developer/test-only subprocess prototype.
+
+It does:
+
+- launch a one-shot fake worker only when `mode="fake_worker"` is explicitly
+  configured;
+- require valid advanced OCR consent through `LocalModelOcrBackend`;
+- send sanitized JSON over stdin;
+- parse JSON from stdout;
+- enforce timeout and cancellation by terminating the subprocess;
+- validate response shape before returning `OcrResult`;
+- return deterministic placeholder page text.
+
+It does not:
+
+- run real Unlimited-OCR inference;
+- download models;
+- import torch, transformers, SGLang, CUDA, or model code;
+- read source PDF/image paths for OCR;
+- start on app startup;
+- run as a background worker.
 
 ## Production Document OCR UI Review
 
@@ -303,6 +340,7 @@ Diagnostics may report:
 - model cache path presence if detectable.
 - local endpoint URL validity.
 - local model runtime disabled/enabled status and configured path readiness.
+- fake worker mode status as developer/test-only readiness.
 
 Diagnostics must not require GPU, CUDA, internet, model download, OCR server,
 torch, transformers, or SGLang. Missing optional AI pieces are warning/info
@@ -377,14 +415,15 @@ Do not claim:
 | Future item | Prerequisites | Main risks | Recommended order |
 | --- | --- | --- | --- |
 | Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
-| Local model worker prototype design | Runtime settings, worker contract, security checklist, fake smoke tests, consent tests | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 2 |
-| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 3 |
-| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 4 |
-| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 5 |
-| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 6 |
-| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 7 |
+| Local model fake worker UI smoke path | Fake worker prototype, workflow helpers, consent tests, fake smoke template | User confusion if mistaken for real OCR, output/report leakage | 2 |
+| Real worker-process design review | Fake worker prototype, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 3 |
+| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 4 |
+| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 5 |
+| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 6 |
+| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 7 |
+| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 8 |
 
-Recommended next milestone: design a worker-process prototype boundary for the
-local model runtime, still without model download or real inference, so process
-lifecycle, IPC payload shape, timeout, cancellation, and log-redaction behavior
-can be reviewed before any AI runtime is installed.
+Recommended next milestone: add a dev/test-only workflow smoke path that runs
+the Document OCR shell against `fake_worker` mode, still without model download
+or real inference, so GUI progress/cancel/error behavior can be tested across
+an actual subprocess boundary.

@@ -47,6 +47,15 @@ an advanced/developer loopback option, not the main product path.
 - Required tests: Config defaults/load/save/clear, forbidden-content exclusion from config, diagnostics disabled/missing/configured paths, backend consent/unavailable behavior, settings save/reset, and no heavy imports.
 - Safety/privacy checks: Settings do not store OCR text, source paths, document content, rendered page paths, image bytes/base64, or output contents.
 
+## Supporting Milestone: Fake Local Model Worker Prototype
+
+- Status: Implemented as a developer/test-only subprocess prototype using `src/ocr/local_worker.py` and `src/ocr/workers/fake_local_model_worker.py`.
+- Goal: Exercise the future user-owned local model worker-process architecture without real OCR inference.
+- Non-goals: No real Unlimited-OCR inference, model download, AI runtime dependency, GPU/CUDA use, long-running background worker, app-startup worker launch, server management, endpoint call, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: `fake_worker` mode is explicit and disabled by default; backend requires valid advanced OCR consent; worker payload excludes source paths, OCR text, image bytes/base64, and document content; timeout, cancellation, malformed JSON, non-zero exit, and response-shape failures surface as user-safe OCR errors.
+- Required tests: Deterministic fake worker success, timeout, cancellation, malformed JSON, non-zero exit, payload redaction, backend consent gating, explicit fake-worker configuration, and no heavy imports.
+- Safety/privacy checks: Fake worker uses only the Python standard library, reads only sanitized JSON metadata from stdin, writes JSON to stdout, logs no OCR/document/image content, and is not presented as real OCR support.
+
 ## 3. Developer-Only Document OCR UI Wiring
 
 - Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; evolved into a dev-only Document OCR shell that uses reusable mock-only workflow helpers for backend selection, consent gating, output writing, and error mapping.

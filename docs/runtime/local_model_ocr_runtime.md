@@ -142,7 +142,7 @@ The scaffold:
 - requires valid advanced OCR consent,
 - imports no heavy AI runtime,
 - downloads no model,
-- runs no inference,
+- runs no real inference,
 - reports runtime/model-not-configured errors clearly.
 
 ## Runtime Configuration
@@ -150,7 +150,8 @@ The scaffold:
 The current settings record stores only safe local runtime hints:
 
 - enabled flag
-- runtime mode: `disabled`, `worker_process`, or `in_process_future`
+- runtime mode: `disabled`, `fake_worker`, `worker_process`, or
+  `in_process_future`
 - provider/model id
 - local model folder path
 - optional Python executable path for a future worker process
@@ -163,6 +164,29 @@ paths, or output contents.
 Settings / Recent may expose these fields for future readiness planning, but it
 must not provide a model download button, server start button, or "run model"
 action until real inference is separately reviewed.
+
+## Fake Worker Prototype
+
+`fake_worker` mode is a developer/test-only subprocess prototype for local
+model IPC. It is not production AI OCR and does not run Baidu Unlimited-OCR.
+
+Current components:
+
+- `src/ocr/local_worker.py` builds sanitized worker payloads, launches a
+  one-shot subprocess, enforces timeout/cancellation, parses JSON, and maps
+  worker failures to user-safe OCR exceptions.
+- `src/ocr/workers/fake_local_model_worker.py` reads JSON from stdin and writes
+  deterministic fake OCR results to stdout.
+
+The fake worker request contains page metadata only. It does not include source
+paths, OCR text, image bytes/base64, rendered page paths, or document content.
+The worker returns deterministic placeholder text so process lifecycle,
+timeout, cancellation, malformed response handling, and payload redaction can
+be tested without AI dependencies.
+
+The fake worker is launched only when local model OCR is explicitly configured
+with `mode="fake_worker"` and valid advanced OCR consent is present. It is not
+started on app startup and is not a long-running background worker.
 
 ## Readiness Diagnostics
 

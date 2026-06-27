@@ -17,6 +17,7 @@ from .settings import get_settings_path
 from ..ocr.local_endpoint import get_local_endpoint_url, validate_local_endpoint_url
 from ..ocr.local_model import (
     LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LocalModelRuntimeConfig,
@@ -127,13 +128,14 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
             "This configuration is for future local runtime readiness only.",
         )
     )
-    checks.append(
-        _path_readiness_check(
-            "Advanced OCR local model path",
-            config.model_path,
-            expect_file=False,
+    if config.mode != LOCAL_MODEL_MODE_FAKE_WORKER:
+        checks.append(
+            _path_readiness_check(
+                "Advanced OCR local model path",
+                config.model_path,
+                expect_file=False,
+            )
         )
-    )
     if config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
         checks.append(
             _path_readiness_check(
@@ -149,6 +151,23 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
                 expect_file=True,
             )
         )
+    elif config.mode == LOCAL_MODEL_MODE_FAKE_WORKER:
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR fake worker",
+                "warning",
+                "developer/test-only fake worker mode selected",
+                "This mode returns deterministic fake OCR and does not run real inference.",
+            )
+        )
+        if config.worker_script_path:
+            checks.append(
+                _path_readiness_check(
+                    "Advanced OCR fake worker script",
+                    config.worker_script_path,
+                    expect_file=True,
+                )
+            )
     elif config.mode == LOCAL_MODEL_MODE_IN_PROCESS_FUTURE:
         checks.append(
             DiagnosticCheck(

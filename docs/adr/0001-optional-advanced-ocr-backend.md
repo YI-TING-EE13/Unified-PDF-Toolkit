@@ -145,6 +145,22 @@ as the main product direction.
   worker-process contract for request payloads, temporary file cleanup,
   response/error shapes, timeout/cancel behavior, and logging restrictions.
 
+## Implemented Follow-Up: Fake Local Model Worker Prototype
+
+- `src/ocr/local_worker.py` adds a standard-library one-shot subprocess
+  controller for developer/test-only fake local model OCR worker execution.
+- `src/ocr/workers/fake_local_model_worker.py` reads sanitized JSON metadata
+  from stdin and writes deterministic fake OCR JSON to stdout.
+- `LocalModelOcrBackend` can use this path only when explicitly configured with
+  `mode="fake_worker"` and valid advanced OCR consent exists.
+- The worker payload excludes source paths, OCR text, image bytes/base64,
+  rendered page paths, and document content.
+- Timeout, cancellation, malformed JSON, non-zero exit, and response validation
+  failures are converted to sanitized OCR backend errors.
+- This prototype does not run real Unlimited-OCR inference, download models,
+  import torch/transformers/SGLang/CUDA, start at app startup, or create a
+  long-running background worker.
+
 ## Implemented Follow-Up: Local Endpoint Hardening
 
 - The local endpoint scaffold now validates mocked response shape more strictly:

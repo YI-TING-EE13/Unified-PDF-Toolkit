@@ -15,6 +15,7 @@ from ...ocr.consent import (
 )
 from ...ocr.local_model import (
     LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LocalModelRuntimeConfig,
@@ -125,6 +126,7 @@ class SettingsTool(BaseTool):
             textvariable=self.local_model_mode_var,
             values=[
                 LOCAL_MODEL_MODE_DISABLED,
+                LOCAL_MODEL_MODE_FAKE_WORKER,
                 LOCAL_MODEL_MODE_WORKER_PROCESS,
                 LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
             ],

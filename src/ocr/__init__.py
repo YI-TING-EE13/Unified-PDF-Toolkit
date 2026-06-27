@@ -8,6 +8,7 @@ from .exceptions import (
 )
 from .local_endpoint import LocalEndpointOcrBackend
 from .local_model import (
+    LOCAL_MODEL_MODE_FAKE_WORKER,
     LocalModelOcrBackend,
     LocalModelRuntimeConfig,
     clear_local_model_runtime_config,
@@ -27,6 +28,7 @@ __all__ = [
     "OcrRequest",
     "OcrResult",
     "LocalEndpointOcrBackend",
+    "LOCAL_MODEL_MODE_FAKE_WORKER",
     "LocalModelOcrBackend",
     "LocalModelRuntimeConfig",
     "clear_local_model_runtime_config",

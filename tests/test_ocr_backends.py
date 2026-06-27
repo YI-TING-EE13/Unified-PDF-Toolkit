@@ -1,6 +1,8 @@
 import builtins
 import json
 import sys
+import tempfile
+from pathlib import Path
 import unittest
 from unittest import mock
 
@@ -29,6 +31,7 @@ from src.ocr.local_endpoint import (
 from src.ocr.local_model import (
     LOCAL_MODEL_MODEL_ID,
     LOCAL_MODEL_MODE_DISABLED,
+    LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LOCAL_MODEL_PROVIDER,
@@ -38,6 +41,11 @@ from src.ocr.local_model import (
     clear_local_model_runtime_config,
     load_local_model_runtime_config,
     save_local_model_runtime_config,
+)
+from src.ocr.local_worker import (
+    build_local_model_worker_payload,
+    default_fake_worker_script_path,
+    run_local_model_worker_process,
 )
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
@@ -431,7 +439,7 @@ class LocalModelBackendTests(unittest.TestCase):
         loaded = LocalModelRuntimeConfig.from_dict(
             {
                 "enabled": True,
-                "mode": LOCAL_MODEL_MODE_WORKER_PROCESS,
+                "mode": LOCAL_MODEL_MODE_FAKE_WORKER,
                 "model_id": LOCAL_MODEL_MODEL_ID,
                 "model_path": "C:/models/unlimited-ocr",
                 "python_executable": "C:/runtime/python.exe",
@@ -441,7 +449,7 @@ class LocalModelBackendTests(unittest.TestCase):
         )
 
         self.assertTrue(loaded.enabled)
-        self.assertEqual(loaded.mode, LOCAL_MODEL_MODE_WORKER_PROCESS)
+        self.assertEqual(loaded.mode, LOCAL_MODEL_MODE_FAKE_WORKER)
         self.assertEqual(loaded.model_path, "C:/models/unlimited-ocr")
         self.assertEqual(loaded.to_dict()["options"], {"future": "value"})
 
@@ -502,6 +510,148 @@ class LocalModelBackendTests(unittest.TestCase):
             self.assertEqual(loaded.worker_script_path, config.worker_script_path)
             clear_local_model_runtime_config()
             self.assertNotIn(LOCAL_MODEL_RUNTIME_SETTING_KEY, store)
+
+    def test_fake_worker_success_returns_deterministic_local_model_result(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            source_path="C:/private/source.pdf",
+            page_numbers=[3],
+        )
+        result = run_local_model_worker_process(
+            request,
+            model_id=LOCAL_MODEL_MODEL_ID,
+            runtime_mode=LOCAL_MODEL_MODE_FAKE_WORKER,
+            python_executable=sys.executable,
+            worker_script_path=default_fake_worker_script_path(),
+        )
+
+        self.assertEqual(result.engine, OcrEngine.LOCAL_MODEL)
+        self.assertEqual(result.pages[0].page_number, 3)
+        self.assertEqual(
+            result.pages[0].text,
+            "Fake local model OCR text for page 3.",
+        )
+        self.assertFalse(result.metadata["real_inference"])
+
+    def test_fake_worker_payload_excludes_sensitive_fields(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            source_path="C:/private/source.pdf",
+            page_numbers=[1],
+            options={
+                "source_path": "C:/private/source.pdf",
+                "image_base64": "abc123",
+                "document_content": "secret",
+                "safe_flag": "yes",
+            },
+        )
+        payload = build_local_model_worker_payload(
+            request,
+            model_id=LOCAL_MODEL_MODEL_ID,
+            runtime_mode=LOCAL_MODEL_MODE_FAKE_WORKER,
+            options=request.options,
+        )
+        serialized = json.dumps(payload)
+
+        self.assertNotIn("C:/private/source.pdf", serialized)
+        self.assertNotIn("abc123", serialized)
+        self.assertNotIn("secret", serialized)
+        self.assertEqual(payload["options"], {"safe_flag": "yes"})
+
+    def test_fake_worker_timeout_malformed_nonzero_and_cancel_are_sanitized(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            sleeper = tmp / "sleep_worker.py"
+            sleeper.write_text(
+                "import time\n"
+                "time.sleep(5)\n"
+                "print('{\"pages\": []}')\n",
+                encoding="utf-8",
+            )
+            malformed = tmp / "malformed_worker.py"
+            malformed.write_text("print('not json')\n", encoding="utf-8")
+            failing = tmp / "failing_worker.py"
+            failing.write_text(
+                "import sys\n"
+                "print('secret source path C:/private/source.pdf', file=sys.stderr)\n"
+                "raise SystemExit(7)\n",
+                encoding="utf-8",
+            )
+
+            request = OcrRequest(
+                engine=OcrEngine.LOCAL_MODEL,
+                images=[Image.new("RGB", (10, 10), "white")],
+                source_path="C:/private/source.pdf",
+                page_numbers=[1],
+            )
+            common = {
+                "request_data": request,
+                "model_id": LOCAL_MODEL_MODEL_ID,
+                "runtime_mode": LOCAL_MODEL_MODE_FAKE_WORKER,
+                "python_executable": sys.executable,
+            }
+
+            with self.assertRaises(OcrBackendUnavailableError) as timeout_error:
+                run_local_model_worker_process(
+                    **common,
+                    worker_script_path=str(sleeper),
+                    timeout_seconds=0.05,
+                )
+            self.assertIn("timed out", str(timeout_error.exception))
+            self.assertNotIn("C:/private/source.pdf", str(timeout_error.exception))
+
+            with self.assertRaises(OcrBackendUnavailableError) as malformed_error:
+                run_local_model_worker_process(
+                    **common,
+                    worker_script_path=str(malformed),
+                )
+            self.assertIn("invalid JSON", str(malformed_error.exception))
+
+            with self.assertRaises(OcrBackendUnavailableError) as failing_error:
+                run_local_model_worker_process(
+                    **common,
+                    worker_script_path=str(failing),
+                )
+            self.assertIn("process failed", str(failing_error.exception))
+            self.assertNotIn("C:/private/source.pdf", str(failing_error.exception))
+
+            calls = {"count": 0}
+
+            def cancel_after_launch():
+                calls["count"] += 1
+                return calls["count"] > 1
+
+            with self.assertRaises(OcrBackendUnavailableError) as cancelled_error:
+                run_local_model_worker_process(
+                    **common,
+                    worker_script_path=str(sleeper),
+                    timeout_seconds=5,
+                    cancellation_check=cancel_after_launch,
+                )
+            self.assertIn("cancelled", str(cancelled_error.exception))
+
+    def test_local_model_backend_uses_fake_worker_only_when_configured(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        backend = LocalModelOcrBackend(
+            consent=self._valid_consent(),
+            config=LocalModelRuntimeConfig(
+                enabled=True,
+                mode=LOCAL_MODEL_MODE_FAKE_WORKER,
+                python_executable=sys.executable,
+                worker_script_path=default_fake_worker_script_path(),
+            ),
+        )
+
+        result = backend.recognize(request)
+
+        self.assertEqual(result.pages[0].text, "Fake local model OCR text for page 1.")
+        self.assertFalse(result.metadata["real_inference"])
 
 
 class AdvancedOcrConsentTests(unittest.TestCase):
@@ -692,6 +842,15 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         self.assertIn("Advanced OCR worker script", names)
         self.assertTrue([check for check in configured if check.status == "warning"])
 
+        fake_configured = diagnostics._local_model_runtime_checks(
+            LocalModelRuntimeConfig(
+                enabled=True,
+                mode=LOCAL_MODEL_MODE_FAKE_WORKER,
+            )
+        )
+        fake_names = [check.name for check in fake_configured]
+        self.assertIn("Advanced OCR fake worker", fake_names)
+
 
 class SettingsConsentUiTests(unittest.TestCase):
     def _tool(self) -> SettingsTool:
@@ -759,7 +918,7 @@ class SettingsConsentUiTests(unittest.TestCase):
     def test_settings_local_model_runtime_save_and_reset(self):
         tool = self._tool()
         tool.local_model_enabled_var.set(True)
-        tool.local_model_mode_var.set(LOCAL_MODEL_MODE_WORKER_PROCESS)
+        tool.local_model_mode_var.set(LOCAL_MODEL_MODE_FAKE_WORKER)
         tool.local_model_id_var.set(LOCAL_MODEL_MODEL_ID)
         tool.local_model_path_var.set("C:/models/unlimited-ocr")
         tool.local_model_python_var.set("C:/runtime/python.exe")
@@ -771,7 +930,7 @@ class SettingsConsentUiTests(unittest.TestCase):
                 "src.tools.settings.tool.load_local_model_runtime_config",
                 return_value=LocalModelRuntimeConfig(
                     enabled=True,
-                    mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                    mode=LOCAL_MODEL_MODE_FAKE_WORKER,
                     model_path="C:/models/unlimited-ocr",
                     python_executable="C:/runtime/python.exe",
                     worker_script_path="C:/runtime/worker.py",
@@ -783,7 +942,7 @@ class SettingsConsentUiTests(unittest.TestCase):
 
         saved = save_mock.call_args.args[0]
         self.assertTrue(saved.enabled)
-        self.assertEqual(saved.mode, LOCAL_MODEL_MODE_WORKER_PROCESS)
+        self.assertEqual(saved.mode, LOCAL_MODEL_MODE_FAKE_WORKER)
         self.assertEqual(saved.model_path, "C:/models/unlimited-ocr")
 
         with (

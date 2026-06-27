@@ -1,9 +1,9 @@
 # Local Model OCR Worker Contract
 
 This document defines the future worker-process contract for local model OCR on
-the user's own computer. It is documentation only. The app does not currently
-start a worker process, run real Baidu Unlimited-OCR inference, download models,
-or import heavy AI runtimes.
+the user's own computer. The current implementation includes a developer/test
+fake worker subprocess only. The app does not run real Baidu Unlimited-OCR
+inference, download models, or import heavy AI runtimes.
 
 ## Scope
 
@@ -13,10 +13,40 @@ the desktop app can keep heavy AI imports outside the GUI process.
 This contract is for:
 
 - future local model OCR worker processes;
-- fake/mock worker tests;
+- fake/mock worker tests using `src/ocr/workers/fake_local_model_worker.py`;
 - manual acceptance planning.
 
 It is not a hosted service contract and must not be used for cloud OCR upload.
+
+## Current Fake Worker Prototype
+
+The current repo-local prototype contains:
+
+- `src/ocr/local_worker.py`: one-shot worker-process controller.
+- `src/ocr/workers/fake_local_model_worker.py`: deterministic fake worker
+  script.
+- `fake_worker` runtime mode in `LocalModelRuntimeConfig`.
+
+This prototype:
+
+- launches a subprocess only when `LocalModelOcrBackend` is explicitly
+  configured with `mode="fake_worker"`;
+- requires valid advanced OCR consent before backend execution;
+- sends sanitized page metadata over stdin as JSON;
+- reads a JSON response from stdout;
+- enforces timeout and cancellation through process termination;
+- validates response shape before creating `OcrResult`;
+- redacts worker stderr, payload data, source paths, OCR text, image bytes,
+  base64 payloads, and document content from user-facing errors.
+
+It does not:
+
+- run real OCR;
+- import torch, transformers, SGLang, CUDA, or model code;
+- download models;
+- read source PDF/image paths for OCR;
+- start on app startup;
+- run as a long-lived background worker.
 
 ## Request Input
 
@@ -33,8 +63,9 @@ Required request fields:
 - request id
 - provider/model id
 - page number
-- image format
-- image payload or scoped temporary page image reference
+- image format, image payload, or scoped temporary page image reference for a
+  future real worker
+- page metadata only for the current fake worker
 - OCR prompt/options
 - timeout budget
 
@@ -46,6 +77,10 @@ Forbidden request data:
 - full document content
 - unrelated user settings
 - unbounded logs or debug payload dumps
+
+The current fake worker request intentionally excludes image payloads and source
+paths. It sends only request id, provider/model id, runtime mode, prompt,
+sanitized options, and page numbers.
 
 ## Temporary File Policy
 
@@ -77,7 +112,8 @@ A successful worker response should be page-oriented:
   "metadata": {
     "provider": "baidu",
     "model_id": "baidu/Unlimited-OCR",
-    "runtime": "worker_process"
+    "runtime": "fake_worker",
+    "real_inference": false
   }
 }
 ```
