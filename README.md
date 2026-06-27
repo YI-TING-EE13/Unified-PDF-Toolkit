@@ -117,20 +117,22 @@ fidelity matters more than editability.
 
 ### Experimental Advanced Local AI OCR Architecture
 
-The codebase includes early architecture for an optional future advanced local
-AI OCR backend inspired by Baidu Unlimited-OCR. The intended future path is a
-model runtime on the user's own computer, not a hosted OCR service or cloud
-upload feature. This is not real Unlimited-OCR inference yet: the default app
-does not download models, does not import Transformers or torch at startup, and
-does not add GPU/CUDA dependencies to the default install.
+The codebase includes experimental architecture for optional advanced local AI
+OCR inspired by Baidu Unlimited-OCR. The model runtime is intended to run on the
+user's own computer, not as a hosted OCR service or cloud upload feature. A real
+experimental local Unlimited-OCR backend path exists for manually configured
+local model/runtime environments, but it is disabled by default and not
+production-ready. The default app does not download models, does not import
+Transformers or torch at startup, and does not add GPU/CUDA dependencies to the
+default install.
 
 Tesseract remains the default OCR Text engine for PDF to Word. Any future real
 AI OCR backend must stay local-first, run on user-owned local runtime paths,
 require explicit consent, document model download and custom-code risks, and
 avoid uploading user files, rendered pages, or OCR text. Settings / Recent
 includes consent management and safe local model runtime settings for this
-future optional capability, but saving consent or runtime paths does not enable
-real AI OCR inference in the current app.
+optional capability, but saving consent or runtime paths does not make AI OCR
+the default engine.
 
 For development and UI-flow testing only, setting
 `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes the hidden `[Dev] Document OCR Shell`.

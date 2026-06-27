@@ -23,6 +23,8 @@ Implemented today:
   are disabled by default and do not execute a model.
 - Developer/test-only fake local model worker subprocess prototype for IPC,
   timeout, cancellation, and response validation.
+- Experimental real local Unlimited-OCR backend path for manually configured
+  user-owned model/runtime environments.
 - Local endpoint backend scaffold with loopback-only URL validation.
 - Developer-only Document OCR UI shell gated by
   `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`.
@@ -35,9 +37,9 @@ Implemented today:
 
 Not implemented today:
 
-- Real Baidu Unlimited-OCR inference.
-- GPU OCR.
-- Model download.
+- Production-ready Baidu Unlimited-OCR inference.
+- Bundled GPU OCR runtime.
+- Automatic model download.
 - Production local OCR server.
 - In-process Transformers runtime.
 - Hosted OCR service or project-operated OCR server.
@@ -63,6 +65,8 @@ Not implemented today:
 - Fake local model worker prototype: `fake_worker` mode can launch the
   repo-local deterministic fake worker only when explicitly configured and
   consent-gated.
+- Experimental local Unlimited-OCR backend: `local_unlimited_ocr` mode can run
+  a manually configured local model path through lazy Transformers imports.
 - Developer Document OCR shell: hidden dev tool exercises file selection,
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
@@ -83,9 +87,13 @@ Not implemented today:
 - `src/ocr/consent.py`: consent model, validation, load/save/reset helpers.
 - `src/ocr/local_model.py`: preferred future local model backend scaffold and
   safe runtime settings helpers. It must not import AI runtimes, download
-  models, start worker processes, or run real inference until reviewed local
-  runtime support exists. The current `fake_worker` path is developer/test-only
-  and returns deterministic fake text.
+  models, or start worker processes at app startup. The current `fake_worker`
+  path is developer/test-only and returns deterministic fake text. The current
+  `local_unlimited_ocr` path is experimental real local inference only when
+  explicitly configured.
+- `src/ocr/unlimited_ocr_local.py`: lazy experimental Transformers runner for
+  local Baidu Unlimited-OCR model directories. Keep torch/transformers imports
+  inside the invoked runtime path only.
 - `src/ocr/local_worker.py`: one-shot fake worker controller for sanitized IPC,
   timeout, cancellation, response validation, and user-safe errors.
 - `src/ocr/workers/fake_local_model_worker.py`: standard-library fake worker
@@ -129,8 +137,9 @@ Not implemented today:
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend/settings, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
+| Experimental real local | `local_unlimited_ocr` mode for user-managed local model/runtime environments. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
-| Not supported | Real Unlimited-OCR inference, GPU OCR, model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
+| Not supported | Production Unlimited-OCR support, bundled GPU OCR runtime, automatic model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
 
@@ -236,16 +245,17 @@ start a worker process, or run inference.
 Settings / Recent can store safe runtime planning fields:
 
 - enabled flag
-- runtime mode: `disabled`, `fake_worker`, `worker_process`, or
-  `in_process_future`
+- runtime mode: `disabled`, `fake_worker`, `local_unlimited_ocr`,
+  `worker_process`, or `in_process_future`
 - provider/model id
 - local model folder path
+- device preference: `auto`, `cuda`, or `cpu`
 - optional future worker Python executable path
 - optional future worker script path
 
 These settings must not store OCR text, document content, source paths, image
 bytes/base64, rendered page paths, or output contents. Saving them does not
-enable real AI OCR.
+make it the default OCR engine.
 
 Future real local model support should prefer a worker process first. An
 in-process runtime is allowed only after security, dependency, packaging, and
@@ -275,6 +285,37 @@ It does not:
 - read source PDF/image paths for OCR;
 - start on app startup;
 - run as a background worker.
+
+### Experimental Local Unlimited-OCR Backend
+
+`local_unlimited_ocr` mode is the first real local model backend path. It is
+still experimental and disabled by default.
+
+It does:
+
+- require valid advanced OCR consent;
+- require explicit local runtime configuration and an existing local model path;
+- lazy-import torch and transformers only when invoked;
+- load the model with `trust_remote_code=True` for the configured local model
+  directory;
+- run `model.infer(...)` for one page or `model.infer_multi(...)` for multiple
+  pages when the model exposes those APIs;
+- write temporary page PNGs under an internal temporary directory and clean them
+  up automatically;
+- return `OcrResult` / `OcrPageResult` values;
+- keep OCR text out of diagnostics and workflow reports by default.
+
+It does not:
+
+- install torch, transformers, CUDA, SGLang, or model packages;
+- download model files silently;
+- run on app startup;
+- upload files or OCR text;
+- make advanced OCR the default engine;
+- claim production readiness.
+
+Manual readiness and optional real-model validation live in
+`scripts/manual_unlimited_ocr_local_check.py`.
 
 ## Production Document OCR UI Review
 
@@ -341,6 +382,8 @@ Diagnostics may report:
 - local endpoint URL validity.
 - local model runtime disabled/enabled status and configured path readiness.
 - fake worker mode status as developer/test-only readiness.
+- experimental local Unlimited-OCR mode status, local model path readiness, and
+  device preference.
 
 Diagnostics must not require GPU, CUDA, internet, model download, OCR server,
 torch, transformers, or SGLang. Missing optional AI pieces are warning/info
@@ -398,7 +441,7 @@ changes that instruction.
 
 Do not claim:
 
-- Real Unlimited-OCR inference is supported.
+- Real Unlimited-OCR inference is production-ready.
 - GPU OCR is supported.
 - The app bundles AI models or a GPU runtime.
 - Endpoint OCR is production-ready.
@@ -409,6 +452,7 @@ Do not claim:
 - Batch Queue supports AI OCR.
 - The default installer includes torch, transformers, SGLang, CUDA, or models.
 - Saving consent enables real AI OCR in the current app.
+- Saving local runtime settings makes AI OCR the default engine.
 
 ## Future Work Decision Table
 
@@ -416,14 +460,15 @@ Do not claim:
 | --- | --- | --- | --- |
 | Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
 | Local model fake worker UI smoke path | Fake worker prototype, workflow helpers, consent tests, fake smoke template | User confusion if mistaken for real OCR, output/report leakage | 2 |
-| Real worker-process design review | Fake worker prototype, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 3 |
-| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 4 |
+| Experimental local Unlimited-OCR manual validation | Local model backend, optional runtime docs, manual script, local model files, GPU/runtime access | GPU/runtime mismatch, custom-code execution risk, model output drift | 3 |
+| Real worker-process design review | Fake worker prototype, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 4 |
+| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 5 |
 | Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 5 |
 | Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 6 |
 | In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 7 |
 | User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 8 |
 
-Recommended next milestone: add a dev/test-only workflow smoke path that runs
-the Document OCR shell against `fake_worker` mode, still without model download
-or real inference, so GUI progress/cancel/error behavior can be tested across
-an actual subprocess boundary.
+Recommended next milestone: run manual real-model validation on a machine with
+the optional torch/transformers/CUDA runtime and a local Unlimited-OCR model
+directory, then record GPU/runtime/model compatibility and any output-shape
+fixes needed before UI exposure.

@@ -1,9 +1,10 @@
 # Optional Advanced OCR Runtime Guide
 
 This guide documents the intended packaging and installation boundary for future
-advanced local AI OCR runtimes. It is documentation only. Unified PDF Toolkit
-does not currently include real Unlimited-OCR inference, model downloads, GPU
-runtime packages, a hosted OCR service, or a production AI OCR server.
+advanced local AI OCR runtimes. Unified PDF Toolkit includes an experimental
+local Unlimited-OCR backend path for user-managed runtimes, but it does not
+include production-ready Unlimited-OCR support, model downloads, GPU runtime
+packages, a hosted OCR service, or a production AI OCR server.
 
 ## Default Install Remains Lightweight
 
@@ -71,8 +72,21 @@ Current scaffold status:
 - Diagnostics can report configured path readiness without starting a worker.
 - The future worker-process contract is documented in
   `docs/runtime/local_model_worker_contract.md`.
-- No real model inference, model download, worker process execution, or AI
-  runtime dependency is implemented.
+- `local_unlimited_ocr` provides an experimental real local backend path for
+  manually configured model directories and optional torch/transformers
+  runtimes.
+- No model download, worker process execution, or AI runtime dependency is
+  included in the default install.
+
+Manual readiness helper:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\manual_unlimited_ocr_local_check.py
+```
+
+The helper prints dependency/path readiness by default. Real OCR runs only when
+the maintainer supplies `--run`, a local `--model-path`, a local `--input`, and
+`--acknowledge-experimental-consent`.
 
 ### Advanced Local Endpoint Mode
 
@@ -175,6 +189,8 @@ Use this checklist for future optional runtime issues:
 - Confirm diagnostics show optional dependency status without crashing.
 - Confirm local model runtime and model path are configured when local model
   mode is selected.
+- Confirm `local_unlimited_ocr` mode uses an existing local model path and does
+  not rely on an automatic model download.
 - Confirm worker Python and worker script paths are configured only for a
   future worker-process mode and are not executed by current diagnostics.
 - Confirm endpoint URL is loopback-only when advanced endpoint mode is selected.

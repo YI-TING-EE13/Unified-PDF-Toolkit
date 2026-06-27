@@ -20,6 +20,7 @@ from .local_worker import (
     default_fake_worker_script_path,
     run_local_model_worker_process,
 )
+from .unlimited_ocr_local import run_unlimited_ocr_local
 from .models import OcrEngine, OcrRequest, OcrResult
 from ..utils.settings import get_setting, load_settings, save_settings, set_setting
 
@@ -28,13 +29,23 @@ LOCAL_MODEL_MODEL_ID = "baidu/Unlimited-OCR"
 LOCAL_MODEL_RUNTIME_SETTING_KEY = "advanced_ocr.local_model_runtime"
 LOCAL_MODEL_MODE_DISABLED = "disabled"
 LOCAL_MODEL_MODE_FAKE_WORKER = "fake_worker"
+LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR = "local_unlimited_ocr"
 LOCAL_MODEL_MODE_WORKER_PROCESS = "worker_process"
 LOCAL_MODEL_MODE_IN_PROCESS_FUTURE = "in_process_future"
+LOCAL_MODEL_DEVICE_AUTO = "auto"
+LOCAL_MODEL_DEVICE_CUDA = "cuda"
+LOCAL_MODEL_DEVICE_CPU = "cpu"
 LOCAL_MODEL_RUNTIME_MODES = (
     LOCAL_MODEL_MODE_DISABLED,
     LOCAL_MODEL_MODE_FAKE_WORKER,
+    LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+)
+LOCAL_MODEL_DEVICE_PREFERENCES = (
+    LOCAL_MODEL_DEVICE_AUTO,
+    LOCAL_MODEL_DEVICE_CUDA,
+    LOCAL_MODEL_DEVICE_CPU,
 )
 
 
@@ -53,6 +64,7 @@ class LocalModelRuntimeConfig:
     model_path: str | None = None
     python_executable: str | None = None
     worker_script_path: str | None = None
+    device_preference: str = LOCAL_MODEL_DEVICE_AUTO
     options: Mapping[str, str] | None = None
 
     @classmethod
@@ -76,6 +88,7 @@ class LocalModelRuntimeConfig:
             model_path=_clean_optional_text(data.get("model_path")),
             python_executable=_clean_optional_text(data.get("python_executable")),
             worker_script_path=_clean_optional_text(data.get("worker_script_path")),
+            device_preference=_clean_device_preference(data.get("device_preference")),
             options=safe_options,
         )
 
@@ -89,6 +102,11 @@ class LocalModelRuntimeConfig:
             "model_path": self.model_path or "",
             "python_executable": self.python_executable or "",
             "worker_script_path": self.worker_script_path or "",
+            "device_preference": (
+                self.device_preference
+                if self.device_preference in LOCAL_MODEL_DEVICE_PREFERENCES
+                else LOCAL_MODEL_DEVICE_AUTO
+            ),
             "options": dict(self.options or {}),
         }
 
@@ -96,6 +114,11 @@ class LocalModelRuntimeConfig:
 def _clean_optional_text(value: Any) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def _clean_device_preference(value: Any) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    return text if text in LOCAL_MODEL_DEVICE_PREFERENCES else LOCAL_MODEL_DEVICE_AUTO
 
 
 def load_local_model_runtime_config() -> LocalModelRuntimeConfig:
@@ -160,6 +183,9 @@ class LocalModelOcrBackend:
                 ),
                 options=self.config.options,
             )
+        if self.config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR:
+            self._validate_local_unlimited_ocr_config()
+            return run_unlimited_ocr_local(request_data, config=self.config)
         self._validate_runtime_config()
         raise OcrBackendUnavailableError(
             "Local AI OCR model runtime is not installed or configured."
@@ -176,6 +202,9 @@ class LocalModelOcrBackend:
             )
         if self.config.mode == LOCAL_MODEL_MODE_FAKE_WORKER:
             self._validate_fake_worker_config()
+            return
+        if self.config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR:
+            self._validate_local_unlimited_ocr_config()
             return
         if not self.config.model_path:
             raise OcrBackendUnavailableError(
@@ -196,6 +225,16 @@ class LocalModelOcrBackend:
                 )
             raise OcrBackendUnavailableError(
                 "Local AI OCR worker process execution is not implemented."
+            )
+
+    def _validate_local_unlimited_ocr_config(self) -> None:
+        if not self.config.enabled:
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR runtime is disabled."
+            )
+        if not self.config.model_path:
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR model path is not configured."
             )
 
     def _validate_fake_worker_config(self) -> None:

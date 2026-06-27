@@ -31,7 +31,7 @@ an advanced/developer loopback option, not the main product path.
 
 ## Supporting Milestone: Local Model Runtime Direction and Scaffold
 
-- Status: Implemented as a safe scaffold in `src/ocr/local_model.py` with runtime design documentation in `docs/runtime/local_model_ocr_runtime.md`; runtime settings and readiness diagnostics are implemented, but real inference is still future work.
+- Status: Implemented as a safe scaffold in `src/ocr/local_model.py` with runtime design documentation in `docs/runtime/local_model_ocr_runtime.md`; runtime settings, readiness diagnostics, fake worker, and an experimental local Unlimited-OCR path are implemented, but production readiness is still future work.
 - Goal: Make user-owned local model execution the primary future advanced OCR path.
 - Non-goals: No real Unlimited-OCR inference, model download, AI runtime dependency, server process, endpoint call, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
 - Acceptance criteria: Backend scaffold fits `OcrBackend`, requires valid advanced OCR consent, imports no heavy AI runtime, downloads no model, and reports runtime/model-not-configured errors clearly.
@@ -55,6 +55,15 @@ an advanced/developer loopback option, not the main product path.
 - Acceptance criteria: `fake_worker` mode is explicit and disabled by default; backend requires valid advanced OCR consent; worker payload excludes source paths, OCR text, image bytes/base64, and document content; timeout, cancellation, malformed JSON, non-zero exit, and response-shape failures surface as user-safe OCR errors.
 - Required tests: Deterministic fake worker success, timeout, cancellation, malformed JSON, non-zero exit, payload redaction, backend consent gating, explicit fake-worker configuration, and no heavy imports.
 - Safety/privacy checks: Fake worker uses only the Python standard library, reads only sanitized JSON metadata from stdin, writes JSON to stdout, logs no OCR/document/image content, and is not presented as real OCR support.
+
+## Supporting Milestone: Experimental Local Unlimited-OCR Backend
+
+- Status: Implemented as an optional `local_unlimited_ocr` runtime mode with lazy Transformers/torch imports and manual validation script support.
+- Goal: Allow a user-owned local Baidu Unlimited-OCR-compatible model directory to run experimental OCR when optional dependencies and consent are already in place.
+- Non-goals: No production AI OCR exposure, default-engine change, bundled AI runtime, automatic model download, app-startup import, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Backend requires valid advanced OCR consent, explicit enabled runtime config, existing local model path, lazy optional dependencies, local temporary page images with cleanup, user-safe OCR exceptions, and normal `OcrResult` / `OcrPageResult` output.
+- Required tests: Missing consent/config/dependency paths, mocked successful Transformers inference, lazy import/no heavy startup import, settings device preference, diagnostics readiness, and existing workflow tests with no GPU/model/internet requirement.
+- Safety/privacy checks: No upload, no OCR text/image bytes/document content in diagnostics or errors, no silent model download, `trust_remote_code=True` remains consent-gated and documented.
 
 ## 3. Developer-Only Document OCR UI Wiring
 

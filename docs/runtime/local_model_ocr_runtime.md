@@ -140,9 +140,9 @@ The scaffold:
 
 - fits the existing `OcrBackend` contract,
 - requires valid advanced OCR consent,
-- imports no heavy AI runtime,
-- downloads no model,
-- runs no real inference,
+- imports no heavy AI runtime at app startup,
+- downloads no model automatically,
+- can run experimental local Unlimited-OCR only when explicitly configured,
 - reports runtime/model-not-configured errors clearly.
 
 ## Runtime Configuration
@@ -150,10 +150,11 @@ The scaffold:
 The current settings record stores only safe local runtime hints:
 
 - enabled flag
-- runtime mode: `disabled`, `fake_worker`, `worker_process`, or
-  `in_process_future`
+- runtime mode: `disabled`, `fake_worker`, `local_unlimited_ocr`,
+  `worker_process`, or `in_process_future`
 - provider/model id
 - local model folder path
+- device preference: `auto`, `cuda`, or `cpu`
 - optional Python executable path for a future worker process
 - optional worker script path
 
@@ -188,6 +189,53 @@ The fake worker is launched only when local model OCR is explicitly configured
 with `mode="fake_worker"` and valid advanced OCR consent is present. It is not
 started on app startup and is not a long-running background worker.
 
+## Experimental Local Unlimited-OCR Backend
+
+`local_unlimited_ocr` mode is an experimental real local backend path for
+user-owned Baidu Unlimited-OCR-compatible model directories.
+
+Current behavior:
+
+- requires valid advanced OCR consent;
+- requires an explicit existing local model path;
+- lazily imports `torch` and `transformers` only when the backend is invoked;
+- uses `trust_remote_code=True` because the reference model requires custom
+  model code;
+- defaults to local files only and does not download model files silently;
+- writes rendered page images only to an internal temporary directory and
+  removes them when the call returns or fails;
+- returns normal `OcrResult` / `OcrPageResult` objects;
+- converts missing dependencies, missing CUDA, missing model path, malformed
+  model output, and runtime failures into OCR exceptions with user-safe text.
+
+The implementation follows the upstream Transformers pattern documented by
+Baidu/Hugging Face: `AutoTokenizer.from_pretrained(...)`,
+`AutoModel.from_pretrained(..., trust_remote_code=True, use_safetensors=True)`,
+then `model.infer(...)` for a single image or `model.infer_multi(...)` for
+multiple pages. This project does not bundle those optional dependencies or
+model files.
+
+Manual validation helper:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\manual_unlimited_ocr_local_check.py
+```
+
+That command prints readiness only. To run real OCR, maintainers must provide a
+local model directory, a small local image/PDF, and explicit acknowledgement:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\manual_unlimited_ocr_local_check.py `
+  --model-path C:\path\to\Unlimited-OCR `
+  --input C:\path\to\sample.png `
+  --device auto `
+  --run `
+  --acknowledge-experimental-consent
+```
+
+The helper does not install dependencies, download models, upload files, print
+OCR text, or run in CI.
+
 ## Readiness Diagnostics
 
 Diagnostics may report:
@@ -196,6 +244,8 @@ Diagnostics may report:
 - whether the configured local model path exists;
 - whether the configured worker Python path exists;
 - whether the configured worker script path exists;
+- whether experimental local Unlimited-OCR mode has a configured local model
+  path and selected device preference;
 - optional torch/transformers presence through safe detection only.
 
 Missing model/runtime paths are warning/info states for the optional backend,

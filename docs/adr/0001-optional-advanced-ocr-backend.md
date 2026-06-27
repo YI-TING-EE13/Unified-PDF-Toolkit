@@ -110,9 +110,9 @@ as the main product direction.
 - The scaffold requires valid advanced OCR consent before use, sends in-memory
   page image payloads rather than source file paths, uses short timeouts, and
   has mockable transport tests.
-- The app still does not start servers, run real Unlimited-OCR inference,
-  download models, add AI runtime dependencies, upload files, or add AI OCR
-  sidebar/batch workflows.
+- The app still does not start servers, run production/default Unlimited-OCR
+  inference, download models, add AI runtime dependencies, upload files, or add
+  AI OCR sidebar/batch workflows.
 
 ## Implemented Follow-Up: Local Model Backend Scaffold
 
@@ -122,7 +122,8 @@ as the main product direction.
 - The scaffold fits the existing `OcrBackend` contract, requires valid advanced
   OCR consent, and reports runtime/model-not-configured errors.
 - The scaffold does not import torch, transformers, SGLang, CUDA helpers, or
-  model code; it does not download models and does not run inference.
+  model code at app startup; it does not download models or make real
+  inference the default path.
 - Workflow backend selection can represent the future local model path without
   invoking real runtime execution.
 - Local endpoint remains available only as an advanced/developer loopback
@@ -160,6 +161,26 @@ as the main product direction.
 - This prototype does not run real Unlimited-OCR inference, download models,
   import torch/transformers/SGLang/CUDA, start at app startup, or create a
   long-running background worker.
+
+## Implemented Follow-Up: Experimental Local Unlimited-OCR Backend
+
+- `local_unlimited_ocr` runtime mode adds a real experimental local Baidu
+  Unlimited-OCR backend path for user-managed local model directories.
+- The backend requires valid advanced OCR consent and explicit enabled runtime
+  configuration before use.
+- `src/ocr/unlimited_ocr_local.py` lazily imports torch and transformers only
+  when this backend is invoked.
+- The model is loaded from an existing local model path with
+  `trust_remote_code=True`, `use_safetensors=True`, and local-files-only
+  behavior by default.
+- The app does not add torch, transformers, CUDA, SGLang, or model files to
+  default dependencies and does not download models silently.
+- Temporary page PNGs are written under an internal temporary directory for the
+  model API and cleaned up after success or failure.
+- `scripts/manual_unlimited_ocr_local_check.py` provides opt-in readiness and
+  manual smoke validation without printing OCR text.
+- This remains experimental and does not make advanced OCR production-ready or
+  the default OCR engine.
 
 ## Implemented Follow-Up: Local Endpoint Hardening
 

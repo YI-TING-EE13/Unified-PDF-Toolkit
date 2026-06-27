@@ -19,6 +19,7 @@ from ..ocr.local_model import (
     LOCAL_MODEL_MODE_DISABLED,
     LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+    LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LocalModelRuntimeConfig,
     load_local_model_runtime_config,
@@ -124,8 +125,12 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
         DiagnosticCheck(
             "Advanced OCR local model runtime",
             "warning",
-            f"{config.mode} configured; real inference is not implemented yet",
-            "This configuration is for future local runtime readiness only.",
+            f"{config.mode} configured"
+            if config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR
+            else f"{config.mode} configured; real inference is not implemented yet",
+            "Experimental local Unlimited-OCR requires optional runtime dependencies."
+            if config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR
+            else "This configuration is for future local runtime readiness only.",
         )
     )
     if config.mode != LOCAL_MODEL_MODE_FAKE_WORKER:
@@ -168,6 +173,15 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
                     expect_file=True,
                 )
             )
+    elif config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR:
+        checks.append(
+            DiagnosticCheck(
+                "Advanced OCR local Unlimited-OCR",
+                "warning",
+                f"experimental Transformers runtime selected; device={config.device_preference}",
+                "Requires user-installed torch/transformers and a local model path.",
+            )
+        )
     elif config.mode == LOCAL_MODEL_MODE_IN_PROCESS_FUTURE:
         checks.append(
             DiagnosticCheck(

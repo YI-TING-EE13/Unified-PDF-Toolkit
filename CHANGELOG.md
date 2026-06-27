@@ -18,6 +18,7 @@
 - Pivoted advanced OCR direction toward a user-owned local model runtime and added a safe local model backend scaffold without real inference or AI runtime dependencies.
 - Added safe local model OCR runtime settings, readiness diagnostics, and worker-process contract documentation without enabling real inference.
 - Added a developer/test-only fake local model worker subprocess prototype to exercise IPC, timeout, cancellation, and response validation without real OCR inference.
+- Added an optional experimental local Unlimited-OCR backend path with lazy torch/transformers imports, local model path validation, and an opt-in manual validation script.
 
 ## 0.5.0 - 2026-06-19
 

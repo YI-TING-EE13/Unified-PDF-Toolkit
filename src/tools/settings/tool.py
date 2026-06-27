@@ -14,9 +14,13 @@ from ...ocr.consent import (
     save_advanced_ocr_consent,
 )
 from ...ocr.local_model import (
+    LOCAL_MODEL_DEVICE_AUTO,
+    LOCAL_MODEL_DEVICE_CPU,
+    LOCAL_MODEL_DEVICE_CUDA,
     LOCAL_MODEL_MODE_DISABLED,
     LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+    LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LocalModelRuntimeConfig,
     clear_local_model_runtime_config,
@@ -99,8 +103,8 @@ class SettingsTool(BaseTool):
             runtime_frame,
             text=(
                 "Future AI OCR is intended to run on this computer. Real "
-                "Unlimited-OCR inference is not implemented yet; these settings "
-                "only record local runtime readiness hints. There is no model "
+                "Unlimited-OCR inference is experimental and requires a local "
+                "model/runtime configured by the user. There is no model "
                 "download or server start action here."
             ),
             wraplength=900,
@@ -127,6 +131,7 @@ class SettingsTool(BaseTool):
             values=[
                 LOCAL_MODEL_MODE_DISABLED,
                 LOCAL_MODEL_MODE_FAKE_WORKER,
+                LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
                 LOCAL_MODEL_MODE_WORKER_PROCESS,
                 LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
             ],
@@ -137,22 +142,35 @@ class SettingsTool(BaseTool):
         ttk.Entry(runtime_frame, textvariable=self.local_model_id_var).grid(
             row=3, column=3, sticky="ew", padx=(8, 0), pady=2
         )
-        ttk.Label(runtime_frame, text="Local model folder:").grid(row=4, column=0, sticky="w")
+        self.local_model_device_var = tk.StringVar(value=LOCAL_MODEL_DEVICE_AUTO)
+        ttk.Label(runtime_frame, text="Device:").grid(row=4, column=0, sticky="w")
+        ttk.Combobox(
+            runtime_frame,
+            textvariable=self.local_model_device_var,
+            values=[
+                LOCAL_MODEL_DEVICE_AUTO,
+                LOCAL_MODEL_DEVICE_CUDA,
+                LOCAL_MODEL_DEVICE_CPU,
+            ],
+            state="readonly",
+            width=20,
+        ).grid(row=4, column=1, sticky="ew", padx=(8, 12), pady=2)
+        ttk.Label(runtime_frame, text="Local model folder:").grid(row=5, column=0, sticky="w")
         ttk.Entry(runtime_frame, textvariable=self.local_model_path_var).grid(
-            row=4, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
-        )
-        ttk.Label(runtime_frame, text="Worker Python path:").grid(row=5, column=0, sticky="w")
-        ttk.Entry(runtime_frame, textvariable=self.local_model_python_var).grid(
             row=5, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
         )
-        ttk.Label(runtime_frame, text="Worker script path:").grid(row=6, column=0, sticky="w")
-        ttk.Entry(runtime_frame, textvariable=self.local_model_worker_var).grid(
+        ttk.Label(runtime_frame, text="Worker Python path:").grid(row=6, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_python_var).grid(
             row=6, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
+        )
+        ttk.Label(runtime_frame, text="Worker script path:").grid(row=7, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_worker_var).grid(
+            row=7, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
         )
         runtime_frame.columnconfigure(1, weight=1)
         runtime_frame.columnconfigure(3, weight=1)
         runtime_actions = ttk.Frame(runtime_frame)
-        runtime_actions.grid(row=7, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        runtime_actions.grid(row=8, column=0, columnspan=4, sticky="w", pady=(8, 0))
         ttk.Button(
             runtime_actions,
             text="Save Runtime Settings",
@@ -245,6 +263,7 @@ class SettingsTool(BaseTool):
             model_path=self.local_model_path_var.get(),
             python_executable=self.local_model_python_var.get(),
             worker_script_path=self.local_model_worker_var.get(),
+            device_preference=self.local_model_device_var.get(),
         )
 
     def _apply_local_model_runtime_config(self, config: LocalModelRuntimeConfig) -> None:
@@ -254,6 +273,7 @@ class SettingsTool(BaseTool):
         self.local_model_path_var.set(config.model_path or "")
         self.local_model_python_var.set(config.python_executable or "")
         self.local_model_worker_var.set(config.worker_script_path or "")
+        self.local_model_device_var.set(config.device_preference)
 
     def _refresh_local_model_runtime_status(self) -> None:
         config = load_local_model_runtime_config()

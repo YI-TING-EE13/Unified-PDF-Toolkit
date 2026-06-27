@@ -12,7 +12,9 @@ from src.ocr import (
     OcrConsentRequiredError,
     OcrDependencyMissingError,
     OcrEngine,
+    OcrPageResult,
     OcrRequest,
+    OcrResult,
     get_backend,
 )
 from src.ocr.consent import AdvancedOcrConsent, require_valid_consent
@@ -29,10 +31,12 @@ from src.ocr.local_endpoint import (
     validate_local_endpoint_url,
 )
 from src.ocr.local_model import (
+    LOCAL_MODEL_DEVICE_CUDA,
     LOCAL_MODEL_MODEL_ID,
     LOCAL_MODEL_MODE_DISABLED,
     LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
+    LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LOCAL_MODEL_PROVIDER,
     LOCAL_MODEL_RUNTIME_SETTING_KEY,
@@ -42,6 +46,7 @@ from src.ocr.local_model import (
     load_local_model_runtime_config,
     save_local_model_runtime_config,
 )
+from src.ocr import unlimited_ocr_local
 from src.ocr.local_worker import (
     build_local_model_worker_payload,
     default_fake_worker_script_path,
@@ -444,6 +449,7 @@ class LocalModelBackendTests(unittest.TestCase):
                 "model_path": "C:/models/unlimited-ocr",
                 "python_executable": "C:/runtime/python.exe",
                 "worker_script_path": "C:/runtime/worker.py",
+                "device_preference": LOCAL_MODEL_DEVICE_CUDA,
                 "options": {"future": "value"},
             }
         )
@@ -451,6 +457,7 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertTrue(loaded.enabled)
         self.assertEqual(loaded.mode, LOCAL_MODEL_MODE_FAKE_WORKER)
         self.assertEqual(loaded.model_path, "C:/models/unlimited-ocr")
+        self.assertEqual(loaded.device_preference, LOCAL_MODEL_DEVICE_CUDA)
         self.assertEqual(loaded.to_dict()["options"], {"future": "value"})
 
     def test_local_model_config_does_not_store_forbidden_document_content(self):
@@ -653,6 +660,145 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertEqual(result.pages[0].text, "Fake local model OCR text for page 1.")
         self.assertFalse(result.metadata["real_inference"])
 
+    def test_local_unlimited_ocr_requires_model_path_and_optional_dependencies(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        missing_config = LocalModelRuntimeConfig(
+            enabled=True,
+            mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+        )
+        backend = LocalModelOcrBackend(
+            consent=self._valid_consent(),
+            config=missing_config,
+        )
+        with self.assertRaises(OcrBackendUnavailableError) as missing_path:
+            backend.recognize(request)
+        self.assertIn("model path is not configured", str(missing_path.exception))
+
+        with tempfile.TemporaryDirectory() as model_dir:
+            backend = LocalModelOcrBackend(
+                consent=self._valid_consent(),
+                config=LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+                    model_path=model_dir,
+                ),
+            )
+            with (
+                mock.patch(
+                    "src.ocr.unlimited_ocr_local.importlib.util.find_spec",
+                    return_value=None,
+                ),
+                self.assertRaises(OcrDependencyMissingError) as missing_dependency,
+            ):
+                backend.recognize(request)
+        self.assertIn("torch", str(missing_dependency.exception))
+
+    def test_local_model_backend_uses_local_unlimited_runner_only_when_configured(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        expected = OcrResult(
+            engine=OcrEngine.LOCAL_MODEL,
+            pages=[OcrPageResult(page_number=1, text="mock real OCR")],
+            metadata={"runtime": "local_unlimited_ocr", "real_inference": True},
+        )
+        with tempfile.TemporaryDirectory() as model_dir, mock.patch(
+            "src.ocr.local_model.run_unlimited_ocr_local",
+            return_value=expected,
+        ) as runner:
+            backend = LocalModelOcrBackend(
+                consent=self._valid_consent(),
+                config=LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+                    model_path=model_dir,
+                    device_preference=LOCAL_MODEL_DEVICE_CUDA,
+                ),
+            )
+            result = backend.recognize(request)
+
+        self.assertIs(result, expected)
+        runner.assert_called_once()
+
+    def test_unlimited_ocr_local_runner_lazily_uses_transformers_with_mock_model(self):
+        class FakeCuda:
+            @staticmethod
+            def is_available():
+                return False
+
+        class FakeTorch:
+            bfloat16 = object()
+            cuda = FakeCuda()
+
+        class FakeTokenizerFactory:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                return object()
+
+        class FakeModel:
+            def eval(self):
+                return self
+
+            def to(self, device):
+                self.device = device
+                return self
+
+            def infer(self, *args, **kwargs):
+                self.kwargs = kwargs
+                return "mock Unlimited-OCR text"
+
+        class FakeModelFactory:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                return FakeModel()
+
+        class FakeTransformers:
+            AutoTokenizer = FakeTokenizerFactory
+            AutoModel = FakeModelFactory
+
+        def fake_import(name):
+            if name == "torch":
+                return FakeTorch
+            if name == "transformers":
+                return FakeTransformers
+            raise ImportError(name)
+
+        with (
+            tempfile.TemporaryDirectory() as model_dir,
+            mock.patch(
+                "src.ocr.unlimited_ocr_local.importlib.util.find_spec",
+                return_value=object(),
+            ),
+            mock.patch(
+                "src.ocr.unlimited_ocr_local.importlib.import_module",
+                side_effect=fake_import,
+            ),
+        ):
+            result = unlimited_ocr_local.run_unlimited_ocr_local(
+                OcrRequest(
+                    engine=OcrEngine.LOCAL_MODEL,
+                    images=[Image.new("RGB", (10, 10), "white")],
+                    page_numbers=[7],
+                ),
+                config=LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+                    model_path=model_dir,
+                    options={"local_files_only": "true"},
+                ),
+            )
+
+        self.assertEqual(result.pages[0].page_number, 7)
+        self.assertEqual(result.pages[0].text, "mock Unlimited-OCR text")
+        self.assertEqual(result.metadata["runtime"], "local_unlimited_ocr")
+        self.assertTrue(result.metadata["real_inference"])
+
 
 class AdvancedOcrConsentTests(unittest.TestCase):
     def _valid_consent(self) -> AdvancedOcrConsent:
@@ -851,6 +997,18 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         fake_names = [check.name for check in fake_configured]
         self.assertIn("Advanced OCR fake worker", fake_names)
 
+        unlimited_configured = diagnostics._local_model_runtime_checks(
+            LocalModelRuntimeConfig(
+                enabled=True,
+                mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+                model_path="C:/missing/model",
+                device_preference=LOCAL_MODEL_DEVICE_CUDA,
+            )
+        )
+        unlimited_names = [check.name for check in unlimited_configured]
+        self.assertIn("Advanced OCR local Unlimited-OCR", unlimited_names)
+        self.assertIn("Advanced OCR local model path", unlimited_names)
+
 
 class SettingsConsentUiTests(unittest.TestCase):
     def _tool(self) -> SettingsTool:
@@ -864,6 +1022,7 @@ class SettingsConsentUiTests(unittest.TestCase):
         tool.local_model_path_var = FakeStatusVar()
         tool.local_model_python_var = FakeStatusVar()
         tool.local_model_worker_var = FakeStatusVar()
+        tool.local_model_device_var = FakeStatusVar()
         return tool
 
     def test_settings_consent_cancel_does_not_save(self):
@@ -923,6 +1082,7 @@ class SettingsConsentUiTests(unittest.TestCase):
         tool.local_model_path_var.set("C:/models/unlimited-ocr")
         tool.local_model_python_var.set("C:/runtime/python.exe")
         tool.local_model_worker_var.set("C:/runtime/worker.py")
+        tool.local_model_device_var.set(LOCAL_MODEL_DEVICE_CUDA)
 
         with (
             mock.patch("src.tools.settings.tool.save_local_model_runtime_config") as save_mock,
@@ -944,6 +1104,7 @@ class SettingsConsentUiTests(unittest.TestCase):
         self.assertTrue(saved.enabled)
         self.assertEqual(saved.mode, LOCAL_MODEL_MODE_FAKE_WORKER)
         self.assertEqual(saved.model_path, "C:/models/unlimited-ocr")
+        self.assertEqual(saved.device_preference, LOCAL_MODEL_DEVICE_CUDA)
 
         with (
             mock.patch("src.tools.settings.tool.clear_local_model_runtime_config") as clear_mock,

@@ -1,10 +1,10 @@
 # Advanced OCR Privacy and Security Review
 
 This review defines the security, privacy, and release requirements for any
-future real advanced local AI OCR or Unlimited-OCR-compatible backend. It is a
-pre-integration document only. The current app does not run real Unlimited-OCR
-inference, download models, start OCR servers, call a real OCR endpoint, or add
-GPU/runtime dependencies.
+future real advanced local AI OCR or Unlimited-OCR-compatible backend. The app
+now includes an experimental local Unlimited-OCR backend path, but the default
+app does not download models, start OCR servers, call a real OCR endpoint, add
+GPU/runtime dependencies, or expose production-ready Unlimited-OCR support.
 
 ## Scope
 
