@@ -11,6 +11,7 @@ import importlib
 import importlib.util
 import contextlib
 import tempfile
+import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -52,7 +53,11 @@ def run_unlimited_ocr_local(request_data: OcrRequest, *, config: Any) -> OcrResu
             "Local Unlimited-OCR request has invalid page metadata."
         )
 
-    with tempfile.TemporaryDirectory(prefix="pdf_toolkit_unlimited_ocr_") as tmpdir:
+    temp_parent = _worker_temp_parent()
+    with tempfile.TemporaryDirectory(
+        prefix="pdf_toolkit_unlimited_ocr_",
+        dir=temp_parent,
+    ) as tmpdir:
         temp_root = Path(tmpdir)
         image_dir = temp_root / "pages"
         output_dir = temp_root / "output"
@@ -142,6 +147,15 @@ def _suppress_model_console_output() -> contextlib.ExitStack:
     stack.enter_context(contextlib.redirect_stdout(sink))
     stack.enter_context(contextlib.redirect_stderr(sink))
     return stack
+
+
+def _worker_temp_parent() -> str | None:
+    value = os.environ.get("PDF_TOOLKIT_UNLIMITED_OCR_TMP_ROOT")
+    if not value:
+        return None
+    path = Path(value)
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 
 def _required_existing_model_path(value: str | None) -> str:

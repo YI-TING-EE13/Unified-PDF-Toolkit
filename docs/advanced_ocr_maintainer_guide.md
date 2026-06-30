@@ -67,6 +67,9 @@ Not implemented today:
   consent-gated.
 - Experimental local Unlimited-OCR backend: `local_unlimited_ocr` mode can run
   a manually configured local model path through lazy Transformers imports.
+- Experimental Unlimited-OCR worker runtime: `worker_process` mode can run the
+  same local model through a one-shot subprocess with timeout/cancel kill
+  behavior when explicitly configured.
 - Developer Document OCR shell: hidden dev tool exercises file selection,
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
@@ -95,9 +98,12 @@ Not implemented today:
   local Baidu Unlimited-OCR model directories. Keep torch/transformers imports
   inside the invoked runtime path only.
 - `src/ocr/local_worker.py`: one-shot fake worker controller for sanitized IPC,
-  timeout, cancellation, response validation, and user-safe errors.
+  timeout, cancellation, response validation, and user-safe errors for fake and
+  experimental Unlimited-OCR worker paths.
 - `src/ocr/workers/fake_local_model_worker.py`: standard-library fake worker
   subprocess target. It must not import AI runtimes or read source documents.
+- `src/ocr/workers/unlimited_ocr_worker.py`: experimental one-shot real local
+  Unlimited-OCR worker target. It must stay opt-in and must not run at startup.
 - `src/ocr/local_endpoint.py`: localhost-only endpoint client scaffold.
 - `src/ocr/workflow.py`: mock-only advanced OCR workflow helpers for backend
   selection, consent gating, input loading, TXT/Markdown output writing, and
@@ -137,7 +143,7 @@ Not implemented today:
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend/settings, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
-| Experimental real local | `local_unlimited_ocr` mode for user-managed local model/runtime environments. |
+| Experimental real local | `local_unlimited_ocr` direct mode and `worker_process` one-shot subprocess mode for user-managed local model/runtime environments. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
 | Not supported | Production Unlimited-OCR support, bundled GPU OCR runtime, automatic model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
@@ -317,6 +323,31 @@ It does not:
 Manual readiness and optional real-model validation live in
 `scripts/manual_unlimited_ocr_local_check.py`.
 
+### Experimental Unlimited-OCR Worker Process
+
+`worker_process` mode is the preferred experimental boundary for future local
+model inference because it can terminate the subprocess on timeout or
+cancellation.
+
+It does:
+
+- require valid advanced OCR consent;
+- require explicit local model path and worker Python executable settings;
+- use the repo-local `src/ocr/workers/unlimited_ocr_worker.py` by default;
+- write temporary controller-owned page PNGs and clean them up;
+- lazy-load torch/transformers inside the worker process only;
+- return normalized `OcrResult` page results through JSON stdout;
+- discard worker stderr and surface user-safe errors for timeout, invalid JSON,
+  non-zero exit, missing model path, and runtime failures.
+
+It does not:
+
+- download models;
+- run on app startup;
+- run as a long-lived background worker;
+- expose production AI OCR UI;
+- change the default Tesseract OCR path.
+
 ## Production Document OCR UI Review
 
 Production Document OCR is still future work. The release-gate design review is
@@ -461,7 +492,7 @@ Do not claim:
 | Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
 | Local model fake worker UI smoke path | Fake worker prototype, workflow helpers, consent tests, fake smoke template | User confusion if mistaken for real OCR, output/report leakage | 2 |
 | Experimental local Unlimited-OCR manual validation | Local model backend, optional runtime docs, manual script, local model files, GPU/runtime access | GPU/runtime mismatch, custom-code execution risk, model output drift | 3 |
-| Real worker-process design review | Fake worker prototype, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 4 |
+| Worker-process production hardening | Experimental worker process, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 4 |
 | AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 5 |
 | Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 5 |
 | Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 6 |

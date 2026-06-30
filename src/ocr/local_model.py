@@ -2,12 +2,14 @@
 
 This module intentionally does not import torch, transformers, SGLang, CUDA
 helpers, or model code. It defines the future local model backend boundary and
-allows only an explicit developer/test fake worker path.
+allows explicit fake, direct local Unlimited-OCR, and worker-process runtime
+paths only when configured.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Mapping
 
 from .consent import (
@@ -18,7 +20,9 @@ from .consent import (
 from .exceptions import OcrBackendUnavailableError
 from .local_worker import (
     default_fake_worker_script_path,
+    default_unlimited_ocr_worker_script_path,
     run_local_model_worker_process,
+    run_unlimited_ocr_worker_process,
 )
 from .unlimited_ocr_local import run_unlimited_ocr_local
 from .models import OcrEngine, OcrRequest, OcrResult
@@ -54,8 +58,7 @@ class LocalModelRuntimeConfig:
     """Future local model runtime configuration.
 
     The default is disabled. Paths are user-managed local runtime hints and
-    must not trigger downloads. Only `fake_worker` mode may execute the
-    repo-local deterministic fake worker.
+    must not trigger downloads.
     """
 
     enabled: bool = False
@@ -160,7 +163,7 @@ class LocalModelOcrBackend:
         self.config = config or load_local_model_runtime_config()
 
     def recognize(self, request_data: OcrRequest) -> OcrResult:
-        """Validate consent, then run only explicitly configured fake/dev paths."""
+        """Validate consent, then run only explicitly configured local paths."""
 
         require_valid_consent(
             self.consent,
@@ -186,6 +189,24 @@ class LocalModelOcrBackend:
         if self.config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR:
             self._validate_local_unlimited_ocr_config()
             return run_unlimited_ocr_local(request_data, config=self.config)
+        if self.config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
+            self._validate_worker_process_config()
+            return run_unlimited_ocr_worker_process(
+                request_data,
+                model_id=self.config.model_id or LOCAL_MODEL_MODEL_ID,
+                model_path=self.config.model_path or "",
+                runtime_mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                device_preference=self.config.device_preference,
+                python_executable=self.config.python_executable,
+                worker_script_path=(
+                    self.config.worker_script_path
+                    or default_unlimited_ocr_worker_script_path()
+                ),
+                timeout_seconds=_float_option(
+                    self.config.options, "timeout_seconds", default=120.0
+                ),
+                options=self.config.options,
+            )
         self._validate_runtime_config()
         raise OcrBackendUnavailableError(
             "Local AI OCR model runtime is not installed or configured."
@@ -206,6 +227,9 @@ class LocalModelOcrBackend:
         if self.config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR:
             self._validate_local_unlimited_ocr_config()
             return
+        if self.config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
+            self._validate_worker_process_config()
+            return
         if not self.config.model_path:
             raise OcrBackendUnavailableError(
                 "Local AI OCR model path is not configured."
@@ -215,17 +239,8 @@ class LocalModelOcrBackend:
                 "Local AI OCR in-process runtime is not implemented."
             )
         if self.config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
-            if not self.config.python_executable:
-                raise OcrBackendUnavailableError(
-                    "Local AI OCR worker Python executable is not configured."
-                )
-            if not self.config.worker_script_path:
-                raise OcrBackendUnavailableError(
-                    "Local AI OCR worker script path is not configured."
-                )
-            raise OcrBackendUnavailableError(
-                "Local AI OCR worker process execution is not implemented."
-            )
+            self._validate_worker_process_config()
+            return
 
     def _validate_local_unlimited_ocr_config(self) -> None:
         if not self.config.enabled:
@@ -245,6 +260,28 @@ class LocalModelOcrBackend:
         if not self.config.worker_script_path and not default_fake_worker_script_path():
             raise OcrBackendUnavailableError(
                 "Local AI OCR fake worker script path is not configured."
+            )
+
+    def _validate_worker_process_config(self) -> None:
+        if not self.config.enabled:
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR worker runtime is disabled."
+            )
+        if not self.config.model_path:
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR model path is not configured."
+            )
+        if not self.config.python_executable:
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR worker Python executable is not configured."
+            )
+        if not Path(self.config.model_path).exists():
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR model path was not found."
+            )
+        if not Path(self.config.python_executable).exists():
+            raise OcrBackendUnavailableError(
+                "Local Unlimited-OCR worker Python executable was not found."
             )
 
 

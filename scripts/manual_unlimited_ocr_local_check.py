@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 from src.ocr.consent import AdvancedOcrConsent  # noqa: E402
 from src.ocr.local_model import (  # noqa: E402
     LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+    LOCAL_MODEL_MODE_WORKER_PROCESS,
     LOCAL_MODEL_MODEL_ID,
     LOCAL_MODEL_PROVIDER,
     LocalModelOcrBackend,
@@ -42,6 +43,17 @@ def parse_args() -> argparse.Namespace:
         default="auto",
         choices=("auto", "cuda", "cpu"),
         help="Device preference passed to the experimental backend.",
+    )
+    parser.add_argument(
+        "--runtime-mode",
+        default=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+        choices=(LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR, LOCAL_MODEL_MODE_WORKER_PROCESS),
+        help="Experimental runtime path to validate.",
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        default="120",
+        help="Worker-process timeout budget. Used only with --runtime-mode worker_process.",
     )
     parser.add_argument(
         "--run",
@@ -93,13 +105,19 @@ def main() -> int:
     )
     backend = LocalModelOcrBackend(
         consent=consent,
-        config=LocalModelRuntimeConfig(
-            enabled=True,
-            mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
-            model_path=args.model_path,
-            device_preference=args.device,
-        ),
-    )
+            config=LocalModelRuntimeConfig(
+                enabled=True,
+                mode=args.runtime_mode,
+                model_path=args.model_path,
+                python_executable=(
+                    sys.executable
+                    if args.runtime_mode == LOCAL_MODEL_MODE_WORKER_PROCESS
+                    else None
+                ),
+                device_preference=args.device,
+                options={"timeout_seconds": args.timeout_seconds},
+            ),
+        )
     try:
         result = backend.recognize(
             OcrRequest(

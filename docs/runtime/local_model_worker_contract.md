@@ -1,9 +1,9 @@
 # Local Model OCR Worker Contract
 
-This document defines the future worker-process contract for local model OCR on
-the user's own computer. The current implementation includes a developer/test
-fake worker subprocess only. The app does not run real Baidu Unlimited-OCR
-inference, download models, or import heavy AI runtimes.
+This document defines the worker-process contract for local model OCR on the
+user's own computer. The current implementation includes a developer/test fake
+worker subprocess and an experimental one-shot Baidu Unlimited-OCR worker path.
+The app does not download models or import heavy AI runtimes at startup.
 
 ## Scope
 
@@ -14,6 +14,8 @@ This contract is for:
 
 - future local model OCR worker processes;
 - fake/mock worker tests using `src/ocr/workers/fake_local_model_worker.py`;
+- experimental local Unlimited-OCR worker execution using
+  `src/ocr/workers/unlimited_ocr_worker.py`;
 - manual acceptance planning.
 
 It is not a hosted service contract and must not be used for cloud OCR upload.
@@ -48,6 +50,39 @@ It does not:
 - start on app startup;
 - run as a long-lived background worker.
 
+## Experimental Unlimited-OCR Worker
+
+The current real worker path contains:
+
+- `src/ocr/local_worker.py`: one-shot controller that writes temporary page
+  PNGs, launches the configured worker Python, enforces timeout/cancellation,
+  parses JSON, validates response shape, and discards worker stderr.
+- `src/ocr/workers/unlimited_ocr_worker.py`: worker subprocess target that
+  reads JSON from stdin, lazy-loads the local Unlimited-OCR runtime inside the
+  subprocess, and writes a normalized JSON response to stdout.
+- `worker_process` runtime mode in `LocalModelRuntimeConfig`.
+
+This path:
+
+- requires valid advanced OCR consent;
+- requires explicit `enabled=True`, local model path, and worker Python
+  executable configuration;
+- uses temporary page image paths created by the controller, not source
+  PDF/image file paths;
+- supports a killable timeout/cancellation boundary by terminating the worker
+  process;
+- keeps OCR text, image bytes, source paths, model paths, and worker stderr out
+  of user-facing errors by default;
+- is experimental and not production-ready.
+
+It does not:
+
+- download models;
+- run on app startup;
+- keep a long-lived background worker;
+- make Unlimited-OCR the default engine;
+- provide production UI support.
+
 ## Request Input
 
 The app should send only the minimum page data needed for OCR.
@@ -78,9 +113,11 @@ Forbidden request data:
 - unrelated user settings
 - unbounded logs or debug payload dumps
 
-The current fake worker request intentionally excludes image payloads and source
-paths. It sends only request id, provider/model id, runtime mode, prompt,
-sanitized options, and page numbers.
+The fake worker request intentionally excludes image payloads and source paths.
+It sends only request id, provider/model id, runtime mode, prompt, sanitized
+options, and page numbers. The experimental real worker request may include
+controller-created temporary page image paths and the configured local model
+path; neither should appear in logs or user-facing errors by default.
 
 ## Temporary File Policy
 
@@ -193,7 +230,7 @@ Allowed high-level logs:
 
 ## Security and Readiness Gates
 
-Before real worker execution is implemented:
+Before worker execution is exposed beyond experimental/manual validation:
 
 - advanced OCR consent must be required;
 - runtime path and model path settings must be explicit;

@@ -1,13 +1,15 @@
-"""Local model worker-process controller for fake/dev OCR runtime tests.
+"""Local model worker-process controller for OCR runtime tests.
 
 This module uses only the Python standard library. It does not import AI
-runtimes, download models, or run real OCR. The current worker path is intended
-only for deterministic fake worker subprocess tests.
+runtimes, download models, or run real OCR in the app process. The fake worker
+path is deterministic test scaffolding. The Unlimited-OCR worker path is an
+explicit subprocess boundary for experimental local inference.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -33,6 +35,12 @@ def default_fake_worker_script_path() -> str:
     """Return the repo-local fake worker script path."""
 
     return str(Path(__file__).with_name("workers") / "fake_local_model_worker.py")
+
+
+def default_unlimited_ocr_worker_script_path() -> str:
+    """Return the repo-local experimental Unlimited-OCR worker script path."""
+
+    return str(Path(__file__).with_name("workers") / "unlimited_ocr_worker.py")
 
 
 def build_local_model_worker_payload(
@@ -77,6 +85,41 @@ def _safe_worker_options(options: Mapping[str, str] | None) -> Dict[str, str]:
     return safe
 
 
+def build_unlimited_ocr_worker_payload(
+    request_data: OcrRequest,
+    *,
+    model_id: str,
+    model_path: str,
+    runtime_mode: str,
+    device_preference: str,
+    page_image_paths: list[Path],
+    options: Mapping[str, str] | None = None,
+) -> Dict[str, Any]:
+    """Build an explicit real-worker payload with temporary page image paths only."""
+
+    page_numbers = list(request_data.page_numbers) or list(
+        range(1, len(request_data.images) + 1)
+    )
+    return {
+        "request_id": "local-unlimited-ocr-worker",
+        "provider": "baidu",
+        "model_id": model_id,
+        "model_path": model_path,
+        "runtime": runtime_mode,
+        "device_preference": device_preference,
+        "prompt": request_data.prompt,
+        "pages": [
+            {
+                "page_number": int(page_number),
+                "image_index": index,
+                "image_path": str(page_image_paths[index]),
+            }
+            for index, page_number in enumerate(page_numbers)
+        ],
+        "options": _safe_worker_options(options),
+    }
+
+
 def run_local_model_worker_process(
     request_data: OcrRequest,
     *,
@@ -101,6 +144,101 @@ def run_local_model_worker_process(
     if cancellation_check and cancellation_check():
         raise OcrBackendUnavailableError("Local AI OCR worker process was cancelled.")
 
+    response = _run_json_worker_process(
+        executable=executable,
+        script_path=script_path,
+        payload=payload,
+        timeout_seconds=timeout_seconds,
+        cancellation_check=cancellation_check,
+    )
+    return _parse_worker_response(
+        response,
+        request_data=request_data,
+        expected_page_numbers=[page["page_number"] for page in payload["pages"]],
+    )
+
+
+def run_unlimited_ocr_worker_process(
+    request_data: OcrRequest,
+    *,
+    model_id: str,
+    model_path: str,
+    runtime_mode: str,
+    device_preference: str,
+    python_executable: str | None = None,
+    worker_script_path: str | None = None,
+    timeout_seconds: float = DEFAULT_WORKER_TIMEOUT_SECONDS,
+    options: Mapping[str, str] | None = None,
+    cancellation_check: Callable[[], bool] | None = None,
+) -> OcrResult:
+    """Run experimental local Unlimited-OCR in a killable one-shot worker."""
+
+    executable = python_executable or sys.executable
+    script_path = worker_script_path or default_unlimited_ocr_worker_script_path()
+    page_numbers = list(request_data.page_numbers) or list(
+        range(1, len(request_data.images) + 1)
+    )
+    if len(page_numbers) != len(request_data.images):
+        raise OcrBackendUnavailableError(
+            "Local AI OCR worker request has invalid page metadata."
+        )
+    if cancellation_check and cancellation_check():
+        raise OcrBackendUnavailableError("Local AI OCR worker process was cancelled.")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="pdf_toolkit_unlimited_worker_") as tmpdir:
+        temp_root = Path(tmpdir)
+        page_dir = temp_root / "pages"
+        child_temp_root = temp_root / "worker_tmp"
+        page_dir.mkdir()
+        child_temp_root.mkdir()
+        page_image_paths: list[Path] = []
+        for index, image in enumerate(request_data.images, start=1):
+            image_path = page_dir / f"page_{index:04d}.png"
+            image.save(image_path, format="PNG")
+            page_image_paths.append(image_path)
+        payload = build_unlimited_ocr_worker_payload(
+            request_data,
+            model_id=model_id,
+            model_path=model_path,
+            runtime_mode=runtime_mode,
+            device_preference=device_preference,
+            page_image_paths=page_image_paths,
+            options=options,
+        )
+        response = _run_json_worker_process(
+            executable=executable,
+            script_path=script_path,
+            payload=payload,
+            timeout_seconds=timeout_seconds,
+            cancellation_check=cancellation_check,
+            env_updates={
+                "PDF_TOOLKIT_UNLIMITED_OCR_TMP_ROOT": str(child_temp_root),
+            },
+        )
+        return _parse_worker_response(
+            response,
+            request_data=request_data,
+            expected_page_numbers=[
+                page["page_number"] for page in payload["pages"]
+            ],
+        )
+
+
+def _run_json_worker_process(
+    *,
+    executable: str,
+    script_path: str,
+    payload: Mapping[str, Any],
+    timeout_seconds: float,
+    cancellation_check: Callable[[], bool] | None = None,
+    env_updates: Mapping[str, str] | None = None,
+) -> Any:
+    env = None
+    if env_updates:
+        env = os.environ.copy()
+        env.update({str(key): str(value) for key, value in env_updates.items()})
     try:
         process = subprocess.Popen(
             [executable, script_path],
@@ -109,6 +247,7 @@ def run_local_model_worker_process(
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
+            env=env,
         )
     except OSError as exc:
         raise OcrBackendUnavailableError(
@@ -150,16 +289,11 @@ def run_local_model_worker_process(
     if process.returncode != 0:
         raise OcrBackendUnavailableError("Local AI OCR worker process failed.")
     try:
-        response = json.loads(stdout)
+        return json.loads(stdout)
     except json.JSONDecodeError as exc:
         raise OcrBackendUnavailableError(
             "Local AI OCR worker process returned invalid JSON."
         ) from exc
-    return _parse_worker_response(
-        response,
-        request_data=request_data,
-        expected_page_numbers=[page["page_number"] for page in payload["pages"]],
-    )
 
 
 def _terminate_worker(process: subprocess.Popen[str]) -> None:

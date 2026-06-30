@@ -143,7 +143,8 @@ The scaffold:
 - requires valid advanced OCR consent,
 - imports no heavy AI runtime at app startup,
 - downloads no model automatically,
-- can run experimental local Unlimited-OCR only when explicitly configured,
+- can run experimental local Unlimited-OCR directly or through a one-shot worker
+  process only when explicitly configured,
 - reports runtime/model-not-configured errors clearly.
 
 ## Runtime Configuration
@@ -156,7 +157,7 @@ The current settings record stores only safe local runtime hints:
 - provider/model id
 - local model folder path
 - device preference: `auto`, `cuda`, or `cpu`
-- optional Python executable path for a future worker process
+- optional Python executable path for worker-process mode
 - optional worker script path
 
 Defaults keep local model OCR disabled. The settings record must not store OCR
@@ -243,14 +244,53 @@ $env:HF_MODULES_CACHE = "$env:TEMP\pdf_toolkit_ocr_validation\hf_modules"
   --acknowledge-experimental-consent
 ```
 
+To validate the killable worker-process boundary, add
+`--runtime-mode worker_process`. The script uses the current Python executable
+as the configured worker Python and requires a timeout budget:
+
+```powershell
+uv run --no-cache --python .\.venv-ocr-runtime\Scripts\python.exe --no-project `
+  python scripts\manual_unlimited_ocr_local_check.py `
+  --runtime-mode worker_process `
+  --model-path C:\path\to\Unlimited-OCR `
+  --input C:\path\to\sample.pdf `
+  --device cuda `
+  --timeout-seconds 180 `
+  --run `
+  --acknowledge-experimental-consent
+```
+
 The helper does not install dependencies, download models, upload files, print
 OCR text, or run in CI.
 
+## Experimental Unlimited-OCR Worker Process
+
+`worker_process` mode runs real local Unlimited-OCR through a one-shot
+subprocess instead of inside the app process.
+
+Current behavior:
+
+- requires valid advanced OCR consent;
+- requires an explicit existing local model path;
+- requires an explicit worker Python executable, normally an optional
+  user-managed OCR runtime such as `.venv-ocr-runtime`;
+- launches no worker on app startup;
+- writes temporary controller-owned page PNGs and removes them on success,
+  failure, timeout, and cancellation;
+- terminates the worker process on timeout/cancellation;
+- discards worker stderr and maps worker failures to user-safe OCR exceptions;
+- keeps OCR text, image bytes, source paths, and model paths out of logs and
+  user-facing errors by default.
+
+This mode is the preferred experimental path for future safe local inference
+because it provides a killable boundary that direct in-process inference does
+not have. It is still not production-ready.
+
 Current limitation: in-process `local_unlimited_ocr` inference does not provide
 a safe hard timeout or cancellation boundary. If the model hangs inside
-Transformers/CUDA execution, the future worker-process runtime must provide the
-killable timeout boundary. Do not expose production cancel semantics for this
-in-process path until that worker boundary exists.
+Transformers/CUDA execution, prefer `worker_process` mode for experimental
+manual validation because it can terminate the subprocess. Do not expose
+production cancel semantics for the direct in-process path.
 
 ## Readiness Diagnostics
 

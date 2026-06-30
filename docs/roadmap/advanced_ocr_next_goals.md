@@ -58,12 +58,21 @@ an advanced/developer loopback option, not the main product path.
 
 ## Supporting Milestone: Experimental Local Unlimited-OCR Backend
 
-- Status: Implemented as an optional `local_unlimited_ocr` runtime mode with lazy Transformers/torch imports and manual validation script support.
+- Status: Implemented as optional `local_unlimited_ocr` direct mode plus `worker_process` subprocess mode with lazy Transformers/torch imports and manual validation script support.
 - Goal: Allow a user-owned local Baidu Unlimited-OCR-compatible model directory to run experimental OCR when optional dependencies and consent are already in place.
 - Non-goals: No production AI OCR exposure, default-engine change, bundled AI runtime, automatic model download, app-startup import, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
 - Acceptance criteria: Backend requires valid advanced OCR consent, explicit enabled runtime config, existing local model path, lazy optional dependencies, local temporary page images with cleanup, user-safe OCR exceptions, and normal `OcrResult` / `OcrPageResult` output.
 - Required tests: Missing consent/config/dependency paths, mocked successful Transformers inference, lazy import/no heavy startup import, settings device preference, diagnostics readiness, and existing workflow tests with no GPU/model/internet requirement.
 - Safety/privacy checks: No upload, no OCR text/image bytes/document content in diagnostics or errors, no silent model download, `trust_remote_code=True` remains consent-gated and documented.
+
+## Supporting Milestone: Killable Unlimited-OCR Worker Runtime
+
+- Status: Implemented as an experimental one-shot worker-process path in `src/ocr/local_worker.py` and `src/ocr/workers/unlimited_ocr_worker.py`.
+- Goal: Provide a killable local process boundary for real user-owned Unlimited-OCR inference so timeout, cancellation, and worker crashes do not require killing the desktop app process.
+- Non-goals: No production UI exposure, default-engine change, model download, bundled AI runtime, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: `worker_process` requires valid advanced OCR consent, explicit local model path, explicit worker Python executable, and disabled-by-default runtime config; worker stdout is JSON; worker stderr and payload details are not surfaced to users; timeout/cancel terminates the subprocess; temp page images are cleaned up.
+- Required tests: Worker success with mocked subprocess response, timeout, malformed JSON, non-zero exit, backend dispatch only when configured, consent gating, payload redaction, and no heavy imports at app startup.
+- Safety/privacy checks: Controller-created temporary page image paths are scoped to a temp directory; source file paths, OCR text, image bytes/base64, model paths, and document content are not logged or included in user-facing errors by default.
 
 ## 3. Developer-Only Document OCR UI Wiring
 

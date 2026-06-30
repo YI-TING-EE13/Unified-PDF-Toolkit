@@ -50,9 +50,12 @@ from src.ocr.local_model import (
 )
 from src.ocr import unlimited_ocr_local
 from src.ocr.local_worker import (
+    build_unlimited_ocr_worker_payload,
     build_local_model_worker_payload,
     default_fake_worker_script_path,
+    default_unlimited_ocr_worker_script_path,
     run_local_model_worker_process,
+    run_unlimited_ocr_worker_process,
 )
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
@@ -641,6 +644,104 @@ class LocalModelBackendTests(unittest.TestCase):
                 )
             self.assertIn("cancelled", str(cancelled_error.exception))
 
+    def test_unlimited_worker_payload_uses_temp_images_and_redacts_source_path(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            source_path="C:/private/source.pdf",
+            page_numbers=[9],
+            options={
+                "document_content": "secret",
+                "safe_timeout": "5",
+            },
+        )
+        payload = build_unlimited_ocr_worker_payload(
+            request,
+            model_id=LOCAL_MODEL_MODEL_ID,
+            model_path="C:/models/unlimited-ocr",
+            runtime_mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+            device_preference=LOCAL_MODEL_DEVICE_CUDA,
+            page_image_paths=[Path("C:/temp/page_0001.png")],
+            options=request.options,
+        )
+        serialized = json.dumps(payload)
+
+        self.assertNotIn("C:/private/source.pdf", serialized)
+        self.assertNotIn("secret", serialized)
+        self.assertEqual(payload["pages"][0]["page_number"], 9)
+        self.assertEqual(payload["pages"][0]["image_path"], "C:\\temp\\page_0001.png")
+        self.assertEqual(payload["options"], {"safe_timeout": "5"})
+
+    def test_unlimited_worker_process_success_timeout_and_failures_are_sanitized(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            success = tmp / "success_worker.py"
+            success.write_text(
+                "import json, sys\n"
+                "request=json.load(sys.stdin)\n"
+                "pages=[{'page_number': p['page_number'], 'text': 'worker page', 'confidence': None, 'warnings': []} for p in request['pages']]\n"
+                "print(json.dumps({'pages': pages, 'metadata': {'runtime': 'worker_process', 'real_inference': True}}))\n",
+                encoding="utf-8",
+            )
+            sleeper = tmp / "sleep_worker.py"
+            sleeper.write_text("import time\ntime.sleep(5)\n", encoding="utf-8")
+            malformed = tmp / "malformed_worker.py"
+            malformed.write_text("print('not json')\n", encoding="utf-8")
+            failing = tmp / "failing_worker.py"
+            failing.write_text(
+                "import sys\n"
+                "print('secret source path C:/private/source.pdf', file=sys.stderr)\n"
+                "raise SystemExit(7)\n",
+                encoding="utf-8",
+            )
+
+            request = OcrRequest(
+                engine=OcrEngine.LOCAL_MODEL,
+                images=[Image.new("RGB", (10, 10), "white")],
+                source_path="C:/private/source.pdf",
+                page_numbers=[2],
+            )
+            common = {
+                "request_data": request,
+                "model_id": LOCAL_MODEL_MODEL_ID,
+                "model_path": "C:/models/unlimited-ocr",
+                "runtime_mode": LOCAL_MODEL_MODE_WORKER_PROCESS,
+                "device_preference": LOCAL_MODEL_DEVICE_CUDA,
+                "python_executable": sys.executable,
+            }
+
+            result = run_unlimited_ocr_worker_process(
+                **common,
+                worker_script_path=str(success),
+            )
+            self.assertEqual(result.pages[0].page_number, 2)
+            self.assertEqual(result.pages[0].text, "worker page")
+            self.assertTrue(result.metadata["real_inference"])
+
+            with self.assertRaises(OcrBackendUnavailableError) as timeout_error:
+                run_unlimited_ocr_worker_process(
+                    **common,
+                    worker_script_path=str(sleeper),
+                    timeout_seconds=0.05,
+                )
+            self.assertIn("timed out", str(timeout_error.exception))
+            self.assertNotIn("C:/private/source.pdf", str(timeout_error.exception))
+
+            with self.assertRaises(OcrBackendUnavailableError) as malformed_error:
+                run_unlimited_ocr_worker_process(
+                    **common,
+                    worker_script_path=str(malformed),
+                )
+            self.assertIn("invalid JSON", str(malformed_error.exception))
+
+            with self.assertRaises(OcrBackendUnavailableError) as failing_error:
+                run_unlimited_ocr_worker_process(
+                    **common,
+                    worker_script_path=str(failing),
+                )
+            self.assertIn("process failed", str(failing_error.exception))
+            self.assertNotIn("C:/private/source.pdf", str(failing_error.exception))
+
     def test_local_model_backend_uses_fake_worker_only_when_configured(self):
         request = OcrRequest(
             engine=OcrEngine.LOCAL_MODEL,
@@ -661,6 +762,41 @@ class LocalModelBackendTests(unittest.TestCase):
 
         self.assertEqual(result.pages[0].text, "Fake local model OCR text for page 1.")
         self.assertFalse(result.metadata["real_inference"])
+
+    def test_local_model_backend_uses_worker_process_only_when_configured(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        expected = OcrResult(
+            engine=OcrEngine.LOCAL_MODEL,
+            pages=[OcrPageResult(page_number=1, text="worker OCR")],
+            metadata={"runtime": "worker_process", "real_inference": True},
+        )
+        with tempfile.TemporaryDirectory() as model_dir, mock.patch(
+            "src.ocr.local_model.run_unlimited_ocr_worker_process",
+            return_value=expected,
+        ) as runner:
+            backend = LocalModelOcrBackend(
+                consent=self._valid_consent(),
+                config=LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                    model_path=model_dir,
+                    python_executable=sys.executable,
+                    device_preference=LOCAL_MODEL_DEVICE_CUDA,
+                    options={"timeout_seconds": "3"},
+                ),
+            )
+            result = backend.recognize(request)
+
+        self.assertIs(result, expected)
+        runner.assert_called_once()
+        kwargs = runner.call_args.kwargs
+        self.assertEqual(kwargs["runtime_mode"], LOCAL_MODEL_MODE_WORKER_PROCESS)
+        self.assertEqual(kwargs["worker_script_path"], default_unlimited_ocr_worker_script_path())
+        self.assertEqual(kwargs["timeout_seconds"], 3.0)
 
     def test_local_unlimited_ocr_requires_model_path_and_optional_dependencies(self):
         request = OcrRequest(
