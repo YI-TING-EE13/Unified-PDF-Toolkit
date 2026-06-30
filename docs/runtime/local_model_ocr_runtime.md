@@ -275,10 +275,13 @@ Current behavior:
 - requires an explicit worker Python executable, normally an optional
   user-managed OCR runtime such as `.venv-ocr-runtime`;
 - launches no worker on app startup;
+- allows only one active experimental Unlimited-OCR worker by default and
+  returns a user-safe busy message for accidental concurrent requests;
 - writes temporary controller-owned page PNGs and removes them on success,
   failure, timeout, and cancellation;
 - terminates the worker process on timeout/cancellation;
-- discards worker stderr and maps worker failures to user-safe OCR exceptions;
+- discards worker stderr, parses structured worker error JSON when available,
+  and maps worker failures to user-safe OCR exceptions;
 - keeps OCR text, image bytes, source paths, and model paths out of logs and
   user-facing errors by default.
 

@@ -67,12 +67,16 @@ This path:
 - requires valid advanced OCR consent;
 - requires explicit `enabled=True`, local model path, and worker Python
   executable configuration;
+- allows only one active experimental Unlimited-OCR worker by default to avoid
+  accidental concurrent GPU jobs;
 - uses temporary page image paths created by the controller, not source
   PDF/image file paths;
 - supports a killable timeout/cancellation boundary by terminating the worker
   process;
 - keeps OCR text, image bytes, source paths, model paths, and worker stderr out
   of user-facing errors by default;
+- parses structured worker error JSON when available and falls back to generic,
+  user-safe messages when the worker output is malformed or unsafe;
 - is experimental and not production-ready.
 
 It does not:
@@ -204,6 +208,8 @@ Required behavior:
 - no background monitoring;
 - no processing after user cancellation where avoidable;
 - no hidden retry loops that continue after UI cancellation;
+- no accidental concurrent GPU workers by default; callers should receive a
+  clear "local OCR worker is busy" message when another worker is active;
 - temporary files cleaned up on timeout/cancel;
 - user-safe timeout/cancel messages.
 

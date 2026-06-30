@@ -12,14 +12,18 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping
+from typing import Any, Callable, Dict, Iterator, Mapping
 
 from .exceptions import OcrBackendUnavailableError
 from .models import OcrEngine, OcrPageResult, OcrRequest, OcrResult
 
 DEFAULT_WORKER_TIMEOUT_SECONDS = 10.0
+UNLIMITED_OCR_WORKER_LOCK_NAME = "pdf_toolkit_unlimited_ocr_worker.lock"
+DEFAULT_UNLIMITED_OCR_WORKER_MAX_CONCURRENCY = 1
 FORBIDDEN_OPTION_TOKENS = (
     "source",
     "path",
@@ -41,6 +45,12 @@ def default_unlimited_ocr_worker_script_path() -> str:
     """Return the repo-local experimental Unlimited-OCR worker script path."""
 
     return str(Path(__file__).with_name("workers") / "unlimited_ocr_worker.py")
+
+
+def unlimited_ocr_worker_lock_path() -> Path:
+    """Return the process-wide lock path for experimental Unlimited-OCR workers."""
+
+    return Path(tempfile.gettempdir()) / UNLIMITED_OCR_WORKER_LOCK_NAME
 
 
 def build_local_model_worker_payload(
@@ -185,8 +195,34 @@ def run_unlimited_ocr_worker_process(
     if cancellation_check and cancellation_check():
         raise OcrBackendUnavailableError("Local AI OCR worker process was cancelled.")
 
-    import tempfile
+    with _single_unlimited_worker_guard(timeout_seconds=timeout_seconds):
+        return _run_unlimited_ocr_worker_process_locked(
+            request_data,
+            model_id=model_id,
+            model_path=model_path,
+            runtime_mode=runtime_mode,
+            device_preference=device_preference,
+            executable=executable,
+            script_path=script_path,
+            timeout_seconds=timeout_seconds,
+            options=options,
+            cancellation_check=cancellation_check,
+        )
 
+
+def _run_unlimited_ocr_worker_process_locked(
+    request_data: OcrRequest,
+    *,
+    model_id: str,
+    model_path: str,
+    runtime_mode: str,
+    device_preference: str,
+    executable: str,
+    script_path: str,
+    timeout_seconds: float,
+    options: Mapping[str, str] | None = None,
+    cancellation_check: Callable[[], bool] | None = None,
+) -> OcrResult:
     with tempfile.TemporaryDirectory(prefix="pdf_toolkit_unlimited_worker_") as tmpdir:
         temp_root = Path(tmpdir)
         page_dir = temp_root / "pages"
@@ -226,6 +262,89 @@ def run_unlimited_ocr_worker_process(
         )
 
 
+@contextmanager
+def _single_unlimited_worker_guard(*, timeout_seconds: float) -> Iterator[None]:
+    """Prevent accidental concurrent GPU workers by default.
+
+    This is intentionally a coarse process-wide lock. Future runtime settings
+    may expose higher concurrency after GPU memory and cancellation semantics
+    are reviewed; the safe default remains one worker at a time.
+    """
+
+    lock_path = unlimited_ocr_worker_lock_path()
+    stale_after_seconds = max(float(timeout_seconds) + 60.0, 300.0)
+    fd: int | None = None
+    for attempt in range(2):
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(
+                    fd,
+                    json.dumps(
+                        {
+                            "pid": os.getpid(),
+                            "created_at": time.time(),
+                            "max_concurrency": (
+                                DEFAULT_UNLIMITED_OCR_WORKER_MAX_CONCURRENCY
+                            ),
+                        }
+                    ).encode("utf-8"),
+                )
+            except OSError as exc:
+                os.close(fd)
+                fd = None
+                _remove_unlimited_worker_lock(lock_path)
+                raise OcrBackendUnavailableError(
+                    "Local OCR worker guard could not be prepared."
+                ) from exc
+            break
+        except FileExistsError as exc:
+            if attempt == 0 and _remove_stale_unlimited_worker_lock(
+                lock_path, stale_after_seconds=stale_after_seconds
+            ):
+                continue
+            raise OcrBackendUnavailableError(
+                "Local OCR worker is busy. Wait for the current local OCR job to finish and try again."
+            ) from exc
+    try:
+        yield
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        try:
+            _remove_unlimited_worker_lock(lock_path)
+        except OSError:
+            pass
+
+
+def _remove_stale_unlimited_worker_lock(
+    lock_path: Path,
+    *,
+    stale_after_seconds: float,
+) -> bool:
+    try:
+        age_seconds = time.time() - lock_path.stat().st_mtime
+    except OSError:
+        return False
+    if age_seconds < stale_after_seconds:
+        return False
+    try:
+        lock_path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _remove_unlimited_worker_lock(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def _run_json_worker_process(
     *,
     executable: str,
@@ -244,7 +363,7 @@ def _run_json_worker_process(
             [executable, script_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             env=env,
@@ -284,9 +403,11 @@ def _run_json_worker_process(
         time.sleep(0.01)
 
     stdout = process.stdout.read() if process.stdout is not None else ""
-    _ = process.stderr.read() if process.stderr is not None else ""
     _close_worker_pipes(process)
     if process.returncode != 0:
+        worker_error = _parse_worker_error(stdout)
+        if worker_error:
+            raise OcrBackendUnavailableError(worker_error)
         raise OcrBackendUnavailableError("Local AI OCR worker process failed.")
     try:
         return json.loads(stdout)
@@ -294,6 +415,30 @@ def _run_json_worker_process(
         raise OcrBackendUnavailableError(
             "Local AI OCR worker process returned invalid JSON."
         ) from exc
+
+
+def _parse_worker_error(stdout: str) -> str | None:
+    try:
+        response = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(response, dict):
+        return None
+    error = response.get("error")
+    if not isinstance(error, dict):
+        return None
+    message = error.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    return _sanitize_worker_error_message(message)
+
+
+def _sanitize_worker_error_message(message: str) -> str:
+    lower = message.lower()
+    unsafe_tokens = ("source", "path", "image", "base64", "document", "content")
+    if any(token in lower for token in unsafe_tokens):
+        return "Local AI OCR worker process failed."
+    return message.strip()
 
 
 def _terminate_worker(process: subprocess.Popen[str]) -> None:

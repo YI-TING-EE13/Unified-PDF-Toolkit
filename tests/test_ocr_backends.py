@@ -56,6 +56,7 @@ from src.ocr.local_worker import (
     default_unlimited_ocr_worker_script_path,
     run_local_model_worker_process,
     run_unlimited_ocr_worker_process,
+    unlimited_ocr_worker_lock_path,
 )
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
@@ -741,6 +742,77 @@ class LocalModelBackendTests(unittest.TestCase):
                 )
             self.assertIn("process failed", str(failing_error.exception))
             self.assertNotIn("C:/private/source.pdf", str(failing_error.exception))
+            self.assertFalse(unlimited_ocr_worker_lock_path().exists())
+
+    def test_unlimited_worker_busy_and_structured_errors_are_sanitized(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            success = tmp / "success_worker.py"
+            success.write_text(
+                "import json, sys\n"
+                "request=json.load(sys.stdin)\n"
+                "pages=[{'page_number': p['page_number'], 'text': 'worker page', 'confidence': None, 'warnings': []} for p in request['pages']]\n"
+                "print(json.dumps({'pages': pages, 'metadata': {'runtime': 'worker_process'}}))\n",
+                encoding="utf-8",
+            )
+            safe_error = tmp / "safe_error_worker.py"
+            safe_error.write_text(
+                "import json\n"
+                "print(json.dumps({'error': {'message': 'CUDA is unavailable for local OCR.', 'retryable': False}}))\n"
+                "raise SystemExit(3)\n",
+                encoding="utf-8",
+            )
+            unsafe_error = tmp / "unsafe_error_worker.py"
+            unsafe_error.write_text(
+                "import json\n"
+                "print(json.dumps({'error': {'message': 'Failed on source path C:/private/source.pdf', 'retryable': False}}))\n"
+                "raise SystemExit(3)\n",
+                encoding="utf-8",
+            )
+
+            request = OcrRequest(
+                engine=OcrEngine.LOCAL_MODEL,
+                images=[Image.new("RGB", (10, 10), "white")],
+                source_path="C:/private/source.pdf",
+                page_numbers=[1],
+            )
+            common = {
+                "request_data": request,
+                "model_id": LOCAL_MODEL_MODEL_ID,
+                "model_path": "C:/models/unlimited-ocr",
+                "runtime_mode": LOCAL_MODEL_MODE_WORKER_PROCESS,
+                "device_preference": LOCAL_MODEL_DEVICE_CUDA,
+                "python_executable": sys.executable,
+            }
+
+            lock_path = unlimited_ocr_worker_lock_path()
+            lock_path.write_text("busy", encoding="utf-8")
+            try:
+                with self.assertRaises(OcrBackendUnavailableError) as busy_error:
+                    run_unlimited_ocr_worker_process(
+                        **common,
+                        worker_script_path=str(success),
+                    )
+                self.assertIn("worker is busy", str(busy_error.exception))
+                self.assertNotIn("C:/private/source.pdf", str(busy_error.exception))
+            finally:
+                with contextlib.suppress(FileNotFoundError):
+                    lock_path.unlink()
+
+            with self.assertRaises(OcrBackendUnavailableError) as cuda_error:
+                run_unlimited_ocr_worker_process(
+                    **common,
+                    worker_script_path=str(safe_error),
+                )
+            self.assertIn("CUDA is unavailable", str(cuda_error.exception))
+
+            with self.assertRaises(OcrBackendUnavailableError) as unsafe_raised:
+                run_unlimited_ocr_worker_process(
+                    **common,
+                    worker_script_path=str(unsafe_error),
+                )
+            self.assertIn("process failed", str(unsafe_raised.exception))
+            self.assertNotIn("C:/private/source.pdf", str(unsafe_raised.exception))
 
     def test_local_model_backend_uses_fake_worker_only_when_configured(self):
         request = OcrRequest(

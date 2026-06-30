@@ -69,7 +69,8 @@ Not implemented today:
   a manually configured local model path through lazy Transformers imports.
 - Experimental Unlimited-OCR worker runtime: `worker_process` mode can run the
   same local model through a one-shot subprocess with timeout/cancel kill
-  behavior when explicitly configured.
+  behavior, default single-worker concurrency, and user-safe structured error
+  handling when explicitly configured.
 - Developer Document OCR shell: hidden dev tool exercises file selection,
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
@@ -99,7 +100,9 @@ Not implemented today:
   inside the invoked runtime path only.
 - `src/ocr/local_worker.py`: one-shot fake worker controller for sanitized IPC,
   timeout, cancellation, response validation, and user-safe errors for fake and
-  experimental Unlimited-OCR worker paths.
+  experimental Unlimited-OCR worker paths. The real Unlimited-OCR worker path
+  uses a default single-worker guard so accidental concurrent GPU jobs fail
+  with a busy message instead of starting another model process.
 - `src/ocr/workers/fake_local_model_worker.py`: standard-library fake worker
   subprocess target. It must not import AI runtimes or read source documents.
 - `src/ocr/workers/unlimited_ocr_worker.py`: experimental one-shot real local
@@ -334,11 +337,14 @@ It does:
 - require valid advanced OCR consent;
 - require explicit local model path and worker Python executable settings;
 - use the repo-local `src/ocr/workers/unlimited_ocr_worker.py` by default;
+- allow one active worker by default and return a safe busy error for
+  concurrent attempts;
 - write temporary controller-owned page PNGs and clean them up;
 - lazy-load torch/transformers inside the worker process only;
 - return normalized `OcrResult` page results through JSON stdout;
-- discard worker stderr and surface user-safe errors for timeout, invalid JSON,
-  non-zero exit, missing model path, and runtime failures.
+- discard worker stderr, parse safe structured worker error JSON, and surface
+  user-safe errors for timeout, invalid JSON, non-zero exit, missing model path,
+  busy worker state, and runtime failures.
 
 It does not:
 

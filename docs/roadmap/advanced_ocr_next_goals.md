@@ -74,6 +74,15 @@ an advanced/developer loopback option, not the main product path.
 - Required tests: Worker success with mocked subprocess response, timeout, malformed JSON, non-zero exit, backend dispatch only when configured, consent gating, payload redaction, and no heavy imports at app startup.
 - Safety/privacy checks: Controller-created temporary page image paths are scoped to a temp directory; source file paths, OCR text, image bytes/base64, model paths, and document content are not logged or included in user-facing errors by default.
 
+## Supporting Milestone: Unlimited-OCR Worker Runtime Safety Hardening
+
+- Status: Implemented with a default single-worker guard, busy error handling, structured worker error parsing, stderr redaction, and cleanup tests.
+- Goal: Reduce risk before any broader UI exposure by preventing accidental concurrent GPU workers and keeping worker failures user-safe.
+- Non-goals: No production AI OCR exposure, default-engine change, model download, bundled AI runtime, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: `worker_process` allows only one active Unlimited-OCR worker by default; concurrent attempts return a safe busy message; timeout/cancel paths remove the worker lock; worker stderr is discarded; structured worker errors are parsed only when safe.
+- Required tests: Busy guard, timeout cleanup, structured safe error propagation, unsafe error redaction, malformed JSON, non-zero exit, and no heavy imports at app startup.
+- Safety/privacy checks: Busy/errors must not expose source paths, OCR text, image bytes/base64, model paths, or document content.
+
 ## 3. Developer-Only Document OCR UI Wiring
 
 - Status: Implemented behind `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`; evolved into a dev-only Document OCR shell that uses reusable mock-only workflow helpers for backend selection, consent gating, output writing, and error mapping.
