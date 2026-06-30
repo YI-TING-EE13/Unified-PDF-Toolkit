@@ -208,6 +208,30 @@ class AdvancedOcrWorkflowHelperTests(unittest.TestCase):
             "The local OCR worker is busy. Wait for the current OCR job to finish and try again.",
         )
         self.assertEqual(
+            user_safe_ocr_error_message(
+                OcrBackendUnavailableError(
+                    "Local Unlimited-OCR model path was not found."
+                )
+            ),
+            "The configured local Unlimited-OCR model path was not found.",
+        )
+        self.assertEqual(
+            user_safe_ocr_error_message(
+                OcrBackendUnavailableError(
+                    "Local Unlimited-OCR worker Python executable was not found."
+                )
+            ),
+            "The configured local Unlimited-OCR worker Python executable was not found.",
+        )
+        self.assertEqual(
+            user_safe_ocr_error_message(
+                OcrBackendUnavailableError(
+                    "CUDA device requested but GPU/VRAM is unavailable."
+                )
+            ),
+            "The local AI OCR runtime could not use the requested GPU/CUDA device.",
+        )
+        self.assertEqual(
             user_safe_ocr_error_message(RuntimeError("C:/secret/source.pdf")),
             "Advanced OCR workflow failed.",
         )

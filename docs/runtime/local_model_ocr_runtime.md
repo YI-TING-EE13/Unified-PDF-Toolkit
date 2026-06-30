@@ -345,6 +345,11 @@ Future local model OCR must handle:
 Errors must not include OCR text, image bytes/base64 payloads, document
 content, or hidden source paths.
 
+The current Document OCR workflow maps missing model path, missing worker
+Python, busy worker, timeout, unsupported input, consent, and GPU/CUDA failures
+to user-safe messages that do not include source paths, OCR text, image
+payloads, model cache paths, or document content.
+
 ## Privacy Guarantees
 
 Required privacy properties:

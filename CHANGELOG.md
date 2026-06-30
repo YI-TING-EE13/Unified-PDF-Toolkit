@@ -22,6 +22,7 @@
 - Added an experimental killable Unlimited-OCR worker-process runtime path with timeout handling, JSON response validation, temp page cleanup, and manual validation support.
 - Hardened the experimental Unlimited-OCR worker-process runtime with a default single-worker guard, safe busy errors, structured worker error parsing, and stderr redaction.
 - Added a user-facing Document OCR tool with Tesseract as the default backend and a gated experimental Local Unlimited-OCR worker option.
+- Hardened Document OCR experimental local-model failure messages for missing model path, missing worker Python, busy worker, timeout, unsupported input, and GPU/CUDA readiness failures.
 
 ## 0.5.0 - 2026-06-19
 

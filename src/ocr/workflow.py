@@ -299,6 +299,16 @@ def user_safe_ocr_error_message(exc: Exception) -> str:
         detail = str(exc)
         if "worker is busy" in detail:
             return "The local OCR worker is busy. Wait for the current OCR job to finish and try again."
+        if "Local Unlimited-OCR model path is not configured" in detail:
+            return "The local Unlimited-OCR model path is not configured."
+        if "Local Unlimited-OCR model path was not found" in detail:
+            return "The configured local Unlimited-OCR model path was not found."
+        if "Local Unlimited-OCR worker Python executable is not configured" in detail:
+            return "The local Unlimited-OCR worker Python executable is not configured."
+        if "Local Unlimited-OCR worker Python executable was not found" in detail:
+            return "The configured local Unlimited-OCR worker Python executable was not found."
+        if "CUDA" in detail or "GPU" in detail or "VRAM" in detail:
+            return "The local AI OCR runtime could not use the requested GPU/CUDA device."
         if "Local AI OCR model" in detail:
             return "The local AI OCR model runtime is not installed or configured."
         if "timed out" in detail:

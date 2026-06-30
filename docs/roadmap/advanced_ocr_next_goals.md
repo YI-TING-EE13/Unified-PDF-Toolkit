@@ -145,6 +145,15 @@ an advanced/developer loopback option, not the main product path.
 - Required tests: Tool registration, gate off/on behavior, Tesseract output path, invalid local runtime config, source-path exclusion for local model requests, and no torch/transformers/SGLang imports at startup.
 - Safety/privacy checks: OCR text is written only to selected local outputs; source paths are not sent to the local model backend; errors and reports do not include OCR text, image bytes/base64, or document content.
 
+## Supporting Milestone: Experimental Local OCR Failure Handling
+
+- Status: Implemented for the Document OCR workflow error mapper and manually checked with local failure scenarios.
+- Goal: Ensure the experimental local worker path fails clearly before broader exposure.
+- Non-goals: No production readiness claim, model download, bundled AI runtime, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Missing model path, invalid model path, missing worker Python, missing consent, busy worker, unsupported input, short timeout, and CUDA/GPU failures map to user-safe messages.
+- Required tests: Unit tests for error mapping plus workflow/tool tests with mocked or local-safe failure scenarios.
+- Safety/privacy checks: Failure messages must not include source paths, OCR text, image bytes/base64, model cache paths, or document content.
+
 ## Supporting Milestone: Production Document OCR UI Design Review
 
 - Status: Implemented as documentation/review only in `docs/design/`.

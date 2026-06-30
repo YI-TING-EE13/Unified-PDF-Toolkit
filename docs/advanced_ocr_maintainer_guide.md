@@ -178,6 +178,11 @@ The experimental Local Unlimited-OCR option is visible only when:
 The tool must not expose the direct in-process mode, download models, start
 workers at app startup, upload files, or make AI OCR the default.
 
+The shared workflow maps missing model path, missing worker Python, missing
+consent, busy worker, timeout, unsupported input, and GPU/CUDA failures to
+user-safe messages without printing source paths, OCR text, image payloads,
+model cache paths, or document content.
+
 Preserve these existing behaviors:
 
 - User-selected PDF files.
