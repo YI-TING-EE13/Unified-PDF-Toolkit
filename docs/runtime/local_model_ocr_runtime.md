@@ -206,6 +206,8 @@ Current behavior:
 - writes rendered page images only to an internal temporary directory and
   removes them when the call returns or fails;
 - returns normal `OcrResult` / `OcrPageResult` objects;
+- splits upstream `<PAGE>` markers from multi-page inference so page metadata is
+  preserved when the model returns page-marked output;
 - converts missing dependencies, missing CUDA, missing model path, malformed
   model output, and runtime failures into OCR exceptions with user-safe text.
 
@@ -243,6 +245,12 @@ $env:HF_MODULES_CACHE = "$env:TEMP\pdf_toolkit_ocr_validation\hf_modules"
 
 The helper does not install dependencies, download models, upload files, print
 OCR text, or run in CI.
+
+Current limitation: in-process `local_unlimited_ocr` inference does not provide
+a safe hard timeout or cancellation boundary. If the model hangs inside
+Transformers/CUDA execution, the future worker-process runtime must provide the
+killable timeout boundary. Do not expose production cancel semantics for this
+in-process path until that worker boundary exists.
 
 ## Readiness Diagnostics
 

@@ -83,7 +83,7 @@ def run_unlimited_ocr_local(request_data: OcrRequest, *, config: Any) -> OcrResu
                     output_dir=output_dir,
                     options=getattr(config, "options", None),
                 )
-            texts = _collect_text_outputs(
+            texts, output_warnings = _collect_text_outputs(
                 returned,
                 output_dir=output_dir,
                 expected_pages=len(image_paths),
@@ -109,6 +109,7 @@ def run_unlimited_ocr_local(request_data: OcrRequest, *, config: Any) -> OcrResu
     warnings = []
     if device == "cpu":
         warnings.append("Local Unlimited-OCR ran on CPU; this may be very slow.")
+    warnings.extend(output_warnings)
     return OcrResult(
         engine=OcrEngine.LOCAL_MODEL,
         pages=pages,
@@ -271,7 +272,7 @@ def _collect_text_outputs(
     *,
     output_dir: Path,
     expected_pages: int,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     texts = _texts_from_return_value(returned)
     if not texts:
         files = sorted(
@@ -279,25 +280,30 @@ def _collect_text_outputs(
             for path in output_dir.rglob("*")
             if path.suffix.lower() in {".txt", ".md"}
         )
-        texts = [path.read_text(encoding="utf-8") for path in files]
+        texts = _expand_texts(path.read_text(encoding="utf-8") for path in files)
     if not texts:
         raise OcrBackendUnavailableError(
             "Local Unlimited-OCR did not produce readable OCR output."
         )
     if len(texts) == 1 and expected_pages > 1:
-        return texts
+        return (
+            texts + [""] * (expected_pages - 1),
+            [
+                "Local Unlimited-OCR returned a combined multi-page result without page markers."
+            ],
+        )
     if len(texts) != expected_pages:
         raise OcrBackendUnavailableError(
             "Local Unlimited-OCR returned an unexpected number of page results."
         )
-    return texts
+    return texts, []
 
 
 def _texts_from_return_value(value: Any) -> list[str]:
     if isinstance(value, str):
-        return [value]
+        return _split_page_marked_text(value)
     if isinstance(value, (list, tuple)):
-        return [item for item in value if isinstance(item, str)]
+        return _expand_texts(item for item in value if isinstance(item, str))
     if isinstance(value, dict):
         pages = value.get("pages")
         if isinstance(pages, list):
@@ -308,8 +314,22 @@ def _texts_from_return_value(value: Any) -> list[str]:
             ]
         text = value.get("text")
         if isinstance(text, str):
-            return [text]
+            return _split_page_marked_text(text)
     return []
+
+
+def _expand_texts(values: Any) -> list[str]:
+    texts: list[str] = []
+    for value in values:
+        texts.extend(_split_page_marked_text(value))
+    return texts
+
+
+def _split_page_marked_text(value: str) -> list[str]:
+    if "<PAGE>" not in value:
+        return [value]
+    pages = [part.strip() for part in value.split("<PAGE>")[1:]]
+    return [page for page in pages if page]
 
 
 def _option(options: Mapping[str, str] | None, key: str, default: Any) -> Any:

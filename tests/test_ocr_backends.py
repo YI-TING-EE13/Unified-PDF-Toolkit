@@ -807,6 +807,83 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertNotIn("mock OCR text must not leak", stdout.getvalue())
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_unlimited_ocr_local_runner_splits_page_marked_multi_page_output(self):
+        class FakeCuda:
+            @staticmethod
+            def is_available():
+                return False
+
+        class FakeTorch:
+            bfloat16 = object()
+            cuda = FakeCuda()
+
+        class FakeTokenizerFactory:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                return object()
+
+        class FakeModel:
+            def eval(self):
+                return self
+
+            def to(self, device):
+                self.device = device
+                return self
+
+            def infer_multi(self, *args, **kwargs):
+                return ("<PAGE>mock page one\n<PAGE>mock page two", 2)
+
+        class FakeModelFactory:
+            @staticmethod
+            def from_pretrained(*args, **kwargs):
+                return FakeModel()
+
+        class FakeTransformers:
+            AutoTokenizer = FakeTokenizerFactory
+            AutoModel = FakeModelFactory
+
+        def fake_import(name):
+            if name == "torch":
+                return FakeTorch
+            if name == "transformers":
+                return FakeTransformers
+            raise ImportError(name)
+
+        with (
+            tempfile.TemporaryDirectory() as model_dir,
+            mock.patch(
+                "src.ocr.unlimited_ocr_local.importlib.util.find_spec",
+                return_value=object(),
+            ),
+            mock.patch(
+                "src.ocr.unlimited_ocr_local.importlib.import_module",
+                side_effect=fake_import,
+            ),
+        ):
+            result = unlimited_ocr_local.run_unlimited_ocr_local(
+                OcrRequest(
+                    engine=OcrEngine.LOCAL_MODEL,
+                    images=[
+                        Image.new("RGB", (10, 10), "white"),
+                        Image.new("RGB", (10, 10), "white"),
+                    ],
+                    page_numbers=[3, 4],
+                ),
+                config=LocalModelRuntimeConfig(
+                    enabled=True,
+                    mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
+                    model_path=model_dir,
+                    options={"local_files_only": "true"},
+                ),
+            )
+
+        self.assertEqual([page.page_number for page in result.pages], [3, 4])
+        self.assertEqual([page.text for page in result.pages], ["mock page one", "mock page two"])
+        self.assertNotIn(
+            "Local Unlimited-OCR returned a combined multi-page result without page markers.",
+            result.warnings,
+        )
+
 
 class AdvancedOcrConsentTests(unittest.TestCase):
     def _valid_consent(self) -> AdvancedOcrConsent:
