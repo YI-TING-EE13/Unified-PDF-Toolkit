@@ -19,6 +19,7 @@ from src.tools.compressor.tool import CompressorTool
 from src.tools.merger.tool import MergerTool
 from src.tools.splitter.tool import SplitterTool
 from src.tools.converter.tool import ConverterTool
+from src.tools.document_ocr.tool import DocumentOcrTool
 from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.page_manager.tool import PageManagerTool
@@ -48,6 +49,7 @@ def build_tools_list() -> list[BaseTool]:
         SplitterTool(),
         ConverterTool(),
         PDFToWordTool(),
+        DocumentOcrTool(),
         Image2PDFTool(),
         PageManagerTool(),
         BatchQueueTool(),

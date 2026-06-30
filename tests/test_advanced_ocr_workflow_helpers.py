@@ -200,6 +200,14 @@ class AdvancedOcrWorkflowHelperTests(unittest.TestCase):
             "The local AI OCR model runtime is not installed or configured.",
         )
         self.assertEqual(
+            user_safe_ocr_error_message(
+                OcrBackendUnavailableError(
+                    "Local OCR worker is busy. Wait for the current local OCR job to finish."
+                )
+            ),
+            "The local OCR worker is busy. Wait for the current OCR job to finish and try again.",
+        )
+        self.assertEqual(
             user_safe_ocr_error_message(RuntimeError("C:/secret/source.pdf")),
             "Advanced OCR workflow failed.",
         )

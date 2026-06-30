@@ -295,6 +295,14 @@ Transformers/CUDA execution, prefer `worker_process` mode for experimental
 manual validation because it can terminate the subprocess. Do not expose
 production cancel semantics for the direct in-process path.
 
+## Document OCR Tool Exposure
+
+The user-facing `Document OCR` tool defaults to Tesseract. Experimental Local
+Unlimited-OCR can be shown only with `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
+When shown, it must use `worker_process` runtime settings and saved advanced OCR
+consent. The normal UI must not expose direct in-process mode, trigger model
+downloads, start workers at app startup, or make AI OCR the default.
+
 ## Readiness Diagnostics
 
 Diagnostics may report:

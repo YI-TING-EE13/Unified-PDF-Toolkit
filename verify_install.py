@@ -8,6 +8,7 @@ sys.path.append(os.getcwd())
 from src.app import PDFToolkitApp
 from src.tools.compressor.tool import CompressorTool
 from src.tools.converter.tool import ConverterTool
+from src.tools.document_ocr.tool import DocumentOcrTool
 from src.tools.batch_queue.tool import BatchQueueTool
 from src.tools.diagnostics.tool import DiagnosticsTool
 from src.tools.image2pdf.tool import Image2PDFTool
@@ -27,6 +28,7 @@ def test_instantiation():
             SplitterTool(),
             ConverterTool(),
             PDFToWordTool(),
+            DocumentOcrTool(),
             Image2PDFTool(),
             PageManagerTool(),
             BatchQueueTool(),
@@ -55,6 +57,7 @@ def test_app_structure():
             "Split PDF",
             "PDF to Image",
             "PDF to Word",
+            "Document OCR",
             "Image to PDF",
             "Page Manager",
             "Batch Queue",

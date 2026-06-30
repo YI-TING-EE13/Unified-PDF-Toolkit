@@ -297,6 +297,8 @@ def user_safe_ocr_error_message(exc: Exception) -> str:
         return "The selected OCR backend is missing an optional dependency."
     if isinstance(exc, OcrBackendUnavailableError):
         detail = str(exc)
+        if "worker is busy" in detail:
+            return "The local OCR worker is busy. Wait for the current OCR job to finish and try again."
         if "Local AI OCR model" in detail:
             return "The local AI OCR model runtime is not installed or configured."
         if "timed out" in detail:

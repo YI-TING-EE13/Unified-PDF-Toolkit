@@ -129,12 +129,21 @@ an advanced/developer loopback option, not the main product path.
 
 ## 6. AI OCR / Document OCR Sidebar Tool
 
-- Status: Production UI design review completed in `docs/design/document_ocr_ui_review.md`; production implementation is still future work.
-- Goal: Add an optional tool for document OCR outputs such as text, Markdown, or JSON.
+- Status: Partially implemented as a user-facing `Document OCR` tool with Tesseract as the default backend and a gated experimental Local Unlimited-OCR worker option; production-ready AI OCR remains future work.
+- Goal: Provide document OCR outputs such as text, Markdown, or JSON while keeping Tesseract as the default and any AI backend explicitly experimental.
 - Non-goals: No screen OCR, global hotkeys, automatic capture, or background OCR.
-- Acceptance criteria: The tool requires explicit file selection, visible output paths, and clear experimental labeling.
-- Required tests: UI-level smoke tests with fake backend and unit tests for output writing.
+- Acceptance criteria: The tool requires explicit file selection, visible output paths, clear experimental labeling, Tesseract default behavior, and an env-gated Local Unlimited-OCR option that requires consent plus `worker_process` runtime settings.
+- Required tests: Registration/default backend tests, experimental gate tests, unit tests for output writing, user-safe errors, and no heavy AI startup imports.
 - Safety/privacy checks: Reports must not include OCR text or rendered page images by default.
+
+## Supporting Milestone: Experimental Local Unlimited-OCR Document OCR UI Exposure
+
+- Status: Implemented as a gated option in the user-facing `Document OCR` tool.
+- Goal: Let maintainers validate the future local model OCR workflow from the real Document OCR surface without making AI OCR the default or production-ready.
+- Non-goals: No model download, bundled AI runtime, in-process mode exposure, hosted OCR service, screen OCR, background OCR, file upload, or Batch Queue integration.
+- Acceptance criteria: Tesseract is the default; `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1` is required to show Local Unlimited-OCR; `worker_process` runtime settings and saved advanced OCR consent are required before execution.
+- Required tests: Tool registration, gate off/on behavior, Tesseract output path, invalid local runtime config, source-path exclusion for local model requests, and no torch/transformers/SGLang imports at startup.
+- Safety/privacy checks: OCR text is written only to selected local outputs; source paths are not sent to the local model backend; errors and reports do not include OCR text, image bytes/base64, or document content.
 
 ## Supporting Milestone: Production Document OCR UI Design Review
 

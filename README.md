@@ -19,6 +19,8 @@ service.
   page order or rotation.
 - **PDF to Word workflows**: export to DOCX using layout preservation, text-only
   extraction, page images, or OCR text mode.
+- **Document OCR outputs**: extract OCR text from PDF/image files to local TXT
+  or Markdown files, using Tesseract by default.
 - **Batch Queue**: run repeatable mixed jobs and generate TXT, CSV, and JSON
   reports.
 - **Diagnostics**: check Python, Tkinter, key dependencies, Tesseract OCR, and
@@ -108,6 +110,16 @@ fidelity matters more than editability.
 - Reuse page range, OCR language, DPI, and OCR cleanup settings.
 - Run jobs sequentially with a structured completion report.
 
+### Document OCR
+
+- Select PDF or image files and write local TXT or Markdown OCR outputs.
+- Uses Tesseract OCR by default.
+- An Experimental Local Unlimited-OCR backend can be shown only by setting
+  `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
+- The experimental backend requires saved advanced OCR consent plus an explicit
+  `worker_process` local runtime configuration in Settings / Recent.
+- It is local-only, user-managed, disabled by default, and not production-ready.
+
 ### Diagnostics and Settings
 
 - Check runtime dependencies and writable folders.
@@ -126,13 +138,14 @@ production-ready. The default app does not download models, does not import
 Transformers or torch at startup, and does not add GPU/CUDA dependencies to the
 default install.
 
-Tesseract remains the default OCR Text engine for PDF to Word. Any future real
-AI OCR backend must stay local-first, run on user-owned local runtime paths,
-require explicit consent, document model download and custom-code risks, and
-avoid uploading user files, rendered pages, or OCR text. Settings / Recent
-includes consent management and safe local model runtime settings for this
-optional capability, but saving consent or runtime paths does not make AI OCR
-the default engine.
+Tesseract remains the default OCR Text engine for PDF to Word and the default
+backend for the Document OCR tool. The experimental Local Unlimited-OCR option
+is hidden unless `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1` is set, requires
+saved consent, and requires an explicit `worker_process` runtime with user-owned
+model files. Advanced OCR must stay local-first, run on user-owned local runtime
+paths, require explicit consent, document model download and custom-code risks,
+and avoid uploading user files, rendered pages, or OCR text. Saving consent or
+runtime paths does not make AI OCR the default engine.
 
 For development and UI-flow testing only, setting
 `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes the hidden `[Dev] Document OCR Shell`.
@@ -144,7 +157,8 @@ inference, model download, endpoint call, GPU execution, or network upload.
 
 - Python 3.10 or newer for source runs.
 - `uv` is recommended for dependency management.
-- Tesseract OCR is optional, but required for OCR Text mode.
+- Tesseract OCR is optional, but required for OCR Text mode and default
+  Document OCR.
 - macOS users should use a Python build with modern Tkinter support. The system
   `/usr/bin/python3` can use an older Tcl/Tk runtime on recent macOS versions.
 

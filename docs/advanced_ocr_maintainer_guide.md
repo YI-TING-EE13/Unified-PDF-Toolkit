@@ -26,6 +26,8 @@ Implemented today:
 - Experimental real local Unlimited-OCR backend path for manually configured
   user-owned model/runtime environments.
 - Local endpoint backend scaffold with loopback-only URL validation.
+- User-facing Document OCR tool with Tesseract as the default backend and a
+  gated experimental Local Unlimited-OCR worker option.
 - Developer-only Document OCR UI shell gated by
   `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1`.
 - Optional advanced OCR diagnostics/readiness checks.
@@ -43,7 +45,7 @@ Not implemented today:
 - Production local OCR server.
 - In-process Transformers runtime.
 - Hosted OCR service or project-operated OCR server.
-- AI OCR / Document OCR production sidebar tool.
+- Production-ready AI OCR, default AI OCR, or production-ready Unlimited-OCR UI.
 - Batch Queue AI OCR jobs.
 - Screen OCR, background OCR, global hotkeys, or automatic capture.
 
@@ -71,6 +73,10 @@ Not implemented today:
   same local model through a one-shot subprocess with timeout/cancel kill
   behavior, default single-worker concurrency, and user-safe structured error
   handling when explicitly configured.
+- Document OCR tool: user-facing local OCR outputs are available with Tesseract
+  as the default backend; the experimental Local Unlimited-OCR option is hidden
+  behind `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1` and requires
+  `worker_process` runtime settings plus consent.
 - Developer Document OCR shell: hidden dev tool exercises file selection,
   backend selection, consent gating, progress, cancellation, local TXT/Markdown
   output, user-safe errors, and output actions using only the fake backend.
@@ -142,19 +148,35 @@ Not implemented today:
 
 | Category | Current state |
 | --- | --- |
-| Production behavior | Tesseract-backed PDF to Word OCR Text remains the only real OCR path. |
+| Production behavior | Tesseract-backed PDF to Word OCR Text and Document OCR remain the stable real OCR paths. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend/settings, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
-| Experimental real local | `local_unlimited_ocr` direct mode and `worker_process` one-shot subprocess mode for user-managed local model/runtime environments. |
+| Experimental real local | `local_unlimited_ocr` direct mode and gated `worker_process` one-shot subprocess mode for user-managed local model/runtime environments. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
 | Not supported | Production Unlimited-OCR support, bundled GPU OCR runtime, automatic model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
 
-PDF to Word -> OCR Text must continue to default to Tesseract. Future advanced
-OCR work must not change default OCR behavior unless a separate product decision
-and migration plan explicitly approve it.
+PDF to Word -> OCR Text and the Document OCR tool must continue to default to
+Tesseract. Future advanced OCR work must not change default OCR behavior unless
+a separate product decision and migration plan explicitly approve it.
+
+## User-Facing Document OCR Tool
+
+`src/tools/document_ocr/tool.py` exposes a normal Document OCR tool for local
+TXT/Markdown outputs. It is safe to show because the default backend is
+Tesseract.
+
+The experimental Local Unlimited-OCR option is visible only when:
+
+- `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1` is set;
+- Settings / Recent contains valid advanced OCR consent;
+- local model runtime settings are enabled with `mode="worker_process"`;
+- local model path and worker Python are explicitly configured by the user.
+
+The tool must not expose the direct in-process mode, download models, start
+workers at app startup, upload files, or make AI OCR the default.
 
 Preserve these existing behaviors:
 
@@ -356,12 +378,12 @@ It does not:
 
 ## Production Document OCR UI Review
 
-Production Document OCR is still future work. The release-gate design review is
-documented in `docs/design/document_ocr_ui_review.md`, with the checklist in
-`docs/design/document_ocr_production_readiness_checklist.md`.
+Production-ready AI OCR in Document OCR is still future work. The release-gate
+design review is documented in `docs/design/document_ocr_ui_review.md`, with the
+checklist in `docs/design/document_ocr_production_readiness_checklist.md`.
 
-Before any user-facing production Document OCR tool is exposed, maintainers
-must verify:
+Before the experimental Local Unlimited-OCR option is promoted beyond a gated
+experimental path, maintainers must verify:
 
 - Consent UX is reviewed and blocks stale/missing consent.
 - Local-only guarantees are visible and test-backed.
@@ -499,7 +521,7 @@ Do not claim:
 | Local model fake worker UI smoke path | Fake worker prototype, workflow helpers, consent tests, fake smoke template | User confusion if mistaken for real OCR, output/report leakage | 2 |
 | Experimental local Unlimited-OCR manual validation | Local model backend, optional runtime docs, manual script, local model files, GPU/runtime access | GPU/runtime mismatch, custom-code execution risk, model output drift | 3 |
 | Worker-process production hardening | Experimental worker process, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 4 |
-| AI OCR / Document OCR sidebar tool | Stable backend selection, consent gate, output writer tests, fake backend UI smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 5 |
+| Promote Document OCR AI option | Stable backend selection, consent gate, output writer tests, fake/backend real workflow smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 5 |
 | Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 5 |
 | Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 6 |
 | In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 7 |

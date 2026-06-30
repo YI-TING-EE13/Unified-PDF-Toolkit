@@ -73,8 +73,9 @@ class SettingsTool(BaseTool):
         ttk.Label(
             consent_frame,
             text=(
-                "Real Unlimited-OCR inference is not implemented yet. "
-                "Consent only records acknowledgement for future optional local AI OCR."
+                "Experimental local Unlimited-OCR is optional, disabled by "
+                "default, and requires user-managed runtime/model files. "
+                "Consent records acknowledgement for optional local AI OCR risks."
             ),
             wraplength=900,
         ).pack(anchor="w", pady=(0, 6))
@@ -116,7 +117,7 @@ class SettingsTool(BaseTool):
         self.local_model_enabled_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             runtime_frame,
-            text="Enable future local model runtime configuration",
+            text="Enable experimental local model runtime configuration",
             variable=self.local_model_enabled_var,
         ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(0, 6))
         self.local_model_mode_var = tk.StringVar(value=LOCAL_MODEL_MODE_DISABLED)
@@ -282,7 +283,9 @@ class SettingsTool(BaseTool):
             self.local_model_status_var.set("Local model OCR runtime is disabled.")
         else:
             self.local_model_status_var.set(
-                f"Future local model runtime configured as {config.mode}; real inference is not implemented."
+                "Experimental local model runtime configured as "
+                f"{config.mode}; execution remains opt-in and requires a "
+                "gated workflow."
             )
 
     def _save_local_model_runtime_settings(self) -> None:
@@ -291,7 +294,7 @@ class SettingsTool(BaseTool):
         self._refresh_local_model_runtime_status()
         messagebox.showinfo(
             "Saved",
-            "Local model OCR runtime settings saved. Real AI OCR inference is still not implemented.",
+            "Local model OCR runtime settings saved. Experimental AI OCR remains opt-in.",
         )
 
     def _reset_local_model_runtime_settings(self) -> None:

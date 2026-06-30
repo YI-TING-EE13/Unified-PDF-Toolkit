@@ -21,6 +21,7 @@
 - Added an optional experimental local Unlimited-OCR backend path with lazy torch/transformers imports, local model path validation, and an opt-in manual validation script.
 - Added an experimental killable Unlimited-OCR worker-process runtime path with timeout handling, JSON response validation, temp page cleanup, and manual validation support.
 - Hardened the experimental Unlimited-OCR worker-process runtime with a default single-worker guard, safe busy errors, structured worker error parsing, and stderr redaction.
+- Added a user-facing Document OCR tool with Tesseract as the default backend and a gated experimental Local Unlimited-OCR worker option.
 
 ## 0.5.0 - 2026-06-19
 
