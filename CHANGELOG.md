@@ -28,6 +28,7 @@
 - Added a uv-only optional runtime setup helper, beta release-candidate notes, and `trust_remote_code` / model revision policy documentation for Experimental Local Unlimited-OCR.
 - Added warning-only Experimental Local Unlimited-OCR model revision safety checks for model id allowlist status, revision pinning, local metadata presence, and custom-code consent diagnostics.
 - Improved Document OCR and Settings beta copy, and added final beta tester plus packaging dry-run checklists for Experimental Local Unlimited-OCR.
+- Added beta release draft and tag readiness review documentation for a future human-approved Experimental Local Unlimited-OCR beta tag.
 
 ## 0.5.0 - 2026-06-19
 

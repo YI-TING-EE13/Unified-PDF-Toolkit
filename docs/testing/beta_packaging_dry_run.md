@@ -83,13 +83,33 @@ manually build it on a machine that also has optional OCR runtime files.
 
 ## Current Result
 
-On the 2026-07-01 beta hardening pass:
+On the 2026-07-01 beta hardening and tag-readiness passes:
 
 - `git ls-files` static artifact search found no tracked optional runtime,
   model/cache, synthetic sample, torch, transformers, or CUDA package files.
 - Default dependency files had no diff.
-- No local artifact build was run in this pass because the goal was final beta
-  release-candidate hardening without publishing or creating release artifacts.
+- Release workflow, PyInstaller wrapper, Inno Setup wrapper, and installer
+  definition were inspected.
+- No local artifact build was run in this pass because the goal was beta
+  release readiness review without publishing, tagging, or creating release
+  artifacts.
+
+## Missing Build Steps Before Sharing Assets
+
+There is no no-op release artifact dry-run target. Before a human maintainer
+shares beta artifacts, run an intentional clean build and inspect the outputs:
+
+```powershell
+uv sync --dev
+uv run python -m unittest discover -s tests -v
+uv run python verify_install.py
+.\scripts\run_pyinstaller.ps1
+.\scripts\build_installer.ps1
+```
+
+Then inspect `dist/` for accidental optional runtime, model, cache, private
+input, and generated OCR output files before uploading or attaching anything to
+a release.
 
 ## Remaining Packaging Work
 
