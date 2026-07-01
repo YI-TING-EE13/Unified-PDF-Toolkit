@@ -203,6 +203,43 @@ unchanged for traceability; do not move or recreate the tag.
 - The release workflow now marks future `alpha`, `beta`, and `rc` tags as
   prereleases.
 
+## Beta 2 Artifact Rebuild Result
+
+A clean artifact rebuild for `v0.6.0-beta.2` was run from a `git archive`
+source tree at:
+
+```text
+C:\tmp\pdf-toolkit-beta2-rebuild-20260701205002
+```
+
+Build isolation:
+
+- `README (1).md` was not present in the clean source tree.
+- `UV_CACHE_DIR` was set to
+  `C:\tmp\pdf-toolkit-uv-cache-beta2-20260701205002`.
+- `uv sync --dev` installed `pdf-toolkit==0.6.0b2`.
+- `uv build`, PyInstaller, Inno Setup, and Windows ZIP creation completed.
+
+Version-aligned artifacts produced:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.6.0b2-py3-none-any.whl` | 121,296 bytes |
+| `dist/pdf_toolkit-0.6.0b2.tar.gz` | 233,796 bytes |
+| `dist/Unified-PDF-Toolkit-Windows.zip` | 93,810,790 bytes |
+| `dist/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.2.exe` | 65,952,323 bytes |
+| `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
+
+Artifact exclusion inspection found no forbidden path matches in the `dist/`
+filesystem, Windows ZIP, wheel, or source distribution for `.venv-ocr-runtime`,
+the isolated uv cache folder, Hugging Face cache folders, validation sample
+names, `README (1).md`, model folders, torch, transformers, nvidia, or CUDA
+package paths.
+
+Packaged app launch smoke passed without the experimental flag and with
+`PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`. Both launches remained running
+after 8 seconds and closed through the main window.
+
 ## Smoke Rerun Result
 
 This readiness pass reran quick beta smoke checks using the existing
@@ -242,8 +279,8 @@ Blockers before a controlled beta tag:
 
 ## Go / No-Go Recommendation
 
-Recommendation: **GO for a human-approved `v0.6.0-beta.2` controlled beta tag
-after a clean artifact rebuild**, not for a public production release.
+Recommendation: **GO for a human-approved `v0.6.0-beta.2` controlled beta tag**,
+not for a public production release.
 
 The controlled beta can proceed if the maintainer accepts:
 

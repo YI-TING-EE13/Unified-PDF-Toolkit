@@ -174,6 +174,30 @@ Beta 2 metadata follow-up:
 - Installer metadata now targets display/output version `0.6.0-beta.2`.
 - `v0.6.0-beta.1` remains untouched and held.
 
+Beta 2 clean artifact rebuild:
+
+- Clean source tree:
+  `C:\tmp\pdf-toolkit-beta2-rebuild-20260701205002`.
+- Isolated `UV_CACHE_DIR`:
+  `C:\tmp\pdf-toolkit-uv-cache-beta2-20260701205002`.
+- `uv sync --dev` installed `pdf-toolkit==0.6.0b2`.
+- `uv build`, PyInstaller, Inno Setup, and Windows ZIP creation completed.
+- Artifact exclusion inspection found no forbidden runtime/cache/model/private
+  path matches in the `dist/` filesystem, Windows ZIP, wheel, or source
+  distribution.
+- Packaged app launch smoke passed without the experimental flag and with
+  `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
+
+Version-aligned beta 2 artifacts:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.6.0b2-py3-none-any.whl` | 121,296 bytes |
+| `dist/pdf_toolkit-0.6.0b2.tar.gz` | 233,796 bytes |
+| `dist/Unified-PDF-Toolkit-Windows.zip` | 93,810,790 bytes |
+| `dist/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.2.exe` | 65,952,323 bytes |
+| `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
+
 ## Missing Build Steps Before Sharing Assets
 
 There is no no-op release artifact dry-run target. The clean local build above
