@@ -292,6 +292,46 @@ Documentation:
   release notes.
 - Need final release-gate review before removing the experimental env gate.
 
+## Update: Final Beta Hardening Pass
+
+Date: 2026-07-01
+
+Additional beta release-candidate hardening added:
+
+- Warning-only model revision safety checks in `src/ocr/model_policy.py`.
+- Local model runtime settings now include an optional model revision pin.
+- Diagnostics now report model id allowlist status, revision pin status, local
+  model metadata presence, and valid `trust_remote_code` consent for the
+  configured model id.
+- Document OCR and Settings / Recent copy were tightened to say Tesseract is the
+  default, Experimental Local Unlimited-OCR is beta local AI OCR, it runs on
+  this computer with no upload, and it requires a uv-managed runtime, local
+  model folder, consent, and may use GPU/VRAM plus custom model code.
+- `docs/testing/beta_packaging_dry_run.md` records a release artifact dry-run
+  checklist without creating a GitHub Release or tag.
+- `docs/testing/final_beta_tester_checklist.md` records the final controlled
+  beta tester flow, success criteria, failure cases, cleanup, and reporting
+  expectations.
+
+Validation notes for this pass:
+
+- Direct optional runtime readiness passed with `.venv-ocr-runtime` Python,
+  torch installed, transformers installed, and local model path detected.
+- Real worker-process OCR smoke was rerun on the existing local synthetic
+  one-page image and three-page PDF. Both completed with `Runtime:
+  worker_process` and `Device: cuda`; the helper did not print OCR text.
+- GUI beta-check was attempted but could not be rerun in this automation pass
+  because the required escalated Windows desktop GUI execution was rejected by
+  the local execution environment usage limit. The blocker is environmental,
+  not a code assertion.
+- Static packaging audit confirmed no tracked `.venv-ocr-runtime`, model/cache
+  folders, synthetic samples, torch, transformers, or CUDA package files.
+
+The beta remains controlled and not production-ready. Do not remove
+`PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`, do not make Unlimited-OCR the
+default backend, and do not publish a release until the remaining blockers are
+closed.
+
 ## Recommended Next Milestone
 
 Run controlled beta validation on at least one additional Windows + NVIDIA GPU
