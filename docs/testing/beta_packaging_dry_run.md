@@ -125,6 +125,19 @@ Inspection results:
   backend without `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`; the
   Experimental Local Unlimited-OCR option appears only when the flag is set.
 
+Version consistency follow-up:
+
+- These 0.5.0 artifact names were correct for the metadata at the time of the
+  first inspection, but inconsistent with the recommended `v0.6.0-beta.1` tag.
+- Package metadata is expected to use PEP 440 version `0.6.0b1`.
+- Installer metadata is expected to use display/output version
+  `0.6.0-beta.1`.
+- A follow-up clean rebuild must confirm the renamed Python and installer
+  artifacts before the beta tag is created.
+- In this Codex run, that rebuild was attempted but blocked by local uv cache
+  permission errors after escalation was unavailable. The expected rerun
+  commands are still the same clean build commands below.
+
 ## Missing Build Steps Before Sharing Assets
 
 There is no no-op release artifact dry-run target. The clean local build above

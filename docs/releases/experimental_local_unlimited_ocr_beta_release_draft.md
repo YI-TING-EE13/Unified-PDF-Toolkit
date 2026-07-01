@@ -6,6 +6,8 @@ Unlimited-OCR production-ready.
 
 ## Headline Summary
 
+Release candidate name: `0.6.0-beta.1`.
+
 Unified PDF Toolkit now has a controlled beta path for Experimental Local
 Unlimited-OCR in the Document OCR tool. The default OCR behavior remains
 Tesseract. The experimental backend is local-only, user-owned, disabled by

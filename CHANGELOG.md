@@ -30,6 +30,7 @@
 - Improved Document OCR and Settings beta copy, and added final beta tester plus packaging dry-run checklists for Experimental Local Unlimited-OCR.
 - Added beta release draft and tag readiness review documentation for a future human-approved Experimental Local Unlimited-OCR beta tag.
 - Completed a clean local beta artifact build/inspection pass and documented Windows ZIP, installer, wheel, and source distribution boundaries.
+- Aligned beta release metadata toward `v0.6.0-beta.1`, using Python package version `0.6.0b1` and installer display version `0.6.0-beta.1`.
 
 ## 0.5.0 - 2026-06-19
 
