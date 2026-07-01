@@ -1,15 +1,17 @@
 # Advanced OCR GPU Acceptance Test Plan
 
-This document defines a manual acceptance plan for future advanced local AI OCR
-or Unlimited-OCR-compatible backends. It is documentation only. The current app
-does not run real Unlimited-OCR inference, download models, start OCR servers,
-or add GPU runtime dependencies.
+This document defines a manual acceptance plan for advanced local AI OCR or
+Unlimited-OCR-compatible backends. It is documentation only. The current app
+has a gated Experimental Local Unlimited-OCR worker path, but the default app
+does not download models, start OCR servers, expose production-ready
+Unlimited-OCR support, or add GPU runtime dependencies.
 
 ## Purpose and Scope
 
-Use this plan before enabling any real GPU/model/server OCR path in Unified PDF
-Toolkit. The plan validates privacy boundaries, consent behavior, local-only
-networking, diagnostics, cancellation, output correctness, and failure handling.
+Use this plan before broadening any real GPU/model/server OCR path in Unified
+PDF Toolkit. The plan validates privacy boundaries, consent behavior,
+local-only networking, diagnostics, cancellation, output correctness, and
+failure handling.
 
 This plan is not part of CI. Run it only on a developer or reviewer machine that
 has intentionally installed the optional AI runtime outside the default app

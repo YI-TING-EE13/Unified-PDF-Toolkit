@@ -36,6 +36,25 @@ Unlimited-OCR support.
 Create a separate optional runtime. Do not install AI packages into the default
 project environment.
 
+Recommended dry-run helper:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\setup_local_unlimited_ocr_runtime.py --dry-run --torch-profile cu128
+```
+
+The helper prints the exact `uv` commands, does not download model files, and
+asks for confirmation before making changes unless `--yes` is supplied. Select
+the torch profile that matches the beta machine. Use `--torch-profile none` to
+create/update the runtime without installing torch.
+
+Actual helper run example:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\setup_local_unlimited_ocr_runtime.py --torch-profile cu128
+```
+
+Manual equivalent:
+
 ```powershell
 uv venv .venv-ocr-runtime --python 3.12
 ```
@@ -192,3 +211,8 @@ Remove-Item -Recurse -Force "$env:TEMP\pdf_toolkit_ocr_validation" -ErrorAction 
 ```
 
 Do not remove shared Hugging Face caches unless you intentionally own them.
+
+## Related Release-Candidate Notes
+
+- `docs/releases/experimental_local_unlimited_ocr_beta_notes.md`
+- `docs/security/unlimited_ocr_trust_remote_code_policy.md`

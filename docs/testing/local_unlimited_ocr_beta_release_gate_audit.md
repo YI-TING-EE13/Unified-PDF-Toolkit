@@ -12,6 +12,8 @@ Reviewed areas:
 - `README.md`
 - `CHANGELOG.md`
 - `docs/runtime/`
+- `docs/releases/experimental_local_unlimited_ocr_beta_notes.md`
+- `docs/security/unlimited_ocr_trust_remote_code_policy.md`
 - `docs/advanced_ocr_maintainer_guide.md`
 - `docs/testing/unlimited_ocr_autonomous_validation_report.md`
 - `src/tools/document_ocr/tool.py`
@@ -31,6 +33,8 @@ Required wording is present or was tightened:
 - The runtime/model are user-managed and optional.
 - The preferred beta runtime is a uv-managed optional OCR runtime such as
   `.venv-ocr-runtime`.
+- Optional runtime setup is helper-assisted through `uv` only and remains
+  separate from default dependencies.
 - Real local Unlimited-OCR remains disabled by default and not
   production-ready.
 
@@ -50,6 +54,10 @@ Controlled beta may proceed only while all of these remain true:
 - [x] Worker stderr is not surfaced to users by default.
 - [x] OCR text and image bytes are not printed by the smoke tools.
 - [x] Synthetic validation inputs and generated OCR outputs are not committed.
+- [x] Beta release-candidate notes state no hosted OCR, no upload, not default,
+      and experimental gate required.
+- [x] `trust_remote_code` and model revision risks are documented before any
+      broader release.
 
 ## Not Approved For Public Release
 
@@ -68,6 +76,7 @@ The following are still not approved:
 
 - Broader GPU/runtime matrix testing beyond the current RTX 3060 CUDA setup.
 - Accessibility review of the Document OCR UI.
-- Installer/package documentation for optional OCR runtime setup.
-- Clear support policy for model revisions and `trust_remote_code`.
+- Wider maintainer review of the optional OCR runtime setup helper across more
+  Windows machines.
+- Enforced allowlist/checksum policy for reviewed model revisions.
 - More user-facing troubleshooting examples from beta feedback.

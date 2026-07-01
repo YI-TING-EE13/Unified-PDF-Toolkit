@@ -38,6 +38,8 @@ Implemented today:
 - Fake-backend Document OCR smoke test plan and manual run template.
 - Controlled-beta setup guide, beta smoke checklist, release-gate audit, and
   manual GUI beta-check runner for Experimental Local Unlimited-OCR.
+- Beta release-candidate notes, uv-only optional runtime setup helper, and
+  `trust_remote_code` / model revision policy for controlled beta reviewers.
 
 Not implemented today:
 
@@ -86,6 +88,8 @@ Not implemented today:
   endpoint contract, production UI review, and fake-backend smoke test plan.
 - Beta readiness gates: setup/runbook, manual smoke checklist, release-gate
   audit, diagnostics cache/runtime checks, and GUI beta-check automation.
+- Beta release-candidate package: uv-only setup helper, beta notes, and
+  `trust_remote_code` / model revision policy documentation.
 
 ## Key Files and Responsibilities
 
@@ -131,6 +135,10 @@ Not implemented today:
 - `scripts/manual_document_ocr_gui_smoke.py`: manual Tkinter smoke runner for
   Tesseract and gated Experimental Local Unlimited-OCR, including beta-check
   summary mode. It must not print OCR text or generated page images.
+- `scripts/setup_local_unlimited_ocr_runtime.py`: opt-in uv-only helper for
+  creating/updating the optional `.venv-ocr-runtime`. It prints exact commands,
+  asks for confirmation unless `--yes` is passed, supports dry-run, and does
+  not download model files or modify default dependencies.
 - `docs/adr/0001-optional-advanced-ocr-backend.md`: design record.
 - `docs/roadmap/advanced_ocr_next_goals.md`: milestone status and future work.
 - `docs/testing/advanced_ocr_gpu_acceptance.md`: manual GPU acceptance plan.
@@ -158,6 +166,10 @@ Not implemented today:
   cancellation, timeout, and privacy checks.
 - `docs/testing/local_unlimited_ocr_beta_release_gate_audit.md`: claims and
   release-gate audit for controlled beta readiness.
+- `docs/releases/experimental_local_unlimited_ocr_beta_notes.md`: beta
+  release-candidate notes for reviewers and controlled beta users.
+- `docs/security/unlimited_ocr_trust_remote_code_policy.md`: custom model-code
+  and model revision policy for Experimental Local Unlimited-OCR.
 
 ## Behavior Categories
 
@@ -483,7 +495,7 @@ Keep these boundaries intact:
 - No heavy AI runtime imports at app startup.
 - No torch, transformers, SGLang, CUDA, model files, or server runtimes in
   default dependencies or default installer.
-- Temporary rendered page images must be cleaned up in any future real backend.
+- Temporary rendered page images must be cleaned up in every real backend path.
 
 ## Validation Commands
 

@@ -78,6 +78,10 @@ Before enabling custom code:
 - Keep the runtime disabled unless selected by the user.
 - Provide a clear rollback path.
 
+See `docs/security/unlimited_ocr_trust_remote_code_policy.md` for the current
+controlled-beta policy covering custom model code, model revision pinning, and
+future allowlist/checksum direction.
+
 ## GPU and VRAM Requirements
 
 Future real local model OCR may require a GPU and substantial VRAM. The app

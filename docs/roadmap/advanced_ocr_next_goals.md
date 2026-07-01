@@ -163,6 +163,15 @@ an advanced/developer loopback option, not the main product path.
 - Required tests: Diagnostics unit tests for optional dependency/cache/runtime checks, Document OCR cancellation tests, full default test suite, compileall, readiness check, and feasible GUI smoke runs with synthetic inputs.
 - Safety/privacy checks: Smoke tools do not print OCR text/image bytes/document content; generated outputs, model/cache files, and optional runtime folders remain untracked; `README (1).md` remains excluded in this workspace.
 
+## Supporting Milestone: Experimental Local Unlimited-OCR Beta Release Candidate
+
+- Status: Implemented as a release-candidate package without publishing a GitHub Release or tag.
+- Goal: Make controlled beta setup reviewable and repeatable while keeping the backend gated, local-only, and separate from default dependencies.
+- Non-goals: No public production claim, default dependency change, model download, hosted OCR service, screen OCR, background OCR, file upload, Batch Queue integration, release creation, or tag creation.
+- Acceptance criteria: A uv-only setup helper supports dry-run and confirmation; beta notes summarize included/excluded behavior, prerequisites, setup, smoke checks, warnings, troubleshooting, and privacy; `trust_remote_code` / model revision policy documents consent, pinning, future allowlist/checksum direction, and beta user responsibilities.
+- Required tests: Helper unit tests for dry-run, uv-only command construction, confirmation handling, and explicit torch profile behavior; full default test suite; compileall; setup helper dry-run; beta-check smoke where feasible.
+- Safety/privacy checks: Helper does not download models or alter default dependencies; docs state no hosted OCR, no upload, Tesseract default, experimental gate required, and no production-ready Unlimited-OCR claim.
+
 ## Supporting Milestone: Production Document OCR UI Design Review
 
 - Status: Implemented as documentation/review only in `docs/design/`.
