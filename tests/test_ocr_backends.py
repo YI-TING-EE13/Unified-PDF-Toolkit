@@ -752,7 +752,7 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertNotIn("C:/private/source.pdf", serialized)
         self.assertNotIn("secret", serialized)
         self.assertEqual(payload["pages"][0]["page_number"], 9)
-        self.assertEqual(payload["pages"][0]["image_path"], "C:\\temp\\page_0001.png")
+        self.assertEqual(payload["pages"][0]["image_path"], str(Path("C:/temp/page_0001.png")))
         self.assertEqual(payload["options"], {"safe_timeout": "5"})
 
     def test_unlimited_worker_process_success_timeout_and_failures_are_sanitized(self):

@@ -153,6 +153,19 @@ Version-aligned artifacts:
 | `dist/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.1.exe` | 65,942,238 bytes |
 | `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
 
+Tag-triggered release triage after publishing `v0.6.0-beta.1`:
+
+- Release workflow completed successfully and produced the expected assets.
+- The separate CI workflow failed on Ubuntu and macOS only because a unit test
+  expected a Windows-style path string; Windows CI passed.
+- No artifact inclusion/exclusion regression was found from that failure.
+- The original release workflow did not mark the beta GitHub Release as a
+  prerelease. Future beta/alpha/rc tags should set the GitHub Release
+  prerelease flag automatically.
+- Recommendation: keep `v0.6.0-beta.1` unchanged but hold broad distribution;
+  use a follow-up beta tag after the CI and prerelease metadata fixes are
+  merged.
+
 ## Missing Build Steps Before Sharing Assets
 
 There is no no-op release artifact dry-run target. The clean local build above

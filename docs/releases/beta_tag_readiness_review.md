@@ -164,6 +164,33 @@ the isolated uv cache folder, Hugging Face cache folders, validation sample
 names, `README (1).md`, model folders, torch, transformers, nvidia, or CUDA
 package paths.
 
+## Tag and Release Triage
+
+`v0.6.0-beta.1` was created and published after the version-aligned artifact
+inspection:
+
+- Tag target commit:
+  `3be6ba933c767fdbb731f3e146de4ba31536be5b`.
+- GitHub Release was created by the tag-driven release workflow.
+- Release assets were produced:
+  `pdf_toolkit-0.6.0b1-py3-none-any.whl`,
+  `pdf_toolkit-0.6.0b1.tar.gz`,
+  `Unified-PDF-Toolkit-Windows.zip`, and
+  `Unified-PDF-Toolkit-Setup-0.6.0-beta.1.exe`.
+- Release workflow completed successfully.
+- The separate tag-triggered CI workflow passed on Windows but failed on
+  Ubuntu and macOS because one unit test asserted a Windows-only
+  `C:\...` path string for a payload generated from `Path("C:/...")`.
+- This was a cross-platform test assertion bug, not an OCR runtime, packaging,
+  Tesseract, dependency, or product behavior regression.
+- The generated `v0.6.0-beta.1` GitHub Release was not marked as a prerelease
+  by the original release workflow.
+
+Recommendation after triage: hold broad distribution of `v0.6.0-beta.1` and
+prepare `v0.6.0-beta.2` after the CI test fix and prerelease workflow metadata
+fix land on `main`. Keep `v0.6.0-beta.1` unchanged for traceability; do not
+move or recreate the tag.
+
 ## Smoke Rerun Result
 
 This readiness pass reran quick beta smoke checks using the existing

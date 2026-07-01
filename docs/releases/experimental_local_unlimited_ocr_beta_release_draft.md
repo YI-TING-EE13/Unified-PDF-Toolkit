@@ -4,6 +4,14 @@ This draft is for a future human-approved beta tag. It is not a published
 GitHub Release, does not create a tag, and does not make Experimental Local
 Unlimited-OCR production-ready.
 
+Status note after `v0.6.0-beta.1`: the first controlled beta tag and release
+were published, but the separate tag-triggered CI workflow failed on
+Ubuntu/macOS due to a Windows-only unit-test path assertion. The release
+workflow itself succeeded and produced assets. Treat `v0.6.0-beta.1` as held
+for broad beta distribution, keep the tag unchanged, and use this draft as the
+basis for a follow-up `v0.6.0-beta.2` after the CI and prerelease metadata fixes
+are on `main`.
+
 ## Headline Summary
 
 Release candidate name: `0.6.0-beta.1`.
