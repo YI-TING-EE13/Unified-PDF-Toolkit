@@ -24,6 +24,7 @@ from .local_worker import (
     run_local_model_worker_process,
     run_unlimited_ocr_worker_process,
 )
+from .model_policy import MODEL_REVISION_OPTION_KEY
 from .unlimited_ocr_local import run_unlimited_ocr_local
 from .models import OcrEngine, OcrRequest, OcrResult
 from ..utils.settings import get_setting, load_settings, save_settings, set_setting
@@ -65,6 +66,7 @@ class LocalModelRuntimeConfig:
     enabled: bool = False
     mode: str = LOCAL_MODEL_MODE_DISABLED
     model_id: str = LOCAL_MODEL_MODEL_ID
+    model_revision: str | None = None
     model_path: str | None = None
     python_executable: str | None = None
     worker_script_path: str | None = None
@@ -89,6 +91,10 @@ class LocalModelRuntimeConfig:
             enabled=enabled,
             mode=mode,
             model_id=_clean_optional_text(data.get("model_id")) or LOCAL_MODEL_MODEL_ID,
+            model_revision=(
+                _clean_optional_text(data.get("model_revision"))
+                or _clean_optional_text((safe_options or {}).get(MODEL_REVISION_OPTION_KEY))
+            ),
             model_path=_clean_optional_text(data.get("model_path")),
             python_executable=_clean_optional_text(data.get("python_executable")),
             worker_script_path=_clean_optional_text(data.get("worker_script_path")),
@@ -103,6 +109,7 @@ class LocalModelRuntimeConfig:
             "enabled": bool(self.enabled),
             "mode": self.mode if self.mode in LOCAL_MODEL_RUNTIME_MODES else LOCAL_MODEL_MODE_DISABLED,
             "model_id": self.model_id or LOCAL_MODEL_MODEL_ID,
+            "model_revision": self.model_revision or "",
             "model_path": self.model_path or "",
             "python_executable": self.python_executable or "",
             "worker_script_path": self.worker_script_path or "",

@@ -74,10 +74,11 @@ class SettingsTool(BaseTool):
             consent_frame,
             text=(
                 "Experimental local Unlimited-OCR is optional, disabled by "
-                "default, and requires user-managed runtime/model files. "
-                "Consent records acknowledgement for local model download, "
-                "custom-code / trust_remote_code, GPU/VRAM, and temporary "
-                "page-image risks."
+                "default, and runs only on this computer with user-managed "
+                "runtime/model files. Consent records acknowledgement for "
+                "local model download/cache, custom model code / "
+                "trust_remote_code, GPU/VRAM, temporary page images, and the "
+                "no-upload boundary."
             ),
             wraplength=900,
         ).pack(anchor="w", pady=(0, 6))
@@ -105,11 +106,12 @@ class SettingsTool(BaseTool):
         ttk.Label(
             runtime_frame,
             text=(
-                "Future AI OCR is intended to run on this computer. Real "
-                "Unlimited-OCR inference is experimental and requires a local "
-                "model/runtime configured by the user, preferably a uv-managed "
-                "OCR runtime such as .venv-ocr-runtime. There is no model "
-                "download, cloud upload, or server start action here."
+                "Experimental Local Unlimited-OCR is beta local AI OCR. It "
+                "runs on this computer only when explicitly enabled, keeps "
+                "Tesseract as the default OCR backend, and requires a local "
+                "model folder plus a uv-managed OCR runtime such as "
+                ".venv-ocr-runtime. There is no model download, cloud upload, "
+                "or server start action here."
             ),
             wraplength=900,
         ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
@@ -125,6 +127,7 @@ class SettingsTool(BaseTool):
         ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(0, 6))
         self.local_model_mode_var = tk.StringVar(value=LOCAL_MODEL_MODE_DISABLED)
         self.local_model_id_var = tk.StringVar(value=DEFAULT_ADVANCED_OCR_MODEL_ID)
+        self.local_model_revision_var = tk.StringVar()
         self.local_model_path_var = tk.StringVar()
         self.local_model_python_var = tk.StringVar()
         self.local_model_worker_var = tk.StringVar()
@@ -146,8 +149,12 @@ class SettingsTool(BaseTool):
         ttk.Entry(runtime_frame, textvariable=self.local_model_id_var).grid(
             row=3, column=3, sticky="ew", padx=(8, 0), pady=2
         )
+        ttk.Label(runtime_frame, text="Model revision pin (optional):").grid(row=4, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_revision_var).grid(
+            row=4, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
+        )
         self.local_model_device_var = tk.StringVar(value=LOCAL_MODEL_DEVICE_AUTO)
-        ttk.Label(runtime_frame, text="Device:").grid(row=4, column=0, sticky="w")
+        ttk.Label(runtime_frame, text="Device:").grid(row=5, column=0, sticky="w")
         ttk.Combobox(
             runtime_frame,
             textvariable=self.local_model_device_var,
@@ -158,23 +165,23 @@ class SettingsTool(BaseTool):
             ],
             state="readonly",
             width=20,
-        ).grid(row=4, column=1, sticky="ew", padx=(8, 12), pady=2)
-        ttk.Label(runtime_frame, text="Local Unlimited-OCR model folder:").grid(row=5, column=0, sticky="w")
+        ).grid(row=5, column=1, sticky="ew", padx=(8, 12), pady=2)
+        ttk.Label(runtime_frame, text="Local Unlimited-OCR model folder:").grid(row=6, column=0, sticky="w")
         ttk.Entry(runtime_frame, textvariable=self.local_model_path_var).grid(
-            row=5, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
-        )
-        ttk.Label(runtime_frame, text="Worker Python path (uv OCR runtime):").grid(row=6, column=0, sticky="w")
-        ttk.Entry(runtime_frame, textvariable=self.local_model_python_var).grid(
             row=6, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
         )
-        ttk.Label(runtime_frame, text="Worker script path:").grid(row=7, column=0, sticky="w")
-        ttk.Entry(runtime_frame, textvariable=self.local_model_worker_var).grid(
+        ttk.Label(runtime_frame, text="Worker Python path (uv OCR runtime):").grid(row=7, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_python_var).grid(
             row=7, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
+        )
+        ttk.Label(runtime_frame, text="Worker script path:").grid(row=8, column=0, sticky="w")
+        ttk.Entry(runtime_frame, textvariable=self.local_model_worker_var).grid(
+            row=8, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
         )
         runtime_frame.columnconfigure(1, weight=1)
         runtime_frame.columnconfigure(3, weight=1)
         runtime_actions = ttk.Frame(runtime_frame)
-        runtime_actions.grid(row=8, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        runtime_actions.grid(row=9, column=0, columnspan=4, sticky="w", pady=(8, 0))
         ttk.Button(
             runtime_actions,
             text="Save Runtime Settings",
@@ -264,6 +271,7 @@ class SettingsTool(BaseTool):
             enabled=enabled,
             mode=mode,
             model_id=self.local_model_id_var.get(),
+            model_revision=self.local_model_revision_var.get(),
             model_path=self.local_model_path_var.get(),
             python_executable=self.local_model_python_var.get(),
             worker_script_path=self.local_model_worker_var.get(),
@@ -274,6 +282,7 @@ class SettingsTool(BaseTool):
         self.local_model_enabled_var.set(config.enabled)
         self.local_model_mode_var.set(config.mode)
         self.local_model_id_var.set(config.model_id)
+        self.local_model_revision_var.set(config.model_revision or "")
         self.local_model_path_var.set(config.model_path or "")
         self.local_model_python_var.set(config.python_executable or "")
         self.local_model_worker_var.set(config.worker_script_path or "")
@@ -287,8 +296,8 @@ class SettingsTool(BaseTool):
         else:
             self.local_model_status_var.set(
                 "Experimental local model runtime configured as "
-                f"{config.mode}; execution remains opt-in and requires a "
-                "gated workflow."
+                f"{config.mode}; execution remains opt-in, local-only, and "
+                "requires the experimental gate plus saved consent."
             )
 
     def _save_local_model_runtime_settings(self) -> None:
@@ -297,7 +306,7 @@ class SettingsTool(BaseTool):
         self._refresh_local_model_runtime_status()
         messagebox.showinfo(
             "Saved",
-            "Local model OCR runtime settings saved. Experimental AI OCR remains opt-in.",
+            "Local model OCR runtime settings saved. Tesseract remains the default; Experimental Local Unlimited-OCR remains opt-in and gated.",
         )
 
     def _reset_local_model_runtime_settings(self) -> None:

@@ -68,14 +68,23 @@ pinning instead of floating branch names. A pinned revision makes it possible to
 audit model code, reproduce failures, and write support guidance for a specific
 runtime combination.
 
+The current beta implementation includes a warning-only policy layer. Runtime
+settings can store an optional model revision pin, and diagnostics report
+whether the configured model id is in the beta allowed list, whether a revision
+appears pinned, whether local Hugging Face metadata is recognizable, and whether
+valid custom-code consent is saved. These checks do not access the internet,
+download models, or block local folders by default.
+
 ## Future Allowlist and Checksum Direction
 
 Before broader release, maintainers should consider:
 
 - allowlisting reviewed provider/model/revision combinations;
 - documenting expected file hashes or signed release artifacts when practical;
+- promoting current warning-only model id/revision checks into stronger gates
+  only after beta feedback;
 - warning when a configured local model directory cannot be tied to a reviewed
-  revision;
+  revision or recognizable metadata;
 - storing only safe metadata, never OCR text, document content, image bytes, or
   source file paths;
 - keeping allowlist checks advisory during early beta if local model layouts are

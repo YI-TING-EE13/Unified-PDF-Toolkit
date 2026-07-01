@@ -15,6 +15,7 @@ from typing import Iterable, List
 
 from .file_ops import get_default_save_dir
 from .settings import get_settings_path
+from ..ocr.consent import load_advanced_ocr_consent
 from ..ocr.local_endpoint import get_local_endpoint_url, validate_local_endpoint_url
 from ..ocr.local_model import (
     LOCAL_MODEL_MODE_DISABLED,
@@ -22,8 +23,13 @@ from ..ocr.local_model import (
     LOCAL_MODEL_MODE_IN_PROCESS_FUTURE,
     LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
+    LOCAL_MODEL_PROVIDER,
     LocalModelRuntimeConfig,
     load_local_model_runtime_config,
+)
+from ..ocr.model_policy import (
+    allowed_model_ids_from_options,
+    evaluate_unlimited_ocr_model_policy,
 )
 
 
@@ -150,6 +156,7 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
                 expect_file=False,
             )
         )
+        checks.extend(_local_model_policy_checks(config))
     if config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
         checks.append(
             _path_readiness_check(
@@ -210,6 +217,72 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
             )
         )
     return checks
+
+
+def _local_model_policy_checks(config: LocalModelRuntimeConfig) -> List[DiagnosticCheck]:
+    status = evaluate_unlimited_ocr_model_policy(
+        model_id=config.model_id,
+        model_path=config.model_path,
+        model_revision=config.model_revision,
+        allowed_model_ids=allowed_model_ids_from_options(config.options),
+    )
+    checks = [
+        DiagnosticCheck(
+            "Advanced OCR model id policy",
+            "info" if status.model_id_allowed else "warning",
+            (
+                f"{status.model_id} is allowed for controlled beta"
+                if status.model_id_allowed
+                else f"{status.model_id} is not in the beta allowed model id list"
+            ),
+            "Use baidu/Unlimited-OCR unless a maintainer has reviewed another local model id."
+            if not status.model_id_allowed
+            else "",
+        ),
+        DiagnosticCheck(
+            "Advanced OCR model revision",
+            "info" if status.revision_pinned else "warning",
+            (
+                f"{status.revision} ({status.revision_source})"
+                if status.revision_pinned
+                else "not pinned"
+            ),
+            "Record a model revision pin before broader beta use."
+            if not status.revision_pinned
+            else "",
+        ),
+        DiagnosticCheck(
+            "Advanced OCR model metadata",
+            "info" if status.metadata_present else "warning",
+            _metadata_detail_for_diagnostics(status.metadata_detail, status.metadata_model_hint),
+            "Choose a local Hugging Face model folder with config/tokenizer metadata."
+            if status.metadata_present is False
+            else "",
+        ),
+    ]
+    consent = load_advanced_ocr_consent(
+        provider=LOCAL_MODEL_PROVIDER,
+        model_id=config.model_id,
+    )
+    checks.append(
+        DiagnosticCheck(
+            "Advanced OCR trust_remote_code consent",
+            "info" if consent else "warning",
+            "valid consent saved" if consent else "no valid consent saved for this model id",
+            "Review and save Advanced Local AI OCR consent before running Experimental Local Unlimited-OCR."
+            if not consent
+            else "",
+        )
+    )
+    return checks
+
+
+def _metadata_detail_for_diagnostics(detail: str, hint: str | None) -> str:
+    if not hint:
+        return detail
+    if ":" in hint or "/" in hint or "\\" in hint:
+        return f"{detail}; metadata hint present"
+    return f"{detail}; metadata hint: {hint}"
 
 
 def _worker_python_runtime_hint(value: str | None) -> DiagnosticCheck:

@@ -40,6 +40,9 @@ Implemented today:
   manual GUI beta-check runner for Experimental Local Unlimited-OCR.
 - Beta release-candidate notes, uv-only optional runtime setup helper, and
   `trust_remote_code` / model revision policy for controlled beta reviewers.
+- Warning-only model revision safety checks for model id allowlist status,
+  revision pin status, local metadata presence, and `trust_remote_code` consent
+  readiness.
 
 Not implemented today:
 
@@ -109,6 +112,9 @@ Not implemented today:
   path is developer/test-only and returns deterministic fake text. The current
   `local_unlimited_ocr` path is experimental real local inference only when
   explicitly configured.
+- `src/ocr/model_policy.py`: warning-only beta policy checks for recommended
+  model id, optional allowed model id list, revision pin hints, and local model
+  metadata presence. It must not access the internet or download models.
 - `src/ocr/unlimited_ocr_local.py`: lazy experimental Transformers runner for
   local Baidu Unlimited-OCR model directories. Keep torch/transformers imports
   inside the invoked runtime path only.
@@ -311,6 +317,7 @@ Settings / Recent can store safe runtime planning fields:
 - runtime mode: `disabled`, `fake_worker`, `local_unlimited_ocr`,
   `worker_process`, or `in_process_future`
 - provider/model id
+- optional model revision pin
 - local model folder path
 - device preference: `auto`, `cuda`, or `cpu`
 - optional future worker Python executable path
@@ -479,6 +486,10 @@ Diagnostics may report:
 Diagnostics must not require GPU, CUDA, internet, model download, OCR server,
 torch, transformers, or SGLang. Missing optional AI pieces are warning/info
 states, not app startup failures.
+
+For enabled local Unlimited-OCR settings, diagnostics also report warning-only
+model policy status: allowed model id, revision pin, local metadata presence,
+and valid `trust_remote_code` consent for the configured model id.
 
 ## Privacy and Security Boundaries
 

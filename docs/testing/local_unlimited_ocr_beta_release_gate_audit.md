@@ -35,6 +35,8 @@ Required wording is present or was tightened:
   `.venv-ocr-runtime`.
 - Optional runtime setup is helper-assisted through `uv` only and remains
   separate from default dependencies.
+- Diagnostics provide warning-only model id, revision pin, local metadata, and
+  `trust_remote_code` consent checks without internet or model download.
 - Real local Unlimited-OCR remains disabled by default and not
   production-ready.
 
@@ -58,6 +60,8 @@ Controlled beta may proceed only while all of these remain true:
       and experimental gate required.
 - [x] `trust_remote_code` and model revision risks are documented before any
       broader release.
+- [x] Unknown model ids, unpinned revisions, and missing local model metadata
+      surface as warnings rather than silent beta assumptions.
 
 ## Not Approved For Public Release
 

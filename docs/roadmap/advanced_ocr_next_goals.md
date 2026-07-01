@@ -172,6 +172,24 @@ an advanced/developer loopback option, not the main product path.
 - Required tests: Helper unit tests for dry-run, uv-only command construction, confirmation handling, and explicit torch profile behavior; full default test suite; compileall; setup helper dry-run; beta-check smoke where feasible.
 - Safety/privacy checks: Helper does not download models or alter default dependencies; docs state no hosted OCR, no upload, Tesseract default, experimental gate required, and no production-ready Unlimited-OCR claim.
 
+## Supporting Milestone: Unlimited-OCR Model Revision Safety Checks
+
+- Status: Implemented as warning-only beta hardening.
+- Goal: Make `trust_remote_code` model selection safer before beta testing without requiring internet, downloads, or global hard-fails for local model folders.
+- Non-goals: No automatic model download, checksum enforcement, online repository validation, production allowlist enforcement, default dependency change, or removal of the experimental gate.
+- Acceptance criteria: Runtime settings can store an optional revision pin; diagnostics report recommended/allowed model id status, revision pin status, recognizable local metadata, and valid custom-code consent; unknown model ids, unpinned revisions, and missing metadata are warnings.
+- Required tests: Known model id accepted, unknown model id warning, unpinned revision warning, metadata missing warning, optional allowed id list, diagnostics names, settings save/reset, and no heavy imports/startup changes.
+- Safety/privacy checks: Checks inspect only local metadata and settings, never OCR text/image bytes/source documents, and never access the network or download models.
+
+## Supporting Milestone: Final Beta Packaging and Tester Audit
+
+- Status: Implemented as documentation/static-audit hardening; no release or tag was created.
+- Goal: Prepare controlled beta testers and maintainers to validate packaging boundaries and run final smoke checks without publishing release artifacts.
+- Non-goals: No GitHub Release, git tag, new installer system, bundled AI runtime, model/cache bundling, default dependency change, hosted OCR, screen OCR, background OCR, file upload, or Batch Queue AI OCR.
+- Acceptance criteria: Packaging dry-run checklist covers release scripts, installer copy boundary, tracked-file exclusions, default dependency boundary, experimental gate, and optional artifact inspection; final beta tester checklist covers setup, GUI launch, Tesseract smoke, experimental worker smoke, failure cases, cleanup, error reporting, and limitations.
+- Required tests: Static `git ls-files` artifact search, default dependency diff check, setup helper dry-run, full default test suite, compileall, readiness check, and feasible OCR smoke.
+- Safety/privacy checks: No venv/model/cache/private/generated files are committed; no tag/release is created; beta docs keep no-upload, local-only, Tesseract-default, and not-production-ready claims explicit.
+
 ## Supporting Milestone: Production Document OCR UI Design Review
 
 - Status: Implemented as documentation/review only in `docs/design/`.

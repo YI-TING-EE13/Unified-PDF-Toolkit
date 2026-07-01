@@ -159,6 +159,7 @@ The current settings record stores only safe local runtime hints:
 - runtime mode: `disabled`, `fake_worker`, `local_unlimited_ocr`,
   `worker_process`, or `in_process_future`
 - provider/model id
+- optional model revision pin for beta auditing
 - local model folder path
 - device preference: `auto`, `cuda`, or `cpu`
 - optional Python executable path for worker-process mode
@@ -171,6 +172,18 @@ paths, or output contents.
 Settings / Recent may expose these fields for future readiness planning, but it
 must not provide a model download button, server start button, or "run model"
 action until real inference is separately reviewed.
+
+Controlled beta diagnostics also perform warning-only model policy checks:
+
+- recommended model id is `baidu/Unlimited-OCR`;
+- maintainers can provide an optional allowed model id list through safe config
+  options;
+- missing revision pins are warnings, not hard failures;
+- Hugging Face snapshot-style paths can provide a detected revision hint;
+- local model folders are inspected only for local metadata such as
+  `config.json`, tokenizer config, or custom-code files;
+- missing metadata produces a warning and never triggers internet access or
+  model download.
 
 ## Fake Worker Prototype
 

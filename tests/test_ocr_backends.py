@@ -60,6 +60,12 @@ from src.ocr.local_worker import (
     run_unlimited_ocr_worker_process,
     unlimited_ocr_worker_lock_path,
 )
+from src.ocr.model_policy import (
+    MODEL_ALLOWED_IDS_OPTION_KEY,
+    MODEL_REVISION_OPTION_KEY,
+    allowed_model_ids_from_options,
+    evaluate_unlimited_ocr_model_policy,
+)
 from src.ocr.tesseract import TesseractBackend
 from src.ocr.unlimited_fake import (
     UNLIMITED_OCR_MODEL_ID,
@@ -454,6 +460,7 @@ class LocalModelBackendTests(unittest.TestCase):
                 "enabled": True,
                 "mode": LOCAL_MODEL_MODE_FAKE_WORKER,
                 "model_id": LOCAL_MODEL_MODEL_ID,
+                "model_revision": "abc123",
                 "model_path": "C:/models/unlimited-ocr",
                 "python_executable": "C:/runtime/python.exe",
                 "worker_script_path": "C:/runtime/worker.py",
@@ -464,8 +471,10 @@ class LocalModelBackendTests(unittest.TestCase):
 
         self.assertTrue(loaded.enabled)
         self.assertEqual(loaded.mode, LOCAL_MODEL_MODE_FAKE_WORKER)
+        self.assertEqual(loaded.model_revision, "abc123")
         self.assertEqual(loaded.model_path, "C:/models/unlimited-ocr")
         self.assertEqual(loaded.device_preference, LOCAL_MODEL_DEVICE_CUDA)
+        self.assertEqual(loaded.to_dict()["model_revision"], "abc123")
         self.assertEqual(loaded.to_dict()["options"], {"future": "value"})
 
     def test_local_model_config_does_not_store_forbidden_document_content(self):
@@ -486,6 +495,77 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertNotIn("source_path", stored)
         self.assertNotIn("image_base64", stored)
         self.assertNotIn("rendered_page_path", stored)
+
+    def test_local_model_config_loads_legacy_revision_option(self):
+        loaded = LocalModelRuntimeConfig.from_dict(
+            {
+                "enabled": True,
+                "mode": LOCAL_MODEL_MODE_WORKER_PROCESS,
+                "model_id": LOCAL_MODEL_MODEL_ID,
+                "options": {MODEL_REVISION_OPTION_KEY: "legacy-revision"},
+            }
+        )
+
+        self.assertEqual(loaded.model_revision, "legacy-revision")
+
+    def test_model_revision_policy_warns_without_network_or_downloads(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            model_dir = root / "model"
+            model_dir.mkdir()
+
+            known = evaluate_unlimited_ocr_model_policy(
+                model_id=LOCAL_MODEL_MODEL_ID,
+                model_path=str(model_dir),
+                model_revision="pinned-revision",
+            )
+            self.assertTrue(known.model_id_allowed)
+            self.assertTrue(known.revision_pinned)
+            self.assertIn(
+                "Local model folder has no recognizable Hugging Face metadata files.",
+                known.warnings,
+            )
+
+            (model_dir / "config.json").write_text(
+                '{"_name_or_path": "baidu/Unlimited-OCR"}',
+                encoding="utf-8",
+            )
+            unpinned = evaluate_unlimited_ocr_model_policy(
+                model_id=LOCAL_MODEL_MODEL_ID,
+                model_path=str(model_dir),
+            )
+            self.assertFalse(unpinned.revision_pinned)
+            self.assertIn(
+                "Model revision is not pinned. Record an explicit revision before broader beta use.",
+                unpinned.warnings,
+            )
+            self.assertTrue(unpinned.metadata_present)
+            self.assertEqual(unpinned.metadata_model_hint, LOCAL_MODEL_MODEL_ID)
+
+    def test_model_revision_policy_warns_for_unknown_model_id(self):
+        status = evaluate_unlimited_ocr_model_policy(
+            model_id="example/Other-OCR",
+            model_revision="reviewed",
+            allowed_model_ids=(LOCAL_MODEL_MODEL_ID,),
+        )
+
+        self.assertFalse(status.model_id_allowed)
+        self.assertIn(
+            "Configured model id is not in the beta allowed model id list.",
+            status.warnings,
+        )
+
+    def test_model_revision_policy_accepts_optional_allowed_id_list(self):
+        allowed = allowed_model_ids_from_options(
+            {MODEL_ALLOWED_IDS_OPTION_KEY: "baidu/Unlimited-OCR, example/Other-OCR"}
+        )
+        status = evaluate_unlimited_ocr_model_policy(
+            model_id="example/Other-OCR",
+            model_revision="reviewed",
+            allowed_model_ids=allowed,
+        )
+
+        self.assertTrue(status.model_id_allowed)
 
     def test_local_model_config_persistence_load_save_and_clear(self):
         store = {}
@@ -1284,6 +1364,10 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         names = [check.name for check in configured]
         self.assertIn("Advanced OCR local model runtime", names)
         self.assertIn("Advanced OCR local model path", names)
+        self.assertIn("Advanced OCR model id policy", names)
+        self.assertIn("Advanced OCR model revision", names)
+        self.assertIn("Advanced OCR model metadata", names)
+        self.assertIn("Advanced OCR trust_remote_code consent", names)
         self.assertIn("Advanced OCR worker Python", names)
         self.assertIn("Advanced OCR worker runtime", names)
         self.assertIn("Advanced OCR worker script", names)
@@ -1303,12 +1387,14 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
                 enabled=True,
                 mode=LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR,
                 model_path="C:/missing/model",
+                model_revision="abc123",
                 device_preference=LOCAL_MODEL_DEVICE_CUDA,
             )
         )
         unlimited_names = [check.name for check in unlimited_configured]
         self.assertIn("Advanced OCR local Unlimited-OCR", unlimited_names)
         self.assertIn("Advanced OCR local model path", unlimited_names)
+        self.assertIn("Advanced OCR model revision", unlimited_names)
 
     def test_huggingface_cache_diagnostics_report_writable_env_paths(self):
         with tempfile.TemporaryDirectory() as hf_home, tempfile.TemporaryDirectory() as hf_modules:
@@ -1338,6 +1424,7 @@ class SettingsConsentUiTests(unittest.TestCase):
         tool.local_model_enabled_var = FakeStatusVar()
         tool.local_model_mode_var = FakeStatusVar()
         tool.local_model_id_var = FakeStatusVar()
+        tool.local_model_revision_var = FakeStatusVar()
         tool.local_model_path_var = FakeStatusVar()
         tool.local_model_python_var = FakeStatusVar()
         tool.local_model_worker_var = FakeStatusVar()
@@ -1398,6 +1485,7 @@ class SettingsConsentUiTests(unittest.TestCase):
         tool.local_model_enabled_var.set(True)
         tool.local_model_mode_var.set(LOCAL_MODEL_MODE_FAKE_WORKER)
         tool.local_model_id_var.set(LOCAL_MODEL_MODEL_ID)
+        tool.local_model_revision_var.set("abc123")
         tool.local_model_path_var.set("C:/models/unlimited-ocr")
         tool.local_model_python_var.set("C:/runtime/python.exe")
         tool.local_model_worker_var.set("C:/runtime/worker.py")
@@ -1410,6 +1498,7 @@ class SettingsConsentUiTests(unittest.TestCase):
                 return_value=LocalModelRuntimeConfig(
                     enabled=True,
                     mode=LOCAL_MODEL_MODE_FAKE_WORKER,
+                    model_revision="abc123",
                     model_path="C:/models/unlimited-ocr",
                     python_executable="C:/runtime/python.exe",
                     worker_script_path="C:/runtime/worker.py",
@@ -1422,6 +1511,7 @@ class SettingsConsentUiTests(unittest.TestCase):
         saved = save_mock.call_args.args[0]
         self.assertTrue(saved.enabled)
         self.assertEqual(saved.mode, LOCAL_MODEL_MODE_FAKE_WORKER)
+        self.assertEqual(saved.model_revision, "abc123")
         self.assertEqual(saved.model_path, "C:/models/unlimited-ocr")
         self.assertEqual(saved.device_preference, LOCAL_MODEL_DEVICE_CUDA)
 

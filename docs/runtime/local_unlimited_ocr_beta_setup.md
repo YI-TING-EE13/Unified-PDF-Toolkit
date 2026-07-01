@@ -97,15 +97,17 @@ In the app:
 3. Enable experimental local model runtime configuration.
 4. Set runtime mode to `worker_process`.
 5. Set model id to `baidu/Unlimited-OCR`.
-6. Set local model folder to the existing local model directory.
-7. Set worker Python path to:
+6. Set model revision pin when you know the reviewed local model revision.
+   Leaving it blank is allowed during early beta, but diagnostics will warn.
+7. Set local model folder to the existing local model directory.
+8. Set worker Python path to:
 
 ```text
 .\.venv-ocr-runtime\Scripts\python.exe
 ```
 
-8. Leave worker script path blank unless testing a specific script.
-9. Set device to `cuda` for CUDA validation or `auto` for general readiness.
+9. Leave worker script path blank unless testing a specific script.
+10. Set device to `cuda` for CUDA validation or `auto` for general readiness.
 
 ## Launch Commands
 

@@ -14,6 +14,8 @@ announcement.
 - Settings / Recent fields for local model runtime configuration.
 - Advanced OCR consent that covers model download risk, custom-code /
   `trust_remote_code` risk, GPU/VRAM use, and temporary local page images.
+- Warning-only model id, revision pin, local metadata, and
+  `trust_remote_code` consent diagnostics.
 - Manual readiness, GUI smoke, and beta-check scripts.
 - A uv-only optional runtime setup helper:
   `scripts/setup_local_unlimited_ocr_runtime.py`.
@@ -77,6 +79,7 @@ Configure Settings / Recent with:
 - enabled local model runtime;
 - runtime mode `worker_process`;
 - model id `baidu/Unlimited-OCR`;
+- optional model revision pin when a reviewed revision is known;
 - existing local model folder;
 - worker Python path such as `.venv-ocr-runtime\Scripts\python.exe`;
 - device `cuda` for CUDA beta validation or `auto` for readiness.
@@ -123,6 +126,8 @@ The experimental backend is hidden without the environment flag.
 - The first run may be slow because the local model and custom code are loaded.
 - `trust_remote_code=True` executes model-provided Python code in the optional
   runtime. This remains consent-gated and beta-only.
+- Missing model revision pins or unrecognized local metadata are beta warnings,
+  not hard failures.
 - Wider GPU/runtime matrix coverage is still required before public release.
 
 ## Troubleshooting
@@ -133,6 +138,8 @@ The experimental backend is hidden without the environment flag.
 | Consent required | Save Advanced Local AI OCR consent in Settings / Recent. |
 | Runtime disabled | Enable local model runtime settings and select `worker_process`. |
 | Model path missing | Choose an existing local Unlimited-OCR model folder. |
+| Revision warning | Record the reviewed model revision when known; early beta can continue with a warning. |
+| Metadata warning | Confirm the local folder contains Hugging Face model metadata such as config/tokenizer files. |
 | Worker Python missing | Point to the uv-managed optional runtime Python. |
 | CUDA unavailable | Check GPU driver, PyTorch wheel profile, and optional runtime package versions. |
 | Timeout | Increase timeout or reduce input size for beta validation. |
@@ -152,6 +159,6 @@ The experimental backend is hidden without the environment flag.
 - Broader GPU/runtime matrix validation.
 - Accessibility review of Document OCR UI.
 - Beta feedback on setup clarity and CUDA wheel selection.
-- Model revision pinning and optional allowlist/checksum review.
+- Enforced allowlist/checksum review for broader public release.
 - User-facing documentation that is clear enough for non-maintainer beta users.
 - Release decision on whether the experimental environment gate remains.
