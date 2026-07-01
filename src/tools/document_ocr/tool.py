@@ -108,10 +108,11 @@ class DocumentOcrTool(BaseTool):
             notice,
             text=(
                 "Default OCR uses Tesseract and runs locally. Experimental Local "
-                "Unlimited-OCR, when explicitly enabled, also runs on this "
-                "computer with no upload and requires a uv-managed optional "
-                "runtime plus a local model folder configured by the user. "
-                "It is not production-ready."
+                "Unlimited-OCR is beta local AI OCR: it runs on this computer, "
+                "performs no upload, requires saved consent, and needs a "
+                "user-owned uv OCR runtime plus a local model folder. It may "
+                "execute custom model code, use GPU/VRAM, and is not "
+                "production-ready."
             ),
             wraplength=900,
         ).pack(anchor="w")
@@ -216,8 +217,9 @@ class DocumentOcrTool(BaseTool):
                     (
                         "Experimental Local Unlimited-OCR requires saved advanced "
                         "OCR consent in Settings / Recent before it can run. "
-                        "Review the model download, custom-code, GPU/VRAM, and "
-                        "temporary page-image acknowledgements first."
+                        "Review the model download/cache, custom model code / "
+                        "trust_remote_code, GPU/VRAM, no-upload, and temporary "
+                        "page-image acknowledgements first."
                     ),
                 )
                 return
@@ -269,14 +271,17 @@ class DocumentOcrTool(BaseTool):
         if not experimental_local_ocr_enabled():
             self.experimental_status_var.set(
                 "Experimental Local Unlimited-OCR is hidden. Set "
-                f"{EXPERIMENTAL_LOCAL_OCR_ENV}=1 to show it for local-only testing."
+                f"{EXPERIMENTAL_LOCAL_OCR_ENV}=1 only for controlled beta "
+                "testing with a local model/runtime."
             )
             return
         config = load_local_model_runtime_config()
         self.experimental_status_var.set(
-            "Experimental Local Unlimited-OCR is visible. It runs on this computer, "
-            "performs no upload, requires Settings / Recent consent plus a "
-            f"worker_process local runtime, and is not production-ready. Current mode: "
+            "Experimental Local Unlimited-OCR is visible for controlled beta. "
+            "It runs on this computer with no upload, requires Settings / "
+            "Recent consent, a uv-managed worker Python, a local model folder, "
+            "and worker_process mode. It may use GPU/VRAM and custom model "
+            f"code; it is not production-ready. Current mode: "
             f"{config.mode}; device: {config.device_preference}."
         )
 
