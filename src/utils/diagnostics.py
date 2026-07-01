@@ -9,6 +9,7 @@ import shutil
 import sys
 import tkinter as tk
 from dataclasses import dataclass
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Iterable, List
 
@@ -38,12 +39,19 @@ def _module_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
 
+def _module_version(name: str) -> str:
+    try:
+        return importlib_metadata.version(name)
+    except importlib_metadata.PackageNotFoundError:
+        return "unknown version"
+
+
 def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
     checks: List[DiagnosticCheck] = [
         DiagnosticCheck(
             "Advanced OCR architecture",
             "info",
-            "experimental optional backend wiring only; real Unlimited-OCR inference is not enabled",
+            "experimental local-only backend support; disabled by default and never used by Tesseract OCR",
         )
     ]
 
@@ -52,8 +60,8 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
         DiagnosticCheck(
             "Advanced OCR torch",
             "info" if torch_available else "warning",
-            "available" if torch_available else "not installed",
-            "Optional only. Do not install torch unless you are testing a future local AI OCR runtime."
+            f"available ({_module_version('torch')})" if torch_available else "not installed",
+            "Optional only. Install torch only in a uv-managed OCR runtime for experimental local model testing."
             if not torch_available
             else "",
         )
@@ -64,8 +72,8 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
         DiagnosticCheck(
             "Advanced OCR transformers",
             "info" if transformers_available else "warning",
-            "available" if transformers_available else "not installed",
-            "Optional only. Real Unlimited-OCR inference is not part of the default install."
+            f"available ({_module_version('transformers')})" if transformers_available else "not installed",
+            "Optional only. Install transformers only in a uv-managed OCR runtime for experimental local model testing."
             if not transformers_available
             else "",
         )
@@ -77,6 +85,7 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
         checks.append(DiagnosticCheck("Advanced OCR CUDA", "info", "not checked because torch is not installed"))
 
     checks.extend(_local_model_runtime_checks(load_local_model_runtime_config()))
+    checks.extend(_huggingface_cache_checks())
 
     cache_path = _unlimited_ocr_cache_path()
     checks.append(
@@ -117,7 +126,7 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
                 "Advanced OCR local model runtime",
                 "info",
                 "disabled",
-                "Enable only after installing a reviewed local model runtime. Real inference is not implemented yet.",
+                "Enable only for experimental local Unlimited-OCR beta testing with a uv-managed runtime.",
             )
         ]
 
@@ -127,10 +136,10 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
             "warning",
             f"{config.mode} configured"
             if config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR
-            else f"{config.mode} configured; real inference is not implemented yet",
+            else f"{config.mode} configured",
             "Experimental local Unlimited-OCR requires optional runtime dependencies."
-            if config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR
-            else "This configuration is for future local runtime readiness only.",
+            if config.mode in (LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR, LOCAL_MODEL_MODE_WORKER_PROCESS)
+            else "This configuration is for local runtime readiness only.",
         )
     )
     if config.mode != LOCAL_MODEL_MODE_FAKE_WORKER:
@@ -149,6 +158,7 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
                 expect_file=True,
             )
         )
+        checks.append(_worker_python_runtime_hint(config.python_executable))
         checks.append(
             _path_readiness_check(
                 "Advanced OCR worker script",
@@ -202,6 +212,26 @@ def _local_model_runtime_checks(config: LocalModelRuntimeConfig) -> List[Diagnos
     return checks
 
 
+def _worker_python_runtime_hint(value: str | None) -> DiagnosticCheck:
+    if not value:
+        return DiagnosticCheck(
+            "Advanced OCR worker runtime",
+            "warning",
+            "not configured",
+            "Use a uv-managed optional OCR runtime such as .venv-ocr-runtime.",
+        )
+    normalized_parts = {part.lower() for part in Path(value).parts}
+    looks_like_uv_runtime = ".venv-ocr-runtime" in normalized_parts
+    return DiagnosticCheck(
+        "Advanced OCR worker runtime",
+        "info",
+        "looks like .venv-ocr-runtime" if looks_like_uv_runtime else "custom worker Python configured",
+        ""
+        if looks_like_uv_runtime
+        else "For beta validation, confirm this Python belongs to a uv-managed optional OCR runtime.",
+    )
+
+
 def _path_readiness_check(
     name: str,
     value: str | None,
@@ -247,7 +277,7 @@ def _torch_readiness_checks() -> List[DiagnosticCheck]:
             "Advanced OCR CUDA",
             "info" if cuda_available else "warning",
             "available" if cuda_available else "not available",
-            "Future real AI OCR may need an NVIDIA GPU with enough VRAM."
+            "Experimental local Unlimited-OCR may need an NVIDIA CUDA wheel matching the driver plus enough VRAM."
             if not cuda_available
             else "",
         )
@@ -282,6 +312,67 @@ def _unlimited_ocr_cache_path() -> Path:
     if base:
         return Path(base) / "hub" / "models--baidu--Unlimited-OCR"
     return Path.home() / ".cache" / "huggingface" / "hub" / "models--baidu--Unlimited-OCR"
+
+
+def _huggingface_cache_checks() -> List[DiagnosticCheck]:
+    return [
+        _env_directory_writable_check(
+            "HF_HOME",
+            "Hugging Face home/cache",
+            "Set HF_HOME to a writable local folder before manual model cache/download work.",
+        ),
+        _env_directory_writable_check(
+            "HF_MODULES_CACHE",
+            "Hugging Face custom-code module cache",
+            "Set HF_MODULES_CACHE to a writable local folder before running trust_remote_code models.",
+        ),
+    ]
+
+
+def _env_directory_writable_check(
+    env_name: str,
+    label: str,
+    unset_suggestion: str,
+) -> DiagnosticCheck:
+    value = os.environ.get(env_name)
+    if not value:
+        return DiagnosticCheck(
+            f"Advanced OCR {env_name}",
+            "info",
+            "not set",
+            unset_suggestion,
+        )
+    path = Path(value)
+    if not path.exists():
+        return DiagnosticCheck(
+            f"Advanced OCR {env_name}",
+            "warning",
+            f"{label} path is configured but not found",
+            "Create the folder or choose an existing writable local folder.",
+        )
+    if not path.is_dir():
+        return DiagnosticCheck(
+            f"Advanced OCR {env_name}",
+            "warning",
+            f"{label} path is not a folder",
+            "Choose a writable local folder.",
+        )
+    try:
+        probe = path / ".pdf_toolkit_advanced_ocr_write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except OSError as exc:
+        return DiagnosticCheck(
+            f"Advanced OCR {env_name}",
+            "warning",
+            f"{label} path is not writable: {exc}",
+            "Choose a writable local folder under your user profile or temp directory.",
+        )
+    return DiagnosticCheck(
+        f"Advanced OCR {env_name}",
+        "info",
+        f"{label} path is writable",
+    )
 
 
 def collect_diagnostics() -> List[DiagnosticCheck]:

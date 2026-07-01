@@ -75,7 +75,9 @@ class SettingsTool(BaseTool):
             text=(
                 "Experimental local Unlimited-OCR is optional, disabled by "
                 "default, and requires user-managed runtime/model files. "
-                "Consent records acknowledgement for optional local AI OCR risks."
+                "Consent records acknowledgement for local model download, "
+                "custom-code / trust_remote_code, GPU/VRAM, and temporary "
+                "page-image risks."
             ),
             wraplength=900,
         ).pack(anchor="w", pady=(0, 6))
@@ -97,7 +99,7 @@ class SettingsTool(BaseTool):
         ).pack(side="left", padx=(8, 0))
 
         runtime_frame = ttk.LabelFrame(
-            parent, text="Future Local Model OCR Runtime", padding=10
+            parent, text="Experimental Local Model OCR Runtime", padding=10
         )
         runtime_frame.pack(fill="x", pady=(0, 10))
         ttk.Label(
@@ -105,8 +107,9 @@ class SettingsTool(BaseTool):
             text=(
                 "Future AI OCR is intended to run on this computer. Real "
                 "Unlimited-OCR inference is experimental and requires a local "
-                "model/runtime configured by the user. There is no model "
-                "download or server start action here."
+                "model/runtime configured by the user, preferably a uv-managed "
+                "OCR runtime such as .venv-ocr-runtime. There is no model "
+                "download, cloud upload, or server start action here."
             ),
             wraplength=900,
         ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
@@ -156,11 +159,11 @@ class SettingsTool(BaseTool):
             state="readonly",
             width=20,
         ).grid(row=4, column=1, sticky="ew", padx=(8, 12), pady=2)
-        ttk.Label(runtime_frame, text="Local model folder:").grid(row=5, column=0, sticky="w")
+        ttk.Label(runtime_frame, text="Local Unlimited-OCR model folder:").grid(row=5, column=0, sticky="w")
         ttk.Entry(runtime_frame, textvariable=self.local_model_path_var).grid(
             row=5, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
         )
-        ttk.Label(runtime_frame, text="Worker Python path:").grid(row=6, column=0, sticky="w")
+        ttk.Label(runtime_frame, text="Worker Python path (uv OCR runtime):").grid(row=6, column=0, sticky="w")
         ttk.Entry(runtime_frame, textvariable=self.local_model_python_var).grid(
             row=6, column=1, columnspan=3, sticky="ew", padx=(8, 0), pady=2
         )

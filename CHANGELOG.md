@@ -24,6 +24,7 @@
 - Added a user-facing Document OCR tool with Tesseract as the default backend and a gated experimental Local Unlimited-OCR worker option.
 - Hardened Document OCR experimental local-model failure messages for missing model path, missing worker Python, busy worker, timeout, unsupported input, and GPU/CUDA readiness failures.
 - Hardened the Document OCR experimental GUI smoke path with a manual Tkinter smoke runner and worker-process cancellation propagation.
+- Added controlled-beta setup, smoke checklist, release-gate audit, diagnostics readiness hardening, and beta-check smoke automation for Experimental Local Unlimited-OCR.
 
 ## 0.5.0 - 2026-06-19
 

@@ -68,8 +68,8 @@ GPU runtime path. Every item must be pass, fail, or explicitly not applicable.
 - [ ] User-facing documentation states the backend is optional and local-first.
 - [ ] User-facing documentation states Tesseract remains the default unless a
       user explicitly opts into advanced OCR.
-- [ ] Documentation does not claim real Unlimited-OCR support before it is
-      implemented and reviewed.
+- [ ] Documentation does not claim production-ready Unlimited-OCR support before
+      release gates pass.
 - [ ] GPU/manual acceptance test plan was completed on local non-sensitive
       samples.
 - [ ] Rollback plan is documented and tested.

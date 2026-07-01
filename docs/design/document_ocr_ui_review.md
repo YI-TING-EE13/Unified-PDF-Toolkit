@@ -124,10 +124,11 @@ provider/model pair and consent text version.
 The production UI must make these acknowledgements explicit:
 
 - Advanced local AI OCR is experimental.
-- Current app builds may not include real Unlimited-OCR inference.
-- Future model use may require a large model download.
-- Future model use may execute model custom code or `trust_remote_code`.
-- Future model use may require GPU/VRAM.
+- Gated experimental builds may run local Unlimited-OCR only after consent and
+  runtime configuration.
+- Model use may require a large local model download/cache.
+- Model use may execute model custom code or `trust_remote_code`.
+- Model use may require GPU/VRAM.
 - PDFs may be rendered into temporary local page images.
 - Files and OCR text must not be uploaded by this feature.
 
@@ -214,9 +215,9 @@ Production UI copy should clearly state:
 - Tesseract remains the default existing OCR path unless the user opts into an
   advanced OCR feature.
 
-Avoid claims that are not implemented:
+Avoid claims that are not approved:
 
-- Do not claim real Unlimited-OCR inference is supported.
+- Do not claim Unlimited-OCR is production-ready.
 - Do not claim GPU OCR is supported.
 - Do not claim endpoint OCR is production-ready before release gates pass.
 - Do not claim the app bundles AI models or GPU runtime.

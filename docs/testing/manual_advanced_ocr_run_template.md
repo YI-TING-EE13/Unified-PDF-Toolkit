@@ -1,7 +1,8 @@
 # Manual Advanced OCR Run Template
 
-Use this template for future manual GPU/model/server validation only. Do not use
-it as evidence that real Unlimited-OCR inference is currently supported.
+Use this template for manual GPU/model/server validation only. Do not use it as
+evidence that Unlimited-OCR is production-ready or supported outside the gated
+experimental local runtime path.
 
 ## Run Metadata
 

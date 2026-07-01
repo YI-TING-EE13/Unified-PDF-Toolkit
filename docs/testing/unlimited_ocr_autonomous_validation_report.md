@@ -182,6 +182,25 @@ GUI cancel/timeout UX was validated after hardening:
   the Cancel button, and writes no output files for the cancelled run.
 - Very short timeout reports `The selected OCR backend timed out.`
 
+Update on 2026-07-01 beta-readiness pass:
+
+- A controlled beta setup guide was added at
+  `docs/runtime/local_unlimited_ocr_beta_setup.md`.
+- A beta smoke checklist was added at
+  `docs/testing/document_ocr_beta_smoke_checklist.md`.
+- A release-gate audit was added at
+  `docs/testing/local_unlimited_ocr_beta_release_gate_audit.md`.
+- The manual GUI smoke runner gained `--mode beta-check`, which summarizes
+  Tesseract default behavior, experimental gate state, worker-process output
+  creation, and worker temp cleanup without printing OCR text.
+- Diagnostics now report optional torch/transformers versions when detectable,
+  `HF_HOME` and `HF_MODULES_CACHE` writability, configured worker Python
+  readiness, and whether the worker Python resembles the uv-managed optional OCR
+  runtime.
+- Settings and Document OCR copy were tightened to emphasize experimental
+  status, no upload, user-owned local runtime/model files, uv-managed worker
+  Python, and Tesseract remaining the default.
+
 ## Failure Path Results
 
 Failure scenarios were run through a temporary local runner with the uv-managed
@@ -212,7 +231,7 @@ Latest full validation results:
 
 - `git diff --check`: exit `0` with CRLF warnings only.
 - `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`: exit `0`,
-  `Ran 97 tests`, `OK`.
+  `Ran 98 tests`, `OK`.
 - `.\.venv\Scripts\python.exe verify_install.py`: exit `0`; all tools loaded,
   including `Document OCR`; Tkinter `init.tcl` warning only.
 - `.\.venv\Scripts\python.exe -m compileall -q src tests verify_install.py scripts`:
@@ -249,6 +268,9 @@ Documentation:
 - `docs/roadmap/advanced_ocr_next_goals.md`
 - `docs/runtime/local_model_ocr_runtime.md`
 - `docs/runtime/local_model_worker_contract.md`
+- `docs/runtime/local_unlimited_ocr_beta_setup.md`
+- `docs/testing/document_ocr_beta_smoke_checklist.md`
+- `docs/testing/local_unlimited_ocr_beta_release_gate_audit.md`
 - `docs/testing/unlimited_ocr_autonomous_validation_report.md`
 
 ## Exclusions Confirmed
@@ -263,19 +285,16 @@ Documentation:
 ## Remaining Production Blockers
 
 - Need broader GPU/runtime matrix validation beyond RTX 3060.
-- Need accessibility and copy review for the new Document OCR UI.
-- Need release-gate review before removing the experimental env gate.
+- Need broader accessibility review for the new Document OCR UI.
+- Need beta feedback on setup clarity, CUDA wheel selection, model revision
+  behavior, and support expectations.
 - Need packaging documentation for optional OCR runtime path in installer
   release notes.
+- Need final release-gate review before removing the experimental env gate.
 
 ## Recommended Next Milestone
 
-Run a GUI-backed Document OCR smoke test on a Windows environment with working
-Tkinter, using:
-
-- Tesseract default path.
-- Experimental Local Unlimited-OCR path with
-  `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
-- Cancel/timeout behavior from the actual UI.
-- Output folder conflict behavior.
-- A no-OCR-content-in-logs review.
+Run controlled beta validation on at least one additional Windows + NVIDIA GPU
+configuration using `docs/testing/document_ocr_beta_smoke_checklist.md`, then
+record any CUDA wheel, model revision, setup, or UI accessibility issues before
+considering a public beta announcement.

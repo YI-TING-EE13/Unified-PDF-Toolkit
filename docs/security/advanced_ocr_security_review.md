@@ -8,15 +8,17 @@ GPU/runtime dependencies, or expose production-ready Unlimited-OCR support.
 
 ## Scope
 
-This review applies to future work that would process user-selected PDF or image
-files through an optional advanced OCR backend. Covered backend types include:
+This review applies to current gated experimental work and future work that
+processes user-selected PDF or image files through an optional advanced OCR
+backend. Covered backend types include:
 
 - A user-managed local OCR endpoint.
 - An in-process local model runtime.
-- A future Unlimited-OCR-compatible integration.
+- The gated experimental local Unlimited-OCR worker runtime.
 
-This review does not approve implementation of real inference. Real backend work
-must satisfy the release gates below before it can be enabled.
+This review does not approve production-ready AI OCR. Any expansion beyond the
+current gated experimental worker path must satisfy the release gates below
+before it can be enabled for broader use.
 
 ## Assets to Protect
 
@@ -60,7 +62,8 @@ Potential threats:
 - Background processing without a visible user action.
 - GPU/VRAM exhaustion causing app instability or system impact.
 - Default-install bloat or accidental startup-time imports of heavy runtimes.
-- Confusing UI that implies real Unlimited-OCR support before it exists.
+- Confusing UI that implies production-ready Unlimited-OCR support before it is
+  reviewed and released.
 
 Out of scope for this stage:
 

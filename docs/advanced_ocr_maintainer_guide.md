@@ -36,6 +36,8 @@ Implemented today:
 - Optional runtime packaging/install docs and local endpoint contract.
 - Production Document OCR UI design review and readiness checklist.
 - Fake-backend Document OCR smoke test plan and manual run template.
+- Controlled-beta setup guide, beta smoke checklist, release-gate audit, and
+  manual GUI beta-check runner for Experimental Local Unlimited-OCR.
 
 Not implemented today:
 
@@ -82,6 +84,8 @@ Not implemented today:
   output, user-safe errors, and output actions using only the fake backend.
 - Documentation gates: GPU acceptance, security review, optional runtime guide,
   endpoint contract, production UI review, and fake-backend smoke test plan.
+- Beta readiness gates: setup/runbook, manual smoke checklist, release-gate
+  audit, diagnostics cache/runtime checks, and GUI beta-check automation.
 
 ## Key Files and Responsibilities
 
@@ -124,6 +128,9 @@ Not implemented today:
   that uses `src/ocr/workflow.py`.
 - `src/tools/pdf2word/tool.py`: existing production PDF to Word OCR path.
 - `src/utils/diagnostics.py`: optional advanced OCR readiness diagnostics.
+- `scripts/manual_document_ocr_gui_smoke.py`: manual Tkinter smoke runner for
+  Tesseract and gated Experimental Local Unlimited-OCR, including beta-check
+  summary mode. It must not print OCR text or generated page images.
 - `docs/adr/0001-optional-advanced-ocr-backend.md`: design record.
 - `docs/roadmap/advanced_ocr_next_goals.md`: milestone status and future work.
 - `docs/testing/advanced_ocr_gpu_acceptance.md`: manual GPU acceptance plan.
@@ -134,6 +141,9 @@ Not implemented today:
   architecture.
 - `docs/runtime/local_model_worker_contract.md`: future worker-process request,
   response, cancellation, timeout, and logging contract.
+- `docs/runtime/local_unlimited_ocr_beta_setup.md`: controlled beta setup for
+  uv-managed optional runtime, local model path, cache paths, launch commands,
+  readiness checks, and cleanup guidance.
 - `docs/runtime/local_ocr_endpoint_contract.md`: future endpoint contract.
 - `docs/design/document_ocr_ui_review.md`: production Document OCR UX and
   release-gate review.
@@ -143,6 +153,11 @@ Not implemented today:
   test plan for a future production Document OCR UI.
 - `docs/testing/manual_document_ocr_smoke_template.md`: manual smoke run record
   template that avoids OCR text, image payloads, and document content.
+- `docs/testing/document_ocr_beta_smoke_checklist.md`: controlled beta checklist
+  for Tesseract, Experimental Local Unlimited-OCR, diagnostics, failure paths,
+  cancellation, timeout, and privacy checks.
+- `docs/testing/local_unlimited_ocr_beta_release_gate_audit.md`: claims and
+  release-gate audit for controlled beta readiness.
 
 ## Behavior Categories
 

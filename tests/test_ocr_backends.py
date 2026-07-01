@@ -2,6 +2,7 @@ import builtins
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -1260,6 +1261,8 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         self.assertIn("Advanced OCR transformers", names)
         self.assertIn("Advanced OCR CUDA", names)
         self.assertIn("Advanced OCR local model runtime", names)
+        self.assertIn("Advanced OCR HF_HOME", names)
+        self.assertIn("Advanced OCR HF_MODULES_CACHE", names)
         self.assertIn("Advanced OCR model cache", names)
         self.assertIn("Advanced OCR local endpoint URL", names)
         self.assertFalse([check for check in checks if check.status == "error"])
@@ -1282,6 +1285,7 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         self.assertIn("Advanced OCR local model runtime", names)
         self.assertIn("Advanced OCR local model path", names)
         self.assertIn("Advanced OCR worker Python", names)
+        self.assertIn("Advanced OCR worker runtime", names)
         self.assertIn("Advanced OCR worker script", names)
         self.assertTrue([check for check in configured if check.status == "warning"])
 
@@ -1305,6 +1309,24 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         unlimited_names = [check.name for check in unlimited_configured]
         self.assertIn("Advanced OCR local Unlimited-OCR", unlimited_names)
         self.assertIn("Advanced OCR local model path", unlimited_names)
+
+    def test_huggingface_cache_diagnostics_report_writable_env_paths(self):
+        with tempfile.TemporaryDirectory() as hf_home, tempfile.TemporaryDirectory() as hf_modules:
+            with mock.patch.dict(
+                os.environ,
+                {"HF_HOME": hf_home, "HF_MODULES_CACHE": hf_modules},
+            ):
+                checks = diagnostics._huggingface_cache_checks()
+
+        details = {check.name: check.detail for check in checks}
+        self.assertEqual(
+            details["Advanced OCR HF_HOME"],
+            "Hugging Face home/cache path is writable",
+        )
+        self.assertEqual(
+            details["Advanced OCR HF_MODULES_CACHE"],
+            "Hugging Face custom-code module cache path is writable",
+        )
 
 
 class SettingsConsentUiTests(unittest.TestCase):

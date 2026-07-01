@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
             "experimental",
             "failure",
             "cancel",
+            "beta-check",
         ),
         required=True,
     )
@@ -104,6 +105,8 @@ def main() -> int:
         tool = app.tools["Document OCR"]
         if args.mode == "inspect":
             return inspect_tool(tool, recorder)
+        if args.mode == "beta-check":
+            return beta_check(app, tool, recorder, args)
 
         input_path = Path(args.input) if args.input else create_sample_image()
         if args.mode == "failure" and args.failure_scenario == "unsupported_input":
@@ -147,6 +150,103 @@ def inspect_tool(tool: Any, recorder: MessageRecorder) -> int:
     print(f"experimental_status={tool.experimental_status_var.get()}")
     print(f"message_count={len(recorder.messages)}")
     return 0
+
+
+def beta_check(
+    app: PDFToolkitApp,
+    tool: Any,
+    recorder: MessageRecorder,
+    args: argparse.Namespace,
+) -> int:
+    root_output = (
+        Path(args.output_dir)
+        if args.output_dir
+        else create_output_dir("beta_check")
+    )
+    root_output.mkdir(parents=True, exist_ok=True)
+    input_path = Path(args.input) if args.input else create_sample_image()
+
+    print("section=inspect")
+    inspect_tool(tool, recorder)
+
+    print("section=tesseract")
+    recorder.messages.clear()
+    tesseract_output = root_output / "tesseract"
+    tesseract_output.mkdir(parents=True, exist_ok=True)
+    run_gui_job(
+        app,
+        tool,
+        recorder,
+        input_path=input_path,
+        output_dir=tesseract_output,
+        backend_label=TESSERACT_BACKEND_LABEL,
+        wait_seconds=args.wait_seconds,
+    )
+    print_summary(tool, recorder, tesseract_output)
+    tesseract_ok = has_output_files(tesseract_output)
+    print(f"tesseract_output_created={tesseract_ok}")
+    if not tesseract_ok:
+        return 1
+
+    labels = document_ocr_tool.available_document_ocr_backend_labels()
+    print("section=experimental")
+    print(f"experimental_available={LOCAL_UNLIMITED_BACKEND_LABEL in labels}")
+    if LOCAL_UNLIMITED_BACKEND_LABEL not in labels:
+        print("experimental_run=skipped;reason=gate_not_enabled")
+        return 0
+    if not args.model_path:
+        print("experimental_run=skipped;reason=model_path_not_configured")
+        return 2
+    if not args.worker_python:
+        print("experimental_run=skipped;reason=worker_python_not_configured")
+        return 2
+
+    recorder.messages.clear()
+    experimental_output = root_output / "experimental"
+    experimental_output.mkdir(parents=True, exist_ok=True)
+    worker_temp_before = count_worker_temp_dirs()
+    run_gui_job(
+        app,
+        tool,
+        recorder,
+        input_path=input_path,
+        output_dir=experimental_output,
+        backend_label=LOCAL_UNLIMITED_BACKEND_LABEL,
+        wait_seconds=args.wait_seconds,
+        configure_experimental=lambda: install_experimental_config(args, input_path),
+    )
+    worker_temp_after = count_worker_temp_dirs()
+    print_summary(tool, recorder, experimental_output)
+    experimental_ok = has_output_files(experimental_output)
+    print(f"experimental_output_created={experimental_ok}")
+    print(f"worker_temp_dirs_before={worker_temp_before}")
+    print(f"worker_temp_dirs_after={worker_temp_after}")
+    return 0 if experimental_ok else 1
+
+
+def run_gui_job(
+    app: PDFToolkitApp,
+    tool: Any,
+    recorder: MessageRecorder,
+    *,
+    input_path: Path,
+    output_dir: Path,
+    backend_label: str,
+    wait_seconds: float,
+    configure_experimental=None,
+) -> None:
+    configure_common_fields(tool, input_path, output_dir)
+    tool.backend_var.set(backend_label)
+    if configure_experimental:
+        configure_experimental()
+    tool.execute()
+    wait_for_completion(
+        app,
+        tool,
+        recorder,
+        output_dir,
+        timeout_seconds=wait_seconds,
+    )
 
 
 def configure_common_fields(tool: Any, input_path: Path, output_dir: Path) -> None:
@@ -241,6 +341,13 @@ def has_output_files(output_dir: Path) -> bool:
     return any(
         path.suffix.lower() in {".txt", ".md"}
         for path in output_dir.glob("*")
+    )
+
+
+def count_worker_temp_dirs() -> int:
+    return sum(
+        1
+        for _path in Path(tempfile.gettempdir()).glob("pdf_toolkit_unlimited_worker_*")
     )
 
 

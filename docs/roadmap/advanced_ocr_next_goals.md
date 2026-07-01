@@ -154,6 +154,15 @@ an advanced/developer loopback option, not the main product path.
 - Required tests: Unit tests for error mapping plus workflow/tool tests with mocked or local-safe failure scenarios.
 - Safety/privacy checks: Failure messages must not include source paths, OCR text, image bytes/base64, model cache paths, or document content.
 
+## Supporting Milestone: Experimental Local Unlimited-OCR Beta Readiness
+
+- Status: Implemented for controlled beta only; public production support remains future work.
+- Goal: Prepare maintainers and beta testers to validate the gated local worker-process path without changing default dependencies or default OCR behavior.
+- Non-goals: No public production claim, model bundling, automatic model download, hosted OCR service, screen OCR, background OCR, file upload, Batch Queue integration, or removal of the experimental env gate.
+- Acceptance criteria: Setup guide covers uv-managed optional runtime, local model folder, Hugging Face cache/module cache paths, GUI launch commands, readiness checks, smoke commands, cleanup, and troubleshooting; beta checklist covers Tesseract, experimental worker_process, diagnostics, failure paths, cancel/timeout, and privacy checks; release-gate audit confirms Tesseract default, local-only behavior, and no dependency bloat.
+- Required tests: Diagnostics unit tests for optional dependency/cache/runtime checks, Document OCR cancellation tests, full default test suite, compileall, readiness check, and feasible GUI smoke runs with synthetic inputs.
+- Safety/privacy checks: Smoke tools do not print OCR text/image bytes/document content; generated outputs, model/cache files, and optional runtime folders remain untracked; `README (1).md` remains excluded in this workspace.
+
 ## Supporting Milestone: Production Document OCR UI Design Review
 
 - Status: Implemented as documentation/review only in `docs/design/`.
@@ -191,8 +200,8 @@ an advanced/developer loopback option, not the main product path.
 
 ## 9. Privacy and Security Review
 
-- Status: Implemented as pre-integration documentation in `docs/security/advanced_ocr_security_review.md` and `docs/security/advanced_ocr_preintegration_checklist.md`.
-- Goal: Complete a formal review before any real model integration is enabled.
+- Status: Implemented and updated for the gated experimental local worker path in `docs/security/advanced_ocr_security_review.md` and `docs/security/advanced_ocr_preintegration_checklist.md`.
+- Goal: Maintain formal privacy/security gates before any broader model integration or production exposure.
 - Non-goals: No implementation bypass around consent, dependency, or locality checks.
 - Acceptance criteria: Review covers data flow, temp files, logs, reports, endpoint policy, model code execution, and dependency provenance.
 - Required tests: Import-boundary, no-upload, no-background-execution, and report-redaction tests.
@@ -200,8 +209,8 @@ an advanced/developer loopback option, not the main product path.
 
 ## 10. Final User Documentation and Examples
 
-- Goal: Publish user-facing guidance once real advanced OCR is implemented and reviewed.
-- Non-goals: No claims that real Unlimited-OCR inference works before it does.
+- Goal: Publish user-facing guidance once advanced OCR is ready for public beta or production exposure.
+- Non-goals: No claims that Unlimited-OCR is production-ready before release gates pass.
 - Acceptance criteria: README, release notes, and examples accurately explain requirements, limits, privacy, and fallback behavior.
 - Required tests: Documentation review against implemented behavior.
 - Safety/privacy checks: Examples use local files and clearly explain that Tesseract remains the default unless the user opts into advanced OCR.

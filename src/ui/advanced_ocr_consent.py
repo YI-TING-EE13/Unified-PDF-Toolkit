@@ -73,9 +73,10 @@ class AdvancedOcrConsentDialog(tk.Toplevel):
         ttk.Label(
             frame,
             text=(
-                "This app does not currently run real Unlimited-OCR inference. "
-                "This consent records acknowledgement for future experimental "
-                "local AI OCR features only."
+                "Experimental local Unlimited-OCR can run only after the "
+                "experimental gate, local runtime settings, and a user-owned "
+                "model folder are configured. Tesseract remains the default OCR "
+                "engine."
             ),
             wraplength=560,
         ).pack(anchor="w", pady=(8, 8))

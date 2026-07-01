@@ -147,6 +147,11 @@ paths, require explicit consent, document model download and custom-code risks,
 and avoid uploading user files, rendered pages, or OCR text. Saving consent or
 runtime paths does not make AI OCR the default engine.
 
+Controlled beta setup is documented in
+[docs/runtime/local_unlimited_ocr_beta_setup.md](docs/runtime/local_unlimited_ocr_beta_setup.md)
+and the manual beta smoke checklist is in
+[docs/testing/document_ocr_beta_smoke_checklist.md](docs/testing/document_ocr_beta_smoke_checklist.md).
+
 For development and UI-flow testing only, setting
 `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes the hidden `[Dev] Document OCR Shell`.
 It uses deterministic placeholder output from the fake backend, requires the

@@ -109,8 +109,9 @@ class DocumentOcrTool(BaseTool):
             text=(
                 "Default OCR uses Tesseract and runs locally. Experimental Local "
                 "Unlimited-OCR, when explicitly enabled, also runs on this "
-                "computer with no upload and requires a manually installed "
-                "optional runtime/model. It is not production-ready."
+                "computer with no upload and requires a uv-managed optional "
+                "runtime plus a local model folder configured by the user. "
+                "It is not production-ready."
             ),
             wraplength=900,
         ).pack(anchor="w")
@@ -214,7 +215,9 @@ class DocumentOcrTool(BaseTool):
                     "Consent Required",
                     (
                         "Experimental Local Unlimited-OCR requires saved advanced "
-                        "OCR consent in Settings / Recent before it can run."
+                        "OCR consent in Settings / Recent before it can run. "
+                        "Review the model download, custom-code, GPU/VRAM, and "
+                        "temporary page-image acknowledgements first."
                     ),
                 )
                 return
@@ -272,8 +275,8 @@ class DocumentOcrTool(BaseTool):
         config = load_local_model_runtime_config()
         self.experimental_status_var.set(
             "Experimental Local Unlimited-OCR is visible. It runs on this computer, "
-            "performs no upload, requires Settings / Recent consent plus "
-            f"mode=worker_process, and is not production-ready. Current mode: "
+            "performs no upload, requires Settings / Recent consent plus a "
+            f"worker_process local runtime, and is not production-ready. Current mode: "
             f"{config.mode}; device: {config.device_preference}."
         )
 

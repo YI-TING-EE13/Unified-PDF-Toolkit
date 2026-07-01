@@ -14,7 +14,7 @@ experiments.
 - Client scaffold exists for future local endpoint integration.
 - Endpoint mode is not the primary product direction.
 - No production server is included.
-- No real Unlimited-OCR inference is implemented.
+- No real endpoint-backed Unlimited-OCR server is included or called by default.
 - No endpoint is called by default.
 - No server process is started or managed by the app.
 - No hosted/shared OCR service is planned.
