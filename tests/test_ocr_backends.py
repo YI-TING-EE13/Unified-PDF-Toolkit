@@ -33,6 +33,7 @@ from src.ocr.local_endpoint import (
     validate_local_endpoint_url,
 )
 from src.ocr.local_model import (
+    LOCAL_MODEL_CANCELLATION_CHECK_OPTION,
     LOCAL_MODEL_DEVICE_CUDA,
     LOCAL_MODEL_MODEL_ID,
     LOCAL_MODEL_MODE_DISABLED,
@@ -836,10 +837,12 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertFalse(result.metadata["real_inference"])
 
     def test_local_model_backend_uses_worker_process_only_when_configured(self):
+        cancellation_check = lambda: False
         request = OcrRequest(
             engine=OcrEngine.LOCAL_MODEL,
             images=[Image.new("RGB", (10, 10), "white")],
             page_numbers=[1],
+            options={LOCAL_MODEL_CANCELLATION_CHECK_OPTION: cancellation_check},
         )
         expected = OcrResult(
             engine=OcrEngine.LOCAL_MODEL,
@@ -869,6 +872,7 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertEqual(kwargs["runtime_mode"], LOCAL_MODEL_MODE_WORKER_PROCESS)
         self.assertEqual(kwargs["worker_script_path"], default_unlimited_ocr_worker_script_path())
         self.assertEqual(kwargs["timeout_seconds"], 3.0)
+        self.assertIs(kwargs["cancellation_check"], cancellation_check)
 
     def test_local_unlimited_ocr_requires_model_path_and_optional_dependencies(self):
         request = OcrRequest(

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any, Callable, Dict, Mapping
 
 from .consent import (
     ADVANCED_OCR_CONSENT_TEXT_VERSION,
@@ -51,6 +51,7 @@ LOCAL_MODEL_DEVICE_PREFERENCES = (
     LOCAL_MODEL_DEVICE_CUDA,
     LOCAL_MODEL_DEVICE_CPU,
 )
+LOCAL_MODEL_CANCELLATION_CHECK_OPTION = "_cancellation_check"
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,7 @@ class LocalModelOcrBackend:
                     self.config.options, "timeout_seconds", default=10.0
                 ),
                 options=self.config.options,
+                cancellation_check=_request_cancellation_check(request_data),
             )
         if self.config.mode == LOCAL_MODEL_MODE_LOCAL_UNLIMITED_OCR:
             self._validate_local_unlimited_ocr_config()
@@ -206,6 +208,7 @@ class LocalModelOcrBackend:
                     self.config.options, "timeout_seconds", default=120.0
                 ),
                 options=self.config.options,
+                cancellation_check=_request_cancellation_check(request_data),
             )
         self._validate_runtime_config()
         raise OcrBackendUnavailableError(
@@ -297,3 +300,10 @@ def _float_option(
         return float(options[key])
     except (TypeError, ValueError):
         return default
+
+
+def _request_cancellation_check(
+    request_data: OcrRequest,
+) -> Callable[[], bool] | None:
+    callback = request_data.options.get(LOCAL_MODEL_CANCELLATION_CHECK_OPTION)
+    return callback if callable(callback) else None

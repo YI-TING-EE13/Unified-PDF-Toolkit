@@ -15,7 +15,9 @@ from src.ocr.document_workflow import (
     run_document_ocr_workflow,
     tesseract_document_backend_config,
 )
+from src.ocr.exceptions import OcrBackendUnavailableError
 from src.ocr.local_model import (
+    LOCAL_MODEL_CANCELLATION_CHECK_OPTION,
     LOCAL_MODEL_DEVICE_CUDA,
     LOCAL_MODEL_MODE_FAKE_WORKER,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
@@ -59,6 +61,20 @@ class _FakeBackend:
                 )
             ],
         )
+
+
+class _CancellingBackend:
+    engine = OcrEngine.LOCAL_MODEL
+
+    def __init__(self, cancelled_state) -> None:
+        self.cancelled_state = cancelled_state
+        self.requests = []
+
+    def recognize(self, request):
+        self.requests.append(request)
+        if callable(request.options.get(LOCAL_MODEL_CANCELLATION_CHECK_OPTION)):
+            self.cancelled_state["value"] = True
+        raise OcrBackendUnavailableError("Local AI OCR worker process was cancelled.")
 
 
 def _valid_local_model_consent() -> AdvancedOcrConsent:
@@ -198,6 +214,40 @@ class DocumentOcrToolTests(unittest.TestCase):
                 local_unlimited_worker_backend_config(config).backend,
                 DOCUMENT_OCR_BACKEND_LOCAL_UNLIMITED_WORKER,
             )
+            self.assertIsNone(fake_backend.requests[0].source_path)
+
+    def test_local_unlimited_workflow_returns_cancelled_when_worker_is_cancelled(self):
+        cancelled_state = {"value": False}
+        fake_backend = _CancellingBackend(cancelled_state)
+        config = LocalModelRuntimeConfig(
+            enabled=True,
+            mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+            model_path="C:/models/unlimited-ocr",
+            python_executable="C:/runtime/python.exe",
+            device_preference=LOCAL_MODEL_DEVICE_CUDA,
+        )
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "source.png"
+            output_dir = root / "out"
+            Image.new("RGB", (18, 12), "white").save(image_path)
+
+            with mock.patch(
+                "src.ocr.document_workflow.LocalModelOcrBackend",
+                return_value=fake_backend,
+            ):
+                result = run_document_ocr_workflow(
+                    [str(image_path)],
+                    str(output_dir),
+                    ["txt"],
+                    backend_config=local_unlimited_worker_backend_config(config),
+                    consent=_valid_local_model_consent(),
+                    cancellation_check=lambda: cancelled_state["value"],
+                )
+
+            self.assertTrue(result.cancelled)
+            self.assertFalse(result.failed)
+            self.assertFalse(result.outputs)
             self.assertIsNone(fake_backend.requests[0].source_path)
 
     def test_importing_document_ocr_tool_does_not_import_heavy_ai_runtime(self):

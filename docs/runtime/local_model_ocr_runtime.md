@@ -350,6 +350,11 @@ Python, busy worker, timeout, unsupported input, consent, and GPU/CUDA failures
 to user-safe messages that do not include source paths, OCR text, image
 payloads, model cache paths, or document content.
 
+The Document OCR GUI passes cancellation through the workflow to the
+`worker_process` controller. When the user cancels an experimental local OCR
+run, the controller terminates the worker process, reports a cancelled UI state,
+and does not write partial TXT/Markdown outputs for that file.
+
 ## Privacy Guarantees
 
 Required privacy properties:

@@ -10,6 +10,7 @@ from .base import OcrBackend
 from .consent import AdvancedOcrConsent
 from .exceptions import OcrBackendUnavailableError
 from .local_model import (
+    LOCAL_MODEL_CANCELLATION_CHECK_OPTION,
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     LocalModelOcrBackend,
     LocalModelRuntimeConfig,
@@ -208,6 +209,9 @@ def run_document_ocr_workflow(
 
         try:
             images, page_numbers = load_input_images(source)
+            request_options = {}
+            if backend_config.backend == DOCUMENT_OCR_BACKEND_LOCAL_UNLIMITED_WORKER:
+                request_options[LOCAL_MODEL_CANCELLATION_CHECK_OPTION] = is_cancelled
             request = OcrRequest(
                 engine=backend.engine,
                 images=images,
@@ -218,8 +222,16 @@ def run_document_ocr_workflow(
                 ),
                 page_numbers=page_numbers,
                 language=backend_config.tesseract_language,
+                options=request_options,
             )
             result = backend.recognize(request)
+            if is_cancelled():
+                return AdvancedOcrWorkflowResult(
+                    outputs=outputs,
+                    failed=failed,
+                    skipped=skipped,
+                    cancelled=True,
+                )
             written = write_document_ocr_outputs(
                 output_root,
                 source_name,
@@ -235,9 +247,23 @@ def run_document_ocr_workflow(
                 if output_format not in written_formats
             )
         except Exception as exc:
+            if is_cancelled() or _is_cancelled_backend_error(exc):
+                return AdvancedOcrWorkflowResult(
+                    outputs=outputs,
+                    failed=failed,
+                    skipped=skipped,
+                    cancelled=True,
+                )
             failed.append(f"{source_name}: {user_safe_ocr_error_message(exc)}")
 
         if progress_callback:
             progress_callback(index, total, f"Processed {source_name}")
 
     return AdvancedOcrWorkflowResult(outputs=outputs, failed=failed, skipped=skipped)
+
+
+def _is_cancelled_backend_error(exc: Exception) -> bool:
+    return (
+        isinstance(exc, OcrBackendUnavailableError)
+        and "cancelled" in str(exc).lower()
+    )

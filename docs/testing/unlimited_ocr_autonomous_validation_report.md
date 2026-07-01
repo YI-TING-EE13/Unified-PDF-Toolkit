@@ -130,13 +130,57 @@ reported.
 
 ## GUI Smoke Status
 
-A full interactive GUI smoke test was not run because the local Tkinter runtime
-cannot initialize `init.tcl` in this environment. `verify_install.py` reports
-the same Tkinter warning but exits successfully after tool instantiation checks.
+Update on 2026-07-01: the real Windows Tkinter GUI was launched successfully in
+this desktop session.
 
-The same Document OCR path was validated through `run_document_ocr_workflow`,
-which exercises file loading, local-model backend selection, worker-process OCR,
-output writing, and user-safe result reporting.
+Manual launch commands:
+
+```powershell
+.\.venv\Scripts\python.exe src\app.py
+```
+
+```powershell
+$env:PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR='1'; .\.venv\Scripts\python.exe src\app.py
+```
+
+Both launch attempts entered the GUI main loop without traceback. The windows
+were later closed by terminating the smoke-launched `src\app.py` processes.
+
+A repo-local manual smoke runner was added for repeatable Tkinter validation:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\manual_document_ocr_gui_smoke.py --mode inspect
+```
+
+Without the experimental flag:
+
+- `Document OCR` loaded.
+- Default backend was `Tesseract OCR (default)`.
+- Experimental Local Unlimited-OCR was hidden.
+- Tesseract OCR on a synthetic one-page image wrote local TXT and Markdown
+  outputs.
+
+With `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`:
+
+- Experimental Local Unlimited-OCR appeared as a gated worker-process option.
+- The status text clearly stated local-only, no upload, consent/runtime
+  requirements, and non-production status.
+- Real worker-process OCR on a synthetic one-page image wrote TXT and Markdown
+  outputs.
+- Real worker-process OCR on a synthetic three-page PDF wrote TXT and Markdown
+  outputs.
+- The smoke output printed only status, message summaries, output counts, file
+  sizes, and page-marker counts. It did not print OCR text, image bytes, model
+  cache paths, or document content.
+
+GUI cancel/timeout UX was validated after hardening:
+
+- Cancel now propagates from the Document OCR GUI through the workflow into the
+  `worker_process` controller.
+- The worker process is terminated on cancel.
+- The GUI returns to `Document OCR cancelled.`, resets progress to `0`, disables
+  the Cancel button, and writes no output files for the cancelled run.
+- Very short timeout reports `The selected OCR backend timed out.`
 
 ## Failure Path Results
 
@@ -168,7 +212,7 @@ Latest full validation results:
 
 - `git diff --check`: exit `0` with CRLF warnings only.
 - `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`: exit `0`,
-  `Ran 96 tests`, `OK`.
+  `Ran 97 tests`, `OK`.
 - `.\.venv\Scripts\python.exe verify_install.py`: exit `0`; all tools loaded,
   including `Document OCR`; Tkinter `init.tcl` warning only.
 - `.\.venv\Scripts\python.exe -m compileall -q src tests verify_install.py scripts`:
@@ -218,11 +262,7 @@ Documentation:
 
 ## Remaining Production Blockers
 
-- Tkinter runtime on this machine cannot initialize `init.tcl`, so interactive
-  GUI validation still needs a machine/session with a working Tk runtime.
 - Need broader GPU/runtime matrix validation beyond RTX 3060.
-- Need real cancellation UX validation from the GUI, not only workflow-level
-  timeout/busy paths.
 - Need accessibility and copy review for the new Document OCR UI.
 - Need release-gate review before removing the experimental env gate.
 - Need packaging documentation for optional OCR runtime path in installer
