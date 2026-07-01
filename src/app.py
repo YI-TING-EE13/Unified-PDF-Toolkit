@@ -29,6 +29,18 @@ from src.tools.settings.tool import SettingsTool
 
 _BaseTk = TkinterDnD.Tk if TkinterDnD else tk.Tk
 
+GUI_STARTUP_ERROR_MESSAGE = (
+    "Unified PDF Toolkit could not start because the desktop Tk/Tcl runtime "
+    "is unavailable or misconfigured. Reinstall the packaged app, or run from "
+    "a Python environment with working Tk support."
+)
+
+
+def gui_startup_error_message() -> str:
+    """Return a user-safe GUI startup failure message without local paths."""
+
+    return GUI_STARTUP_ERROR_MESSAGE
+
 
 def developer_tools_enabled() -> bool:
     """Return true only when developer-only tools are explicitly enabled."""
@@ -234,6 +246,17 @@ class PDFToolkitApp(_BaseTk):
         self.current_tool = tool_id
         self.status_lbl.config(text=f"Active: {tool.name}")
 
-if __name__ == "__main__":
-    app = PDFToolkitApp()
+def main() -> int:
+    """Start the GUI and avoid printing raw Tk/Tcl tracebacks to users."""
+
+    try:
+        app = PDFToolkitApp()
+    except tk.TclError:
+        print(gui_startup_error_message(), file=sys.stderr)
+        return 1
     app.mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

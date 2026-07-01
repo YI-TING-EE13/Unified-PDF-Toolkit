@@ -119,6 +119,8 @@ fidelity matters more than editability.
 - The experimental backend requires saved advanced OCR consent plus an explicit
   `worker_process` local runtime configuration in Settings / Recent.
 - It is local-only, user-managed, disabled by default, and not production-ready.
+- Beginner walkthrough:
+  [docs/tutorials/getting_started_document_ocr.md](docs/tutorials/getting_started_document_ocr.md).
 
 ### Diagnostics and Settings
 
@@ -151,6 +153,8 @@ Controlled beta setup is documented in
 [docs/runtime/local_unlimited_ocr_beta_setup.md](docs/runtime/local_unlimited_ocr_beta_setup.md)
 and the manual beta smoke checklist is in
 [docs/testing/document_ocr_beta_smoke_checklist.md](docs/testing/document_ocr_beta_smoke_checklist.md).
+Beginner-oriented experimental setup is available in
+[docs/tutorials/experimental_local_unlimited_ocr_beginner_guide.md](docs/tutorials/experimental_local_unlimited_ocr_beginner_guide.md).
 Beta release-candidate notes and the custom model-code policy are available in
 [docs/releases/experimental_local_unlimited_ocr_beta_notes.md](docs/releases/experimental_local_unlimited_ocr_beta_notes.md)
 and

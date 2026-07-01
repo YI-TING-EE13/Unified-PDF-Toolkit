@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -16,6 +17,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
+WINDOWS_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s]+")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -128,7 +130,7 @@ def main() -> int:
             )
         )
     except OcrError as exc:
-        print(f"OCR failed: {exc}")
+        print(f"OCR failed: {sanitize_message(str(exc))}")
         return 1
     except Exception:
         print("OCR failed unexpectedly. Check the optional runtime and model configuration.")
@@ -162,6 +164,16 @@ def load_input(path: Path) -> tuple[list[Image.Image], list[int]]:
         return images, page_numbers
     with Image.open(path) as image:
         return [image.convert("RGB").copy()], [1]
+
+
+def sanitize_message(message: str) -> str:
+    text = " ".join(str(message).split())
+    for path in (ROOT, Path.home(), Path(tempfile.gettempdir())):
+        value = str(path)
+        if value:
+            text = text.replace(value, "<path>")
+            text = text.replace(value.replace("\\", "/"), "<path>")
+    return WINDOWS_PATH_RE.sub("<path>", text)
 
 
 if __name__ == "__main__":

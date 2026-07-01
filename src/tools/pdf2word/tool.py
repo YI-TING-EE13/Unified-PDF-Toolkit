@@ -8,6 +8,8 @@ background thread and preserves the shared output actions.
 
 import os
 import queue
+import contextlib
+import logging
 import tempfile
 import threading
 from io import BytesIO
@@ -540,11 +542,12 @@ class PDFToWordTool(BaseTool):
                 temp_path = cls._create_selected_pages_pdf(input_path, page_indices)
                 source_path = temp_path
 
-            converter = Converter(source_path)
-            try:
-                converter.convert(output_path)
-            finally:
-                converter.close()
+            with cls._suppress_upstream_console_output():
+                converter = Converter(source_path)
+                try:
+                    converter.convert(output_path)
+                finally:
+                    converter.close()
         finally:
             if temp_path and os.path.exists(temp_path):
                 try:
@@ -758,5 +761,32 @@ class PDFToWordTool(BaseTool):
         return temp_path
 
     @staticmethod
+    def _suppress_upstream_console_output() -> contextlib.ExitStack:
+        sink = _NullTextSink()
+        stack = contextlib.ExitStack()
+        stack.enter_context(contextlib.redirect_stdout(sink))
+        stack.enter_context(contextlib.redirect_stderr(sink))
+        stack.enter_context(_temporarily_disabled_logging())
+        return stack
+
+    @staticmethod
     def _output_path(input_path: str, output_dir: str) -> str:
         return str(Path(output_dir) / f"{Path(input_path).stem}.docx")
+
+
+class _NullTextSink:
+    def write(self, value: str) -> int:
+        return len(value)
+
+    def flush(self) -> None:
+        return None
+
+
+@contextlib.contextmanager
+def _temporarily_disabled_logging():
+    previous_disable_level = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logging.disable(previous_disable_level)

@@ -3,6 +3,13 @@
 Use this checklist for controlled beta testers before considering a public
 release. This is not production-ready support.
 
+Beginner walkthroughs:
+
+- Default Document OCR with Tesseract:
+  `docs/tutorials/getting_started_document_ocr.md`
+- Experimental Local Unlimited-OCR:
+  `docs/tutorials/experimental_local_unlimited_ocr_beginner_guide.md`
+
 ## Setup Flow
 
 - [ ] Start from a clean checkout of Unified PDF Toolkit.
@@ -50,6 +57,8 @@ $env:PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR='1'
 - [ ] Run OCR.
 - [ ] Confirm local output files are created.
 - [ ] Confirm no crash and no private content is printed to logs.
+- [ ] If the source GUI cannot start, confirm the console shows a short Tk/Tcl
+      setup message rather than a Python traceback or local Tcl search paths.
 
 ## Experimental Unlimited-OCR Smoke
 
@@ -89,10 +98,12 @@ $env:PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR='1'
 - [ ] Very short timeout.
 - [ ] Cancel during a run.
 - [ ] CUDA unavailable or runtime mismatch, if safely reproducible.
+- [ ] Noisy diagnostics or setup logs.
 
 Expected failures should be user-safe and actionable. They must not print OCR
 text, image bytes/base64, rendered page images, private source paths, or model
-cache contents.
+cache contents. Diagnostics intended for sharing should summarize path status
+instead of exposing full local paths.
 
 ## Cleanup
 

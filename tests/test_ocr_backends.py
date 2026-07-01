@@ -1372,6 +1372,21 @@ class AdvancedOcrDiagnosticsTests(unittest.TestCase):
         self.assertIn("Advanced OCR worker runtime", names)
         self.assertIn("Advanced OCR worker script", names)
         self.assertTrue([check for check in configured if check.status == "warning"])
+        details = {check.name: check.detail for check in configured}
+        self.assertEqual(
+            details["Advanced OCR local model path"],
+            "configured path not found",
+        )
+        self.assertEqual(
+            details["Advanced OCR worker Python"],
+            "configured path not found",
+        )
+        self.assertEqual(
+            details["Advanced OCR worker script"],
+            "configured path not found",
+        )
+        for detail in details.values():
+            self.assertNotIn("C:/missing", detail)
 
         fake_configured = diagnostics._local_model_runtime_checks(
             LocalModelRuntimeConfig(

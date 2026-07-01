@@ -10,11 +10,18 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.app import PDFToolkitApp
+import tkinter as tk
+
+from src.app import PDFToolkitApp, gui_startup_error_message
 
 
 def main() -> int:
-    app = PDFToolkitApp()
+    try:
+        app = PDFToolkitApp()
+    except tk.TclError:
+        print("[ERROR] GUI unavailable")
+        print(gui_startup_error_message())
+        return 2
     try:
         app.update_idletasks()
         for tool_id in list(app.tools.keys()):

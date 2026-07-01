@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import tempfile
 import time
@@ -19,10 +20,11 @@ from PIL import Image, ImageDraw
 
 
 ROOT = Path(__file__).resolve().parents[1]
+WINDOWS_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s]+")
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.app import PDFToolkitApp  # noqa: E402
+from src.app import PDFToolkitApp, gui_startup_error_message  # noqa: E402
 from src.ocr.consent import AdvancedOcrConsent  # noqa: E402
 from src.ocr.local_model import (  # noqa: E402
     LOCAL_MODEL_DEVICE_CUDA,
@@ -92,7 +94,12 @@ class MessageRecorder:
 
 def main() -> int:
     args = parse_args()
-    app = PDFToolkitApp()
+    try:
+        app = PDFToolkitApp()
+    except document_ocr_tool.tk.TclError:
+        print("status=gui_unavailable")
+        print(f"message={gui_startup_error_message()}")
+        return 2
     recorder = MessageRecorder()
     document_ocr_tool.messagebox.showinfo = recorder.info
     document_ocr_tool.messagebox.showwarning = recorder.warning
@@ -374,7 +381,13 @@ def print_summary(tool: Any, recorder: MessageRecorder, output_dir: Path) -> Non
 
 
 def sanitize_message(message: str) -> str:
-    return " ".join(str(message).split())
+    text = " ".join(str(message).split())
+    for path in (ROOT, Path.home(), Path(tempfile.gettempdir())):
+        value = str(path)
+        if value:
+            text = text.replace(value, "<path>")
+            text = text.replace(value.replace("\\", "/"), "<path>")
+    return WINDOWS_PATH_RE.sub("<path>", text)
 
 
 def create_output_dir(mode: str) -> Path:

@@ -98,7 +98,11 @@ def _optional_ai_ocr_checks() -> List[DiagnosticCheck]:
         DiagnosticCheck(
             "Advanced OCR model cache",
             "info",
-            f"found at {cache_path}" if cache_path.exists() else "baidu/Unlimited-OCR cache not detected",
+            (
+                "baidu/Unlimited-OCR local cache detected"
+                if cache_path.exists()
+                else "baidu/Unlimited-OCR cache not detected"
+            ),
             "This check is local-only and does not download models.",
         )
     )
@@ -318,7 +322,7 @@ def _path_readiness_check(
     return DiagnosticCheck(
         name,
         "info" if exists else "warning",
-        f"{path} exists" if exists else f"{path} not found",
+        "configured path exists" if exists else "configured path not found",
     )
 
 
@@ -434,11 +438,11 @@ def _env_directory_writable_check(
         probe = path / ".pdf_toolkit_advanced_ocr_write_test"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink(missing_ok=True)
-    except OSError as exc:
+    except OSError:
         return DiagnosticCheck(
             f"Advanced OCR {env_name}",
             "warning",
-            f"{label} path is not writable: {exc}",
+            f"{label} path is not writable",
             "Choose a writable local folder under your user profile or temp directory.",
         )
     return DiagnosticCheck(
@@ -469,12 +473,12 @@ def collect_diagnostics() -> List[DiagnosticCheck]:
         finally:
             root.destroy()
         checks.append(DiagnosticCheck("Tkinter", "ok", f"Tk {tk_version}"))
-    except tk.TclError as exc:
+    except tk.TclError:
         checks.append(
             DiagnosticCheck(
                 "Tkinter",
                 "warning",
-                str(exc),
+                "desktop Tk/Tcl runtime unavailable or misconfigured",
                 "Run the GUI from a desktop session with an available display.",
             )
         )
@@ -504,7 +508,7 @@ def collect_diagnostics() -> List[DiagnosticCheck]:
         DiagnosticCheck(
             "Tesseract executable",
             "ok" if tesseract_path else "warning",
-            tesseract_path or "not found on PATH",
+            "found on PATH" if tesseract_path else "not found on PATH",
             "Install Tesseract OCR and add it to PATH before using OCR Text mode."
             if not tesseract_path
             else "",
@@ -523,12 +527,12 @@ def _write_check(name: str, folder: Path) -> DiagnosticCheck:
         probe = folder / ".pdf_toolkit_write_test"
         probe.write_text("ok", encoding="utf-8")
         probe.unlink(missing_ok=True)
-        return DiagnosticCheck(name, "ok", str(folder))
-    except OSError as exc:
+        return DiagnosticCheck(name, "ok", "writable")
+    except OSError:
         return DiagnosticCheck(
             name,
             "error",
-            f"{folder}: {exc}",
+            "not writable",
             "Choose an output folder under your user profile or fix folder permissions.",
         )
 

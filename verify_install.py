@@ -6,6 +6,7 @@ import tkinter as tk
 sys.path.append(os.getcwd())
 
 from src.app import PDFToolkitApp
+from src.app import gui_startup_error_message
 from src.tools.compressor.tool import CompressorTool
 from src.tools.converter.tool import ConverterTool
 from src.tools.document_ocr.tool import DocumentOcrTool
@@ -72,8 +73,8 @@ def test_app_structure():
 
         print("[OK] All tools registered in App.")
         app.destroy()
-    except tk.TclError as exc:
-        print(f"[WARN] Tkinter Error (likely due to headless env, ignoring): {exc}")
+    except tk.TclError:
+        print(f"[WARN] {gui_startup_error_message()}")
     except Exception as exc:
         print(f"[ERROR] App Init Failed: {exc}")
         sys.exit(1)

@@ -4,16 +4,14 @@ This draft is for a future human-approved beta tag. It is not a published
 GitHub Release, does not create a tag, and does not make Experimental Local
 Unlimited-OCR production-ready.
 
-Status note after `v0.6.0-beta.1`: the first controlled beta tag and release
-were published, but the separate tag-triggered CI workflow failed on
-Ubuntu/macOS due to a Windows-only unit-test path assertion. The release
-workflow itself succeeded and produced assets. Treat `v0.6.0-beta.1` as held
-for broad beta distribution, keep the tag unchanged, and use this draft as the
-basis for `v0.6.0-beta.2`, which includes the CI and prerelease metadata fixes.
+Status note after `v0.6.0-beta.2`: the latest controlled beta tag, release, and
+CI are clean. Keep `v0.6.0-beta.2` unchanged and use this draft as the basis for
+a future human-approved `v0.6.0-beta.3`, focused on beta log/error hardening and
+beginner onboarding.
 
 ## Headline Summary
 
-Release candidate name: `0.6.0-beta.2`.
+Release candidate name: future `0.6.0-beta.3`.
 
 Unified PDF Toolkit now has a controlled beta path for Experimental Local
 Unlimited-OCR in the Document OCR tool. The default OCR behavior remains
@@ -34,6 +32,10 @@ Included in the beta scope:
 - Local model path, model id, optional revision pin, worker Python, device, and
   timeout settings.
 - Readiness diagnostics, beta-check scripts, and manual smoke checklists.
+- Beginner tutorials for default Tesseract Document OCR and the gated
+  Experimental Local Unlimited-OCR beta path.
+- User-safe GUI startup and diagnostics summaries that avoid raw tracebacks and
+  unnecessary local path disclosure.
 
 Not included:
 
@@ -60,6 +62,8 @@ Validated on the current maintainer machine:
   path, missing worker Python, and safe error display.
 - Smoke scripts summarize status without printing full OCR text, image bytes,
   rendered page images, or private document content.
+- Source GUI startup failures now emit a short user-safe Tk/Tcl message instead
+  of a raw Python traceback.
 
 ## What Is Experimental
 
@@ -148,6 +152,9 @@ The experimental backend must remain hidden without the environment flag.
 ## Smoke Test
 
 Use `docs/testing/final_beta_tester_checklist.md` as the beta tester flow.
+First-time testers should also read
+`docs/tutorials/getting_started_document_ocr.md` and
+`docs/tutorials/experimental_local_unlimited_ocr_beginner_guide.md`.
 Minimum smoke coverage:
 
 - clean checkout and default launch;

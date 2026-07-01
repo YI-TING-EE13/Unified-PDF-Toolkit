@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import queue
 import tempfile
@@ -298,6 +300,29 @@ class ErrorAndDiagnosticsTests(unittest.TestCase):
         self.assertIn("page range", error_hint("Page range 9 is out of bounds"))
         self.assertIn("Suggestion:", friendly_error_message("Permission denied"))
 
+    def test_gui_startup_error_message_is_user_safe(self):
+        from src.app import gui_startup_error_message
+
+        message = gui_startup_error_message()
+
+        self.assertIn("Tk/Tcl", message)
+        self.assertNotIn("Traceback", message)
+        self.assertNotIn("init.tcl", message)
+        self.assertNotIn("C:/", message)
+        self.assertNotIn("\\", message)
+
+    def test_manual_smoke_sanitizers_redact_local_paths(self):
+        from scripts.manual_document_ocr_gui_smoke import sanitize_message as gui_sanitize
+        from scripts.manual_unlimited_ocr_local_check import sanitize_message as ocr_sanitize
+
+        message = f"Failed at {Path.home()} with C:/other/path/source.pdf"
+
+        for sanitize in (gui_sanitize, ocr_sanitize):
+            sanitized = sanitize(message)
+            self.assertNotIn(str(Path.home()), sanitized)
+            self.assertNotIn("C:/other/path/source.pdf", sanitized)
+            self.assertIn("<path>", sanitized)
+
     def test_diagnostics_text_includes_suggestions(self):
         text = diagnostics_to_text(
             [
@@ -395,6 +420,23 @@ class PDFToWordWorkflowTests(unittest.TestCase):
 
             self.assertTrue(docx_path.exists())
             self.assertGreater(docx_path.stat().st_size, 0)
+
+    def test_pdf_to_word_preserve_layout_suppresses_source_path_console_logs(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "source.pdf"
+            docx_path = root / "source.docx"
+            self._create_pdf(pdf_path, pages=1)
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                PDFToWordTool.convert_pdf_to_docx(str(pdf_path), str(docx_path))
+
+            captured = stdout.getvalue() + stderr.getvalue()
+            self.assertTrue(docx_path.exists())
+            self.assertNotIn(str(pdf_path), captured)
+            self.assertNotIn("Start to convert", captured)
 
     def test_pdf_to_word_text_only_creates_docx(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
