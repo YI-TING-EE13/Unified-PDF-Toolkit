@@ -16,13 +16,13 @@ Unlimited-OCR support.
 
 ## Recommended Beta Tag
 
-Recommended tag: `v0.6.0-beta.1`.
+Recommended tag: `v0.6.0-beta.2`.
 
 Version metadata:
 
-- Python package version: `0.6.0b1` (PEP 440 compliant).
-- User-facing release name: `0.6.0-beta.1`.
-- Windows installer display/output version: `0.6.0-beta.1`.
+- Python package version: `0.6.0b2` (PEP 440 compliant).
+- User-facing release name: `0.6.0-beta.2`.
+- Windows installer display/output version: `0.6.0-beta.2`.
 
 Reasoning:
 
@@ -186,10 +186,22 @@ inspection:
 - The generated `v0.6.0-beta.1` GitHub Release was not marked as a prerelease
   by the original release workflow.
 
-Recommendation after triage: hold broad distribution of `v0.6.0-beta.1` and
-prepare `v0.6.0-beta.2` after the CI test fix and prerelease workflow metadata
-fix land on `main`. Keep `v0.6.0-beta.1` unchanged for traceability; do not
-move or recreate the tag.
+Recommendation after triage: hold broad distribution of `v0.6.0-beta.1`.
+`v0.6.0-beta.2` is the clean controlled beta target after the CI test fix and
+prerelease workflow metadata fix landed on `main`. Keep `v0.6.0-beta.1`
+unchanged for traceability; do not move or recreate the tag.
+
+## Beta 2 Metadata Update
+
+`main` now targets the follow-up controlled beta:
+
+- Git tag target: `v0.6.0-beta.2`.
+- Python package version: `0.6.0b2`.
+- User-facing release name: `0.6.0-beta.2`.
+- Windows installer display/output version: `0.6.0-beta.2`.
+- `v0.6.0-beta.1` remains untouched and held.
+- The release workflow now marks future `alpha`, `beta`, and `rc` tags as
+  prereleases.
 
 ## Smoke Rerun Result
 
@@ -224,14 +236,14 @@ Blockers before public production release:
 Blockers before a controlled beta tag:
 
 - Human maintainer review of this readiness package.
-- Human decision on whether `v0.6.0-beta.1` is the intended beta version.
+- Human decision on whether `v0.6.0-beta.2` is the intended clean beta version.
 - Human decision on whether beta users should use repository/source-distribution
   docs or whether a separate docs ZIP should be attached manually.
 
 ## Go / No-Go Recommendation
 
-Recommendation: **GO for a human-approved controlled beta tag**, not for a
-public production release.
+Recommendation: **GO for a human-approved `v0.6.0-beta.2` controlled beta tag
+after a clean artifact rebuild**, not for a public production release.
 
 The controlled beta can proceed if the maintainer accepts:
 
@@ -251,14 +263,14 @@ maintainer after approval.
 git status --short
 git pull --ff-only origin main
 git log --oneline -5
-git tag --annotate v0.6.0-beta.1 -m "Experimental Local Unlimited-OCR beta 1"
-git push origin v0.6.0-beta.1
+git tag --annotate v0.6.0-beta.2 -m "Experimental Local Unlimited-OCR controlled beta 2"
+git push origin v0.6.0-beta.2
 ```
 
 If publishing a draft GitHub Release after the tag is approved:
 
 ```powershell
-gh release create v0.6.0-beta.1 --draft --prerelease --title "Experimental Local Unlimited-OCR beta 1" --notes-file docs/releases/experimental_local_unlimited_ocr_beta_release_draft.md
+gh release create v0.6.0-beta.2 --draft --prerelease --title "Experimental Local Unlimited-OCR beta 2" --notes-file docs/releases/experimental_local_unlimited_ocr_beta_release_draft.md
 ```
 
 The release workflow is tag-driven. Do not run these commands until the

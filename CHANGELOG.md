@@ -33,6 +33,7 @@
 - Aligned beta release metadata toward `v0.6.0-beta.1`, using Python package version `0.6.0b1` and installer display version `0.6.0-beta.1`.
 - Verified version-aligned beta artifacts using an isolated uv cache, producing `0.6.0b1` Python artifacts and a `0.6.0-beta.1` installer without bundling optional OCR runtime files.
 - Fixed cross-platform CI for the beta release by removing a Windows-only path separator assumption in the Unlimited-OCR worker-process payload test and marking future beta/alpha/rc release tags as GitHub prereleases.
+- Prepared `v0.6.0-beta.2` metadata with Python package version `0.6.0b2` and installer display version `0.6.0-beta.2` for a clean controlled beta after holding `v0.6.0-beta.1`.
 
 ## 0.5.0 - 2026-06-19
 

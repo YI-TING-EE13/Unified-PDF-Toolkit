@@ -1,5 +1,5 @@
 #define MyAppName "Unified PDF Toolkit"
-#define MyAppVersion "0.6.0-beta.1"
+#define MyAppVersion "0.6.0-beta.2"
 #define MyAppPublisher "Unified PDF Toolkit"
 #define MyAppExeName "Unified PDF Toolkit.exe"
 #ifndef AppBundleDir

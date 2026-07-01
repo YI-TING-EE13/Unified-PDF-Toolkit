@@ -9,12 +9,11 @@ were published, but the separate tag-triggered CI workflow failed on
 Ubuntu/macOS due to a Windows-only unit-test path assertion. The release
 workflow itself succeeded and produced assets. Treat `v0.6.0-beta.1` as held
 for broad beta distribution, keep the tag unchanged, and use this draft as the
-basis for a follow-up `v0.6.0-beta.2` after the CI and prerelease metadata fixes
-are on `main`.
+basis for `v0.6.0-beta.2`, which includes the CI and prerelease metadata fixes.
 
 ## Headline Summary
 
-Release candidate name: `0.6.0-beta.1`.
+Release candidate name: `0.6.0-beta.2`.
 
 Unified PDF Toolkit now has a controlled beta path for Experimental Local
 Unlimited-OCR in the Document OCR tool. The default OCR behavior remains

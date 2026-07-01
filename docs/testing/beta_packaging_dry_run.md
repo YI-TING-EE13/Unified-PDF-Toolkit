@@ -166,6 +166,14 @@ Tag-triggered release triage after publishing `v0.6.0-beta.1`:
   use a follow-up beta tag after the CI and prerelease metadata fixes are
   merged.
 
+Beta 2 metadata follow-up:
+
+- `v0.6.0-beta.2` is the clean controlled beta target after the CI and
+  prerelease workflow fixes landed on `main`.
+- Package metadata now targets PEP 440 version `0.6.0b2`.
+- Installer metadata now targets display/output version `0.6.0-beta.2`.
+- `v0.6.0-beta.1` remains untouched and held.
+
 ## Missing Build Steps Before Sharing Assets
 
 There is no no-op release artifact dry-run target. The clean local build above
