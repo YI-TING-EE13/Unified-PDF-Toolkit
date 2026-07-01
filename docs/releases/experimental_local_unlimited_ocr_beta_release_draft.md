@@ -78,6 +78,9 @@ Validated on the current maintainer machine:
 
 ## uv Runtime Setup
 
+The Windows app ZIP and installer do not bundle this helper script. Use the
+repository checkout or source distribution when running setup commands.
+
 Dry-run the helper first:
 
 ```powershell

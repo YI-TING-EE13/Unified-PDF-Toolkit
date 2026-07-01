@@ -83,21 +83,53 @@ manually build it on a machine that also has optional OCR runtime files.
 
 ## Current Result
 
-On the 2026-07-01 beta hardening and tag-readiness passes:
+On the 2026-07-01 beta hardening, tag-readiness, and clean artifact
+inspection passes:
 
 - `git ls-files` static artifact search found no tracked optional runtime,
   model/cache, synthetic sample, torch, transformers, or CUDA package files.
 - Default dependency files had no diff.
 - Release workflow, PyInstaller wrapper, Inno Setup wrapper, and installer
   definition were inspected.
-- No local artifact build was run in this pass because the goal was beta
-  release readiness review without publishing, tagging, or creating release
-  artifacts.
+- A clean detached worktree was created under `C:\tmp` for artifact inspection.
+- `uv sync --dev`, `uv build`, PyInstaller bundle build, Windows ZIP creation,
+  and Inno Setup installer build completed locally in the clean worktree.
+- No GitHub Release or git tag was created.
+
+Artifacts produced locally for inspection:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.5.0-py3-none-any.whl` | 121,272 bytes |
+| `dist/pdf_toolkit-0.5.0.tar.gz` | 230,001 bytes |
+| `dist/Unified-PDF-Toolkit-Windows.zip` | 93,810,244 bytes |
+| `dist/installer/Unified-PDF-Toolkit-Setup-0.5.0.exe` | 65,931,894 bytes |
+| `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
+
+Inspection results:
+
+- No forbidden path matches were found in the `dist/` filesystem, Windows ZIP,
+  wheel, or source distribution for `.venv-ocr-runtime`, Hugging Face cache
+  folders, validation sample names, `README (1).md`, model folders, torch,
+  transformers, or CUDA package paths.
+- The source distribution includes `README.md`, `CHANGELOG.md`, beta release
+  docs, runtime docs, smoke checklists, and
+  `scripts/setup_local_unlimited_ocr_runtime.py`.
+- The Windows ZIP, installer, and wheel do not include beta docs or the setup
+  helper. For controlled beta users, release notes must link to repository
+  docs or the source distribution if they need the helper script.
+- Packaged app launch smoke passed without the experimental flag and with the
+  experimental flag. Both launches stayed running after 8 seconds and closed
+  through the main window.
+- Clean-worktree GUI inspect confirmed `Tesseract OCR (default)` is the only
+  backend without `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`; the
+  Experimental Local Unlimited-OCR option appears only when the flag is set.
 
 ## Missing Build Steps Before Sharing Assets
 
-There is no no-op release artifact dry-run target. Before a human maintainer
-shares beta artifacts, run an intentional clean build and inspect the outputs:
+There is no no-op release artifact dry-run target. The clean local build above
+is the current inspection baseline. Before a human maintainer shares future
+beta artifacts, repeat an intentional clean build and inspect the outputs:
 
 ```powershell
 uv sync --dev
@@ -113,9 +145,10 @@ a release.
 
 ## Remaining Packaging Work
 
-- Run a real local artifact inspection on a clean build machine before any
-  public beta announcement.
 - Confirm release artifacts on GitHub Actions do not include optional OCR
   runtime folders or model caches.
 - Keep beta notes explicit that optional OCR runtime setup is user-managed and
   separate from the default installer.
+- Decide whether beta users should use repository/source-distribution docs or
+  whether a separate docs ZIP should be attached manually. Do not add docs or
+  optional OCR runtime packages to the default app bundle without review.

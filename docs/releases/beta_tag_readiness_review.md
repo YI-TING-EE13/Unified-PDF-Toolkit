@@ -53,7 +53,7 @@ commit used for the published `0.5.0` assets.
 
 ## Release Artifact Inspection Result
 
-Static inspection for this readiness pass found:
+Static inspection for the readiness pass found:
 
 - Release workflow: `.github/workflows/release.yml`.
 - App bundle script: `scripts/run_pyinstaller.ps1`.
@@ -81,6 +81,49 @@ Expected repository/documentation inclusions:
 - smoke checklists;
 - release notes draft;
 - trust remote code / model revision policy docs.
+
+Clean artifact inspection was then run in a detached worktree at:
+
+```text
+C:\tmp\pdf-toolkit-beta-artifact-inspection-20260701160913
+```
+
+Local build commands completed:
+
+- `uv sync --dev`;
+- `uv build`;
+- `powershell -ExecutionPolicy Bypass -File .\scripts\run_pyinstaller.ps1`;
+- `powershell -ExecutionPolicy Bypass -File .\scripts\build_installer.ps1`;
+- `Compress-Archive -Path "dist\Unified PDF Toolkit" -DestinationPath "dist\Unified-PDF-Toolkit-Windows.zip" -Force`.
+
+Artifacts produced locally for inspection:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.5.0-py3-none-any.whl` | 121,272 bytes |
+| `dist/pdf_toolkit-0.5.0.tar.gz` | 230,001 bytes |
+| `dist/Unified-PDF-Toolkit-Windows.zip` | 93,810,244 bytes |
+| `dist/installer/Unified-PDF-Toolkit-Setup-0.5.0.exe` | 65,931,894 bytes |
+| `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
+
+Artifact inspection results:
+
+- No forbidden path matches were found in the `dist/` filesystem, Windows ZIP,
+  wheel, or source distribution for `.venv-ocr-runtime`, Hugging Face cache
+  folders, validation sample names, `README (1).md`, model folders, torch,
+  transformers, or CUDA package paths.
+- The source distribution includes `README.md`, `CHANGELOG.md`, beta release
+  docs, runtime docs, smoke checklists, and
+  `scripts/setup_local_unlimited_ocr_runtime.py`.
+- The Windows ZIP, installer, and wheel do not include beta docs or the setup
+  helper. That is acceptable for the app bundle boundary, but beta release
+  notes should link to repository docs or the source distribution.
+- Packaged app launch smoke passed without the experimental flag and with the
+  experimental flag. Both launches remained running after 8 seconds and closed
+  through the main window.
+- Clean-worktree GUI inspect confirmed `Tesseract OCR (default)` is the only
+  backend without `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`; the
+  Experimental Local Unlimited-OCR option appears only when the flag is set.
 
 No GitHub Release, git tag, or published artifact was created by this review.
 
@@ -118,8 +161,8 @@ Blockers before a controlled beta tag:
 
 - Human maintainer review of this readiness package.
 - Human decision on whether `v0.6.0-beta.1` is the intended beta version.
-- Optional clean-machine artifact build inspection if the beta will ship
-  downloadable assets.
+- Human decision on whether beta users should use repository/source-distribution
+  docs or whether a separate docs ZIP should be attached manually.
 
 ## Go / No-Go Recommendation
 
@@ -132,7 +175,8 @@ The controlled beta can proceed if the maintainer accepts:
 - Tesseract remains default;
 - optional OCR runtime and model files are user-managed;
 - real Unlimited-OCR support is documented as experimental and local-only;
-- release artifacts are inspected before sharing.
+- Windows app/installer artifacts are allowed to omit beta docs/helper because
+  release notes link to repository docs or source distribution content.
 
 ## Human Maintainer Commands If Approved
 
