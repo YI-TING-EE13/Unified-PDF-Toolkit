@@ -31,6 +31,7 @@
 - Added beta release draft and tag readiness review documentation for a future human-approved Experimental Local Unlimited-OCR beta tag.
 - Completed a clean local beta artifact build/inspection pass and documented Windows ZIP, installer, wheel, and source distribution boundaries.
 - Aligned beta release metadata toward `v0.6.0-beta.1`, using Python package version `0.6.0b1` and installer display version `0.6.0-beta.1`.
+- Verified version-aligned beta artifacts using an isolated uv cache, producing `0.6.0b1` Python artifacts and a `0.6.0-beta.1` installer without bundling optional OCR runtime files.
 
 ## 0.5.0 - 2026-06-19
 

@@ -129,14 +129,29 @@ Version consistency follow-up:
 
 - These 0.5.0 artifact names were correct for the metadata at the time of the
   first inspection, but inconsistent with the recommended `v0.6.0-beta.1` tag.
-- Package metadata is expected to use PEP 440 version `0.6.0b1`.
-- Installer metadata is expected to use display/output version
+- Package metadata now uses PEP 440 version `0.6.0b1`.
+- Installer metadata now uses display/output version
   `0.6.0-beta.1`.
-- A follow-up clean rebuild must confirm the renamed Python and installer
-  artifacts before the beta tag is created.
-- In this Codex run, that rebuild was attempted but blocked by local uv cache
-  permission errors after escalation was unavailable. The expected rerun
-  commands are still the same clean build commands below.
+- A clean rebuild was rerun from a `git archive` source tree at
+  `C:\tmp\pdf-toolkit-beta-rebuild-20260701195336`.
+- `UV_CACHE_DIR` was set to `%TEMP%\pdf_toolkit_uv_cache_beta_build` to avoid
+  the prior global uv cache permission blocker.
+- The rebuild produced `pdf_toolkit-0.6.0b1-py3-none-any.whl`,
+  `pdf_toolkit-0.6.0b1.tar.gz`, and
+  `Unified-PDF-Toolkit-Setup-0.6.0-beta.1.exe`.
+- Artifact exclusion inspection found no forbidden runtime/cache/model/private
+  path matches in the `dist/` filesystem, Windows ZIP, wheel, or source
+  distribution.
+
+Version-aligned artifacts:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.6.0b1-py3-none-any.whl` | 121,297 bytes |
+| `dist/pdf_toolkit-0.6.0b1.tar.gz` | 232,140 bytes |
+| `dist/Unified-PDF-Toolkit-Windows.zip` | 93,810,084 bytes |
+| `dist/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.1.exe` | 65,942,238 bytes |
+| `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
 
 ## Missing Build Steps Before Sharing Assets
 

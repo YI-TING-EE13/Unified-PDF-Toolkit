@@ -138,13 +138,31 @@ Version consistency update:
 - The 0.5.0 artifact names above exposed a beta tag/version mismatch.
 - Package metadata was aligned to `0.6.0b1`.
 - Installer metadata was aligned to `0.6.0-beta.1`.
-- Rebuild inspection after that change must produce
-  `pdf_toolkit-0.6.0b1-*` Python artifacts and
+- A version-aligned rebuild was rerun from a clean `git archive` source tree at
+  `C:\tmp\pdf-toolkit-beta-rebuild-20260701195336`.
+- `UV_CACHE_DIR` was set to
+  `%TEMP%\pdf_toolkit_uv_cache_beta_build`, avoiding the prior global uv cache
+  permission blocker.
+- `uv sync --dev`, `uv build`, PyInstaller, Inno Setup, and Windows ZIP
+  creation completed.
+- The rebuild produced `pdf_toolkit-0.6.0b1-*` Python artifacts and
   `Unified-PDF-Toolkit-Setup-0.6.0-beta.1.exe`.
-- Version-aligned local rebuild was attempted in this Codex environment, but
-  `uv sync --dev` and `uv build` were blocked by local uv cache permission
-  errors after escalation was unavailable. A maintainer must rerun the clean
-  artifact build before creating the beta tag.
+
+Version-aligned artifacts produced:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.6.0b1-py3-none-any.whl` | 121,297 bytes |
+| `dist/pdf_toolkit-0.6.0b1.tar.gz` | 232,140 bytes |
+| `dist/Unified-PDF-Toolkit-Windows.zip` | 93,810,084 bytes |
+| `dist/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.1.exe` | 65,942,238 bytes |
+| `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
+
+Artifact exclusion inspection found no forbidden path matches in the `dist/`
+filesystem, Windows ZIP, wheel, or source distribution for `.venv-ocr-runtime`,
+the isolated uv cache folder, Hugging Face cache folders, validation sample
+names, `README (1).md`, model folders, torch, transformers, nvidia, or CUDA
+package paths.
 
 ## Smoke Rerun Result
 
@@ -179,16 +197,13 @@ Blockers before public production release:
 Blockers before a controlled beta tag:
 
 - Human maintainer review of this readiness package.
-- Version-aligned clean artifact rebuild confirming `0.6.0b1` package
-  artifacts and `0.6.0-beta.1` installer output.
 - Human decision on whether `v0.6.0-beta.1` is the intended beta version.
 - Human decision on whether beta users should use repository/source-distribution
   docs or whether a separate docs ZIP should be attached manually.
 
 ## Go / No-Go Recommendation
 
-Recommendation: **NO-GO until the version-aligned artifact rebuild is rerun and
-passes**, then GO for a human-approved controlled beta tag. This remains not a
+Recommendation: **GO for a human-approved controlled beta tag**, not for a
 public production release.
 
 The controlled beta can proceed if the maintainer accepts:
