@@ -312,3 +312,22 @@ gh release create v0.6.0-beta.2 --draft --prerelease --title "Experimental Local
 
 The release workflow is tag-driven. Do not run these commands until the
 maintainer explicitly approves creating the tag and release.
+
+## Beta 3 Follow-Up: Logging and Onboarding Hardening
+
+After `v0.6.0-beta.2`, `main` added user-safe beta logging/error handling and
+beginner onboarding docs. `v0.6.0-beta.1` and `v0.6.0-beta.2` must remain
+unchanged.
+
+Recommended next controlled beta target:
+
+- Git tag target: `v0.6.0-beta.3`.
+- Python package version: `0.6.0b3`.
+- User-facing release name: `0.6.0-beta.3`.
+- Windows installer display/output version: `0.6.0-beta.3`.
+- `v0.6.0-beta.3` replaces `v0.6.0-beta.2` for controlled beta distribution
+  because it includes beta logging/error hardening and beginner tutorials.
+
+Before creating the tag, repeat the clean artifact rebuild and exclusion
+inspection, then push only the annotated beta 3 tag. Do not manually edit the
+existing beta 1 or beta 2 GitHub Releases.

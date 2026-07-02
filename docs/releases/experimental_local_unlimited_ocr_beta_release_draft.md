@@ -5,13 +5,13 @@ GitHub Release, does not create a tag, and does not make Experimental Local
 Unlimited-OCR production-ready.
 
 Status note after `v0.6.0-beta.2`: the latest controlled beta tag, release, and
-CI are clean. Keep `v0.6.0-beta.2` unchanged and use this draft as the basis for
-a future human-approved `v0.6.0-beta.3`, focused on beta log/error hardening and
-beginner onboarding.
+CI are clean, but `main` now includes beta log/error hardening and beginner
+onboarding fixes. Keep `v0.6.0-beta.1` and `v0.6.0-beta.2` unchanged. Use
+`v0.6.0-beta.3` as the next recommended controlled beta candidate.
 
 ## Headline Summary
 
-Release candidate name: future `0.6.0-beta.3`.
+Release candidate name: `0.6.0-beta.3`.
 
 Unified PDF Toolkit now has a controlled beta path for Experimental Local
 Unlimited-OCR in the Document OCR tool. The default OCR behavior remains
@@ -64,6 +64,8 @@ Validated on the current maintainer machine:
   rendered page images, or private document content.
 - Source GUI startup failures now emit a short user-safe Tk/Tcl message instead
   of a raw Python traceback.
+- `v0.6.0-beta.3` supersedes `v0.6.0-beta.2` for controlled beta distribution
+  because it includes the safer logging/error behavior and beginner tutorials.
 
 ## What Is Experimental
 
@@ -175,8 +177,8 @@ Minimum smoke coverage:
 - Model revision/checksum enforcement is not implemented.
 - Optional runtime setup remains a beta flow for technical users.
 - CPU mode may be too slow for normal beta smoke testing.
-- Installer artifacts have not yet been inspected from a clean release build
-  for this beta tag candidate.
+- Installer artifacts must be inspected from a clean release build before the
+  beta tag is pushed.
 
 ## Privacy and Security Notes
 

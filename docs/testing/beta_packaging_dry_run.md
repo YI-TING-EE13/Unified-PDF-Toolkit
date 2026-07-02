@@ -198,6 +198,14 @@ Version-aligned beta 2 artifacts:
 | `dist/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.2.exe` | 65,952,323 bytes |
 | `dist/Unified PDF Toolkit/` app bundle | 228,083,251 bytes / 1,169 files |
 
+Beta 3 metadata follow-up:
+
+- `v0.6.0-beta.3` is the recommended controlled beta target after beta
+  logging/error hardening and beginner onboarding fixes landed on `main`.
+- Package metadata now targets PEP 440 version `0.6.0b3`.
+- Installer metadata now targets display/output version `0.6.0-beta.3`.
+- `v0.6.0-beta.1` and `v0.6.0-beta.2` remain untouched.
+
 ## Missing Build Steps Before Sharing Assets
 
 There is no no-op release artifact dry-run target. The clean local build above
