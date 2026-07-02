@@ -177,8 +177,7 @@ Minimum smoke coverage:
 - Model revision/checksum enforcement is not implemented.
 - Optional runtime setup remains a beta flow for technical users.
 - CPU mode may be too slow for normal beta smoke testing.
-- Installer artifacts must be inspected from a clean release build before the
-  beta tag is pushed.
+- Clean local artifact rebuild inspection passed for this beta tag candidate.
 
 ## Privacy and Security Notes
 

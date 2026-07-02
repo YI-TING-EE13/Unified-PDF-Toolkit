@@ -38,6 +38,7 @@
 - Hardened beta GUI startup, diagnostics output, manual smoke summaries, and PDF-to-Word upstream conversion logs so Tk/Tcl startup failures and shareable diagnostics avoid raw tracebacks and unnecessary local path disclosure.
 - Added beginner tutorials for default Tesseract Document OCR and the gated Experimental Local Unlimited-OCR beta workflow.
 - Prepared `v0.6.0-beta.3` metadata with Python package version `0.6.0b3` and installer display version `0.6.0-beta.3` as the recommended controlled beta after beta logging and onboarding hardening.
+- Verified `v0.6.0-beta.3` artifacts from a clean source snapshot, confirming `0.6.0b3` Python artifacts, a `0.6.0-beta.3` installer, no bundled optional OCR runtime files, and packaged app launch smoke.
 
 ## 0.5.0 - 2026-06-19
 

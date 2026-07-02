@@ -206,6 +206,31 @@ Beta 3 metadata follow-up:
 - Installer metadata now targets display/output version `0.6.0-beta.3`.
 - `v0.6.0-beta.1` and `v0.6.0-beta.2` remain untouched.
 
+Beta 3 clean artifact rebuild:
+
+- Clean source tree: fresh local clone of `main` at
+  `10afbaad9bf9a0d7c80ec18d412656264322743e`.
+- Isolated `UV_CACHE_DIR`: folder under `%TEMP%`.
+- `uv sync --dev` installed `pdf-toolkit==0.6.0b3`.
+- `uv build`, PyInstaller, Inno Setup, and Windows ZIP creation completed.
+- PyInstaller was run with explicit `TCL_LIBRARY` and `TK_LIBRARY` values so the
+  bundle includes `_tkinter.pyd`, `_tcl_data`, and `_tk_data`.
+- Artifact exclusion inspection found no forbidden optional runtime/cache/model,
+  private input, generated OCR output, or raw-log path matches in the app
+  bundle, Windows ZIP, wheel, or source distribution.
+- Packaged app launch smoke passed without the experimental flag and with
+  `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
+
+Version-aligned beta 3 artifacts:
+
+| Artifact | Size |
+| --- | ---: |
+| `dist/pdf_toolkit-0.6.0b3-py3-none-any.whl` | 121,959 bytes |
+| `dist/pdf_toolkit-0.6.0b3.tar.gz` | 240,096 bytes |
+| `dist-beta3/Unified-PDF-Toolkit-Windows.zip` | 93,813,218 bytes |
+| `dist-beta3/installer/Unified-PDF-Toolkit-Setup-0.6.0-beta.3.exe` | 65,941,656 bytes |
+| `dist-beta3/Unified PDF Toolkit/` app bundle | 228,089,226 bytes / 1,169 files |
+
 ## Missing Build Steps Before Sharing Assets
 
 There is no no-op release artifact dry-run target. The clean local build above
