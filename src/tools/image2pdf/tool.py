@@ -222,7 +222,9 @@ class Image2PDFTool(BaseTool):
         self.progress["value"] = 0
         self.output_actions.clear()
         threading.Thread(
-            target=self._run_convert, args=(files, output_path, level)
+            target=self._run_convert,
+            args=(files, output_path, level),
+            daemon=True,
         ).start()
 
     def _run_convert(
@@ -243,6 +245,7 @@ class Image2PDFTool(BaseTool):
             str(Path(output_path).parent),
             options={"compression": level, "conflict_policy": get_conflict_policy()},
         )
+        doc = None
         try:
             scale, quality = self.COMPRESSION_PRESETS.get(level, (0.75, 70))
             doc = fitz.open()
@@ -267,7 +270,6 @@ class Image2PDFTool(BaseTool):
 
             for i, img_path in enumerate(files):
                 if self.cancel_token.is_cancelled():
-                    doc.close()
                     report.add(img_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -317,7 +319,6 @@ class Image2PDFTool(BaseTool):
                     self.queue.put(
                         ("error", f"Failed on image {Path(img_path).name}: {e}")
                     )
-                    doc.close()
                     return
 
                 # Rate-limited progress updates
@@ -332,7 +333,6 @@ class Image2PDFTool(BaseTool):
             # Save with cleanup
             Path(resolved_output_path).parent.mkdir(parents=True, exist_ok=True)
             doc.save(resolved_output_path, garbage=3, deflate=True)
-            doc.close()
 
             report_path = report.write()
             self.queue.put(
@@ -346,3 +346,6 @@ class Image2PDFTool(BaseTool):
             report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))
+        finally:
+            if doc is not None:
+                doc.close()

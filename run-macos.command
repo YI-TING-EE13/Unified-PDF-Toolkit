@@ -57,6 +57,9 @@ fi
 if [ ! -f "src/app.py" ]; then
   fail "src/app.py was not found. Please make sure you downloaded and unzipped the full project folder."
 fi
+if [ ! -f "scripts/repair_project_venv.py" ]; then
+  fail "scripts/repair_project_venv.py was not found. Please make sure you downloaded and unzipped the full project folder."
+fi
 
 PYTHON_BIN="$(find_macos_python || true)"
 if [ -z "$PYTHON_BIN" ]; then
@@ -97,6 +100,11 @@ if [ -x ".venv/bin/python" ]; then
   fi
 fi
 
+echo "Checking the project environment for incomplete package metadata..."
+if ! "$PYTHON_BIN" scripts/repair_project_venv.py --venv .venv; then
+  fail "The project environment could not be repaired. Please check the messages above."
+fi
+
 echo "Checking and syncing dependencies..."
 if ! uv sync --python "$PYTHON_BIN"; then
   fail "Dependency setup failed. Please check the messages above."
@@ -104,6 +112,6 @@ fi
 
 echo
 echo "Opening the app..."
-if ! uv run --python "$PYTHON_BIN" python src/app.py; then
+if ! uv run --no-sync --python "$PYTHON_BIN" python src/app.py; then
   fail "The app closed with an error. Please check the messages above."
 fi

@@ -513,9 +513,10 @@ Keep these boundaries intact:
 Preferred validation:
 
 ```powershell
-uv run python -m unittest discover -s tests -v
-uv run python verify_install.py
-uv run python -m compileall -q src tests verify_install.py scripts
+uv sync --dev
+uv run --no-sync python -m unittest discover -s tests -v
+uv run --no-sync python verify_install.py
+uv run --no-sync python -m compileall -q src tests verify_install.py scripts
 ```
 
 In this local checkout, if `uv` or the requested `..venv` path is unavailable,

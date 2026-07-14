@@ -406,6 +406,7 @@ class MergerTool(BaseTool):
         threading.Thread(
             target=self._run_merge,
             args=(files, output_path, auto_compress, compression_level),
+            daemon=True,
         ).start()
 
     def _run_merge(
@@ -417,6 +418,7 @@ class MergerTool(BaseTool):
     ) -> None:
         """Worker thread for merging."""
         temp_path = ""
+        doc = None
         report = WorkflowReport(
             "Merge PDFs",
             os.path.dirname(output_path) or os.getcwd(),
@@ -467,6 +469,7 @@ class MergerTool(BaseTool):
             for idx, pdf_path in enumerate(files, start=1):
                 if self.cancel_token.is_cancelled():
                     doc.close()
+                    doc = None
                     report.add(pdf_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -504,6 +507,7 @@ class MergerTool(BaseTool):
                 )
             doc.save(merge_output_path)
             doc.close()
+            doc = None
 
             detail = ""
             if auto_compress:
@@ -543,6 +547,8 @@ class MergerTool(BaseTool):
             report.write()
             self.queue.put(("error", str(e)))
         finally:
+            if doc is not None:
+                doc.close()
             if temp_path and os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)

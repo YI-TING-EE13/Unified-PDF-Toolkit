@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import tkinter as tk
+import tkinter as tk  # noqa: E402
 
-from src.app import PDFToolkitApp, gui_startup_error_message
+from src.app import PDFToolkitApp, gui_startup_error_message  # noqa: E402
 
 
 def main() -> int:

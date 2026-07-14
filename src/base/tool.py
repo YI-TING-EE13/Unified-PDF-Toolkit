@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import tkinter as tk
 from tkinter import ttk
 from typing import Dict, Any, Optional
 

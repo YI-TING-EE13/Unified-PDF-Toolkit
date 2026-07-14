@@ -638,7 +638,11 @@ class PageManagerTool(BaseTool):
         self.progress.start(12)
         self.output_actions.clear()
 
-        threading.Thread(target=self._run_save, args=(output_path,)).start()
+        threading.Thread(
+            target=self._run_save,
+            args=(output_path,),
+            daemon=True,
+        ).start()
 
     def _run_save(self, output_path: str) -> None:
         """Worker thread for saving the modified PDF."""

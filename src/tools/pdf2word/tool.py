@@ -378,6 +378,7 @@ class PDFToWordTool(BaseTool):
         threading.Thread(
             target=self._run_conversion,
             args=(files, output_dir, range_text, mode, ocr_lang, ocr_dpi, ocr_preprocess),
+            daemon=True,
         ).start()
 
     def _run_conversion(

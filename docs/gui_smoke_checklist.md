@@ -6,8 +6,8 @@ Run this checklist before publishing a desktop build.
 
 - Start from a clean checkout.
 - Run `uv sync --dev`.
-- Run `uv run python scripts/gui_smoke.py`.
-- Run `uv run python src/app.py`.
+- Run `uv run --no-sync python scripts/gui_smoke.py`.
+- Run `uv run --no-sync python src/app.py`.
 - Prepare one small text PDF, one image-only PDF, and two PNG/JPG images.
 
 ## Core UI
@@ -53,10 +53,12 @@ Run this checklist before publishing a desktop build.
 - Start a multi-file PDF to Image conversion and press Cancel.
 - Confirm processing stops after the current page or file.
 - Confirm the cancellation report is written.
+- Start a long-running workflow, close the app, and confirm no Python or PDF
+  Toolkit process remains running in the background.
 
 ## Packaged Build
 
-- Run `uv run pyinstaller pdf-toolkit.spec --noconfirm`.
+- Run `uv run --no-sync pyinstaller pdf-toolkit.spec --noconfirm`.
 - Launch `dist/Unified PDF Toolkit/Unified PDF Toolkit.exe`.
 - Confirm the app window opens and all sidebar tools render.
 - If Inno Setup 6 is installed, build `installer/UnifiedPDFToolkit.iss` and launch the setup executable.

@@ -136,6 +136,85 @@ class CompressionWorkflowTests(unittest.TestCase):
             )
 
 
+class ResourceLifecycleTests(unittest.TestCase):
+    def test_converter_closes_input_document_when_rendering_fails(self):
+        count_doc = mock.MagicMock()
+        count_doc.__enter__.return_value = count_doc
+        count_doc.__len__.return_value = 1
+        processing_doc = mock.MagicMock()
+        page = mock.Mock()
+        page.get_pixmap.side_effect = RuntimeError("render failed")
+        processing_doc.__iter__.return_value = iter([page])
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir, mock.patch(
+            "src.tools.converter.tool.fitz.open",
+            side_effect=[count_doc, processing_doc],
+        ):
+            ConverterTool()._run_convert(
+                [str(Path(temp_dir) / "input.pdf")],
+                temp_dir,
+                150,
+                "png",
+            )
+
+        processing_doc.close.assert_called_once_with()
+
+    def test_image_to_pdf_closes_document_when_output_is_skipped(self):
+        document = mock.Mock()
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir, mock.patch(
+            "src.tools.image2pdf.tool.fitz.open",
+            return_value=document,
+        ), mock.patch(
+            "src.tools.image2pdf.tool.resolve_output_path",
+            return_value=None,
+        ):
+            Image2PDFTool()._run_convert(
+                [str(Path(temp_dir) / "input.png")],
+                str(Path(temp_dir) / "output.pdf"),
+                "Medium",
+            )
+
+        document.close.assert_called_once_with()
+
+    def test_merger_closes_output_document_when_an_input_fails(self):
+        output_document = mock.Mock()
+
+        def open_document(path=None):
+            if path is None:
+                return output_document
+            raise RuntimeError("invalid input")
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir, mock.patch(
+            "src.tools.merger.tool.fitz.open",
+            side_effect=open_document,
+        ):
+            MergerTool()._run_merge(
+                [str(Path(temp_dir) / "invalid.pdf")],
+                str(Path(temp_dir) / "merged.pdf"),
+                False,
+                "Medium",
+            )
+
+        output_document.close.assert_called_once_with()
+
+    def test_splitter_closes_input_document_after_invalid_range(self):
+        input_document = mock.MagicMock()
+        input_document.__len__.return_value = 1
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir, mock.patch(
+            "src.tools.splitter.tool.fitz.open",
+            return_value=input_document,
+        ):
+            SplitterTool()._run_split(
+                str(Path(temp_dir) / "input.pdf"),
+                temp_dir,
+                "2",
+            )
+
+        input_document.close.assert_called_once_with()
+
+
 class ImageAndPageWorkflowTests(unittest.TestCase):
     def _create_pdf(self, path: Path, pages: int = 2) -> None:
         doc = fitz.open()

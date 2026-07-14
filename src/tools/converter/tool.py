@@ -204,7 +204,9 @@ class ConverterTool(BaseTool):
         self.status["value"] = 0
         self.output_actions.clear()
         threading.Thread(
-            target=self._run_convert, args=(files, out_dir, dpi, fmt)
+            target=self._run_convert,
+            args=(files, out_dir, dpi, fmt),
+            daemon=True,
         ).start()
 
     def _run_convert(
@@ -226,9 +228,8 @@ class ConverterTool(BaseTool):
             total_pages = 0
             for f in files:
                 try:
-                    doc = fitz.open(f)
-                    total_pages += len(doc)
-                    doc.close()
+                    with fitz.open(f) as doc:
+                        total_pages += len(doc)
                 except Exception:
                     pass
 
@@ -243,6 +244,7 @@ class ConverterTool(BaseTool):
                 if self.cancel_token.is_cancelled():
                     report.add(pdf_path, status="cancelled", message="Cancelled before file.")
                     break
+                doc = None
                 try:
                     doc = fitz.open(pdf_path)
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
@@ -250,7 +252,6 @@ class ConverterTool(BaseTool):
                     for i, page in enumerate(doc):
                         if self.cancel_token.is_cancelled():
                             report.add(pdf_path, status="cancelled", message="Cancelled during conversion.")
-                            doc.close()
                             report_path = report.write()
                             self.queue.put(
                                 (
@@ -294,7 +295,6 @@ class ConverterTool(BaseTool):
                             )
                             last_update = now
 
-                    doc.close()
                 except Exception as e:
                     report.add(pdf_path, status="failed", message=str(e))
                     self.queue.put(
@@ -304,6 +304,9 @@ class ConverterTool(BaseTool):
                         )
                     )
                     return
+                finally:
+                    if doc is not None:
+                        doc.close()
 
             report_path = report.write()
             self.queue.put(

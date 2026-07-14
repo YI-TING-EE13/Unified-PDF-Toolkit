@@ -239,8 +239,8 @@ beta artifacts, repeat an intentional clean build and inspect the outputs:
 
 ```powershell
 uv sync --dev
-uv run python -m unittest discover -s tests -v
-uv run python verify_install.py
+uv run --no-sync python -m unittest discover -s tests -v
+uv run --no-sync python verify_install.py
 .\scripts\run_pyinstaller.ps1
 .\scripts\build_installer.ps1
 ```

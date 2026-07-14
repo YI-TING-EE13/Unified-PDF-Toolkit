@@ -1,5 +1,4 @@
 import gzip
-import shutil
 import os
 
 from ..core.base import BaseCompressor

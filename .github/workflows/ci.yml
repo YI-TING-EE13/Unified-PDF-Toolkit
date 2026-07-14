@@ -27,13 +27,13 @@ jobs:
         run: uv sync --dev --python 3.12
 
       - name: Run unit tests
-        run: uv run python -m unittest discover -s tests -v
+        run: uv run --no-sync python -m unittest discover -s tests -v
 
       - name: Verify install
-        run: uv run python verify_install.py
+        run: uv run --no-sync python verify_install.py
 
       - name: Compile Python files
-        run: uv run python -m compileall -q src tests verify_install.py
+        run: uv run --no-sync python -m compileall -q src tests verify_install.py scripts
 
       - name: Build package
         run: uv build

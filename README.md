@@ -198,14 +198,14 @@ administrator privileges.
 git clone https://github.com/YI-TING-EE13/Unified-PDF-Toolkit.git
 cd Unified-PDF-Toolkit
 uv sync
-uv run python src/app.py
+uv run --no-sync python src/app.py
 ```
 
 On macOS, prefer a Tk-enabled Python runtime:
 
 ```bash
 uv sync --python /opt/homebrew/bin/python3.12
-uv run --python /opt/homebrew/bin/python3.12 python src/app.py
+uv run --no-sync --python /opt/homebrew/bin/python3.12 python src/app.py
 ```
 
 ### Option 4: Source Checkout with pip
@@ -226,10 +226,16 @@ installed.
 
 The repository includes convenience launchers for source checkouts:
 
-- `run-windows.bat` checks for `uv`, syncs dependencies with Python 3.12, and
-  starts the app.
+- `run-windows.bat` checks for `uv`, repairs incomplete project package metadata,
+  syncs dependencies with an uv-managed Python 3.12 runtime, and starts the app
+  without a redundant second dependency sync.
 - `run-macos.command` checks for `uv`, prefers a Tk-enabled Python 3.12 runtime,
-  syncs dependencies, and starts the app.
+  performs the same metadata repair, syncs dependencies, and starts the app.
+
+The metadata repair removes only this project's incomplete `pdf_toolkit-*.dist-info`
+folders when their required `RECORD` file is missing. If repair reports that a
+folder is still in use, close running Python or PDF Toolkit processes and start
+the launcher again.
 
 If macOS reports that `run-macos.command` is not executable:
 
@@ -289,10 +295,10 @@ uv sync --dev
 Run the validation suite:
 
 ```bash
-uv run python -m unittest discover -s tests -v
-uv run python verify_install.py
-uv run python scripts/gui_smoke.py
-uv run python -m compileall -q src tests verify_install.py scripts
+uv run --no-sync python -m unittest discover -s tests -v
+uv run --no-sync python verify_install.py
+uv run --no-sync python scripts/gui_smoke.py
+uv run --no-sync python -m compileall -q src tests verify_install.py scripts
 uv build
 ```
 

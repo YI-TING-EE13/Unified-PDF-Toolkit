@@ -37,6 +37,6 @@ def list_backends() -> Dict[OcrEngine, OcrBackend]:
     return dict(_BACKENDS)
 
 
-from .tesseract import TesseractBackend
+from .tesseract import TesseractBackend  # noqa: E402
 
 register_backend(TesseractBackend())

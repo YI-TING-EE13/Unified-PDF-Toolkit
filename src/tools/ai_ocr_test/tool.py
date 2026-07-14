@@ -18,7 +18,6 @@ from ...ocr import OcrBackendUnavailableError, OcrConsentRequiredError
 from ...ocr.consent import load_advanced_ocr_consent
 from ...ocr.workflow import (
     AdvancedOcrBackendSelection,
-    AdvancedOcrOutput as FakeAiOcrOutput,
     AdvancedOcrWorkflowResult as FakeAiOcrWorkflowResult,
     fake_backend_selection,
     run_advanced_ocr_workflow,

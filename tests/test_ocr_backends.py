@@ -918,7 +918,9 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertFalse(result.metadata["real_inference"])
 
     def test_local_model_backend_uses_worker_process_only_when_configured(self):
-        cancellation_check = lambda: False
+        def cancellation_check():
+            return False
+
         request = OcrRequest(
             engine=OcrEngine.LOCAL_MODEL,
             images=[Image.new("RGB", (10, 10), "white")],

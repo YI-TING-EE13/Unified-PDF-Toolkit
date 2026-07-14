@@ -284,6 +284,7 @@ class CompressorTool(BaseTool):
         thread = threading.Thread(
             target=self._run_compression,
             args=(list(input_items), output_dir, level, compression_options),
+            daemon=True,
         )
         thread.start()
 

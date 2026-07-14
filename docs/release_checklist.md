@@ -6,12 +6,12 @@ Use this checklist before publishing a tagged release.
 
 ```powershell
 uv sync --dev
-uv run python -m unittest discover -s tests -v
-uv run python verify_install.py
-uv run python scripts/gui_smoke.py
-uv run python -m compileall -q src tests verify_install.py scripts
+uv run --no-sync python -m unittest discover -s tests -v
+uv run --no-sync python verify_install.py
+uv run --no-sync python scripts/gui_smoke.py
+uv run --no-sync python -m compileall -q src tests verify_install.py scripts
 uv build
-uv run pyinstaller pdf-toolkit.spec --noconfirm
+uv run --no-sync pyinstaller pdf-toolkit.spec --noconfirm
 ```
 
 If Inno Setup 6 is installed:

@@ -35,7 +35,7 @@ from .local_model import (
     LocalModelOcrBackend,
     LocalModelRuntimeConfig,
 )
-from .models import OcrEngine, OcrRequest, OcrResult
+from .models import OcrRequest, OcrResult
 from .unlimited_fake import (
     UNLIMITED_OCR_MODEL_ID,
     UNLIMITED_OCR_PROVIDER,

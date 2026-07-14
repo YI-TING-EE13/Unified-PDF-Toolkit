@@ -271,6 +271,7 @@ class BatchQueueTool(BaseTool):
         threading.Thread(
             target=self._run_jobs_thread,
             args=(list(self.jobs), output_dir),
+            daemon=True,
         ).start()
 
     def _run_jobs_thread(self, jobs: List[BatchJob], output_dir: str) -> None:

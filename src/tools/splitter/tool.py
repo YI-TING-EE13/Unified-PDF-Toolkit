@@ -411,7 +411,9 @@ class SplitterTool(BaseTool):
         self.output_actions.clear()
         remember_inputs([self.current_pdf_path])
         threading.Thread(
-            target=self._run_split, args=(self.current_pdf_path, out_dir, ranges_str)
+            target=self._run_split,
+            args=(self.current_pdf_path, out_dir, ranges_str),
+            daemon=True,
         ).start()
 
     def _parse_ranges(
@@ -448,6 +450,7 @@ class SplitterTool(BaseTool):
                 "conflict_policy": get_conflict_policy(),
             },
         )
+        doc = None
         try:
             os.makedirs(out_dir, exist_ok=True)
             # Re-open doc in thread (PyMuPDF objects are not thread-safe across threads)
@@ -458,7 +461,6 @@ class SplitterTool(BaseTool):
                 page_ranges = self._parse_ranges(ranges_str, total)
             except ValueError as exc:
                 self.queue.put(("error", str(exc)))
-                doc.close()
                 return
 
             base_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -466,7 +468,6 @@ class SplitterTool(BaseTool):
             total_ranges = len(page_ranges)
             for idx, (start, end) in enumerate(page_ranges, start=1):
                 if self.cancel_token.is_cancelled():
-                    doc.close()
                     report.add(input_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -488,22 +489,20 @@ class SplitterTool(BaseTool):
                         ),
                     )
                 )
-                new_doc = fitz.open()
-                new_doc.insert_pdf(doc, from_page=start, to_page=end)
-                out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
-                requested_path = os.path.join(out_dir, out_name)
-                output_path = resolve_output_path(requested_path, get_conflict_policy())
-                if output_path is None:
-                    new_doc.close()
-                    report.add(
-                        input_path,
-                        requested_path,
-                        status="skipped",
-                        message="Output exists and conflict policy is skip.",
-                    )
-                    continue
-                new_doc.save(output_path)
-                new_doc.close()
+                with fitz.open() as new_doc:
+                    new_doc.insert_pdf(doc, from_page=start, to_page=end)
+                    out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
+                    requested_path = os.path.join(out_dir, out_name)
+                    output_path = resolve_output_path(requested_path, get_conflict_policy())
+                    if output_path is None:
+                        report.add(
+                            input_path,
+                            requested_path,
+                            status="skipped",
+                            message="Output exists and conflict policy is skip.",
+                        )
+                        continue
+                    new_doc.save(output_path)
                 report.add(input_path, output_path)
                 count += 1
                 self.queue.put(
@@ -516,7 +515,6 @@ class SplitterTool(BaseTool):
                     )
                 )
 
-            doc.close()
             report_path = report.write()
             self.queue.put(
                 (
@@ -532,3 +530,6 @@ class SplitterTool(BaseTool):
             report.add(input_path, status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))
+        finally:
+            if doc is not None:
+                doc.close()
