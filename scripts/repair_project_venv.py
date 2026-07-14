@@ -21,6 +21,15 @@ DEFAULT_VENV = Path(".venv")
 PROJECT_METADATA_GLOB = "pdf_toolkit-*.dist-info"
 
 
+def _same_directory(left: Path, right: Path) -> bool:
+    """Return whether two existing paths identify the same directory."""
+
+    try:
+        return left.samefile(right)
+    except OSError:
+        return left == right
+
+
 def iter_site_packages(venv_path: Path) -> Iterable[Path]:
     """Yield existing site-packages folders for Windows and POSIX venvs."""
 
@@ -29,11 +38,14 @@ def iter_site_packages(venv_path: Path) -> Iterable[Path]:
         venv_path / "lib" / "site-packages",
         *sorted((venv_path / "lib").glob("python*/site-packages")),
     ]
-    seen: set[Path] = set()
+    seen: list[Path] = []
     for candidate in candidates:
-        if candidate.is_dir() and candidate not in seen:
-            seen.add(candidate)
-            yield candidate
+        if not candidate.is_dir():
+            continue
+        if any(_same_directory(candidate, existing) for existing in seen):
+            continue
+        seen.append(candidate)
+        yield candidate
 
 
 def _remove_readonly(func, path: str, _exc_info) -> None:

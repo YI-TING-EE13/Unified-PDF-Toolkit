@@ -7,6 +7,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +71,27 @@ class ProjectVenvRepairTests(unittest.TestCase):
 
             self.assertEqual(removed, [incomplete])
             self.assertFalse(incomplete.exists())
+
+    def test_deduplicates_case_insensitive_site_packages_aliases(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            venv = Path(temp_dir) / ".venv"
+            upper = venv / "Lib" / "site-packages"
+            lower = venv / "lib" / "site-packages"
+            upper.mkdir(parents=True)
+            lower.mkdir(parents=True, exist_ok=True)
+
+            def case_insensitive_samefile(current, other):
+                return str(current).casefold() == str(other).casefold()
+
+            with mock.patch.object(
+                Path,
+                "samefile",
+                autospec=True,
+                side_effect=case_insensitive_samefile,
+            ):
+                site_packages = list(self.helper.iter_site_packages(venv))
+
+            self.assertEqual(site_packages, [upper])
 
     def test_missing_environment_is_a_successful_noop(self):
         with tempfile.TemporaryDirectory() as temp_dir:
