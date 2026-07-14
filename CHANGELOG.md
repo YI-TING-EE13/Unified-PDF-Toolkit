@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Repaired launcher failures caused by incomplete editable-package metadata in `.venv`, pinned the Windows project environment to the installed uv-managed Python runtime, prevented `uv run` from redundantly synchronizing immediately after a successful `uv sync`, and excluded the optional multi-gigabyte OCR runtime from project packaging scans.
+- Fixed the virtual-environment repair regression test on macOS and Linux while retaining Windows read-only metadata coverage.
 - Hardened GUI worker shutdown and PyMuPDF document cleanup so closing the app does not leave background worker processes running and error or cancellation paths do not retain PDF file handles; also cleaned static-analysis findings and added lifecycle regression coverage.
 - Added architecture-only scaffolding for optional future advanced local AI OCR, including an ADR, OCR backend abstractions, consent validation structures, a fake Unlimited-OCR test backend, and safe optional-readiness diagnostics.
 - Added Settings / Recent consent management for future optional advanced local AI OCR without enabling real model inference.

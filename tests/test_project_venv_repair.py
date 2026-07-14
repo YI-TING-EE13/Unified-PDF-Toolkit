@@ -41,8 +41,12 @@ class ProjectVenvRepairTests(unittest.TestCase):
             unrelated.mkdir(parents=True)
             (valid / "RECORD").write_text("valid", encoding="utf-8")
 
-            os.chmod(incomplete / "licenses", stat.S_IREAD)
-            os.chmod(incomplete, stat.S_IREAD)
+            # The original launcher failure involved Windows read-only
+            # attributes. On POSIX, S_IREAD also removes directory search
+            # permission, preventing the helper from inspecting RECORD.
+            if os.name == "nt":
+                os.chmod(incomplete / "licenses", stat.S_IREAD)
+                os.chmod(incomplete, stat.S_IREAD)
             removed = self.helper.repair_incomplete_metadata(venv)
 
             self.assertEqual(removed, [incomplete])
