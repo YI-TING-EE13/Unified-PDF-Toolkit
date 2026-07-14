@@ -380,7 +380,7 @@ class SplitterTool(BaseTool):
 
             self.queue.put(("preview", tk_img))
         except Exception:
-            pass
+            return
 
     def _browse_output(self) -> None:
         path = filedialog.askdirectory()

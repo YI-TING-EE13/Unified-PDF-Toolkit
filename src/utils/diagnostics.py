@@ -406,6 +406,46 @@ def _huggingface_cache_checks() -> List[DiagnosticCheck]:
     ]
 
 
+def _tesseract_language_check(tesseract_path: str | None) -> DiagnosticCheck:
+    if not tesseract_path:
+        return DiagnosticCheck(
+            "Tesseract languages",
+            "info",
+            "not checked because the executable was not found",
+        )
+    try:
+        import pytesseract
+
+        languages = sorted(set(pytesseract.get_languages(config="")))
+    except Exception as exc:
+        return DiagnosticCheck(
+            "Tesseract languages",
+            "warning",
+            f"could not query installed language data ({exc.__class__.__name__})",
+            "Check TESSDATA_PREFIX and the Tesseract installation, then run Diagnostics again.",
+        )
+
+    detail = ", ".join(languages) if languages else "none detected"
+    if "eng" not in languages:
+        return DiagnosticCheck(
+            "Tesseract languages",
+            "error",
+            detail,
+            "Install eng.traineddata because English is the default OCR language.",
+        )
+    if not {"chi_tra", "chi_sim"}.intersection(languages):
+        return DiagnosticCheck(
+            "Tesseract languages",
+            "warning",
+            detail,
+            (
+                "Chinese OCR is unavailable. Install chi_tra.traineddata and/or "
+                "chi_sim.traineddata in Tesseract's tessdata folder."
+            ),
+        )
+    return DiagnosticCheck("Tesseract languages", "ok", detail)
+
+
 def _env_directory_writable_check(
     env_name: str,
     label: str,
@@ -514,6 +554,7 @@ def collect_diagnostics() -> List[DiagnosticCheck]:
             else "",
         )
     )
+    checks.append(_tesseract_language_check(tesseract_path))
 
     checks.extend(_optional_ai_ocr_checks())
     checks.append(_write_check("Default save folder", Path(get_default_save_dir("Diagnostics"))))

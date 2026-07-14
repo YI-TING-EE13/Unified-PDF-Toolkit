@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
+# Required for the isolated local OCR worker; no shell invocation is used.
+import subprocess  # nosec B404
 import sys
 import tempfile
 import time
@@ -359,7 +360,9 @@ def _run_json_worker_process(
         env = os.environ.copy()
         env.update({str(key): str(value) for key, value in env_updates.items()})
     try:
-        process = subprocess.Popen(
+        # executable and script_path are validated local runtime paths and no
+        # shell is used, so user content cannot be interpreted as a command.
+        process = subprocess.Popen(  # nosec B603
             [executable, script_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -374,7 +377,12 @@ def _run_json_worker_process(
         ) from exc
 
     try:
-        assert process.stdin is not None
+        if process.stdin is None:
+            _terminate_worker(process)
+            _close_worker_pipes(process)
+            raise OcrBackendUnavailableError(
+                "Local AI OCR worker process did not provide an input pipe."
+            )
         process.stdin.write(json.dumps(payload))
         process.stdin.close()
         process.stdin = None

@@ -6,7 +6,9 @@ to keep file selection and output actions consistent.
 """
 
 import os
-import subprocess
+import shutil
+# Used only with fixed OS opener executables resolved to absolute paths.
+import subprocess  # nosec B404
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -312,11 +314,17 @@ class OutputActions(ttk.Frame):
 
         try:
             if sys.platform.startswith("win"):
-                os.startfile(target)  # type: ignore[attr-defined]
+                os.startfile(target)  # type: ignore[attr-defined]  # nosec B606
             elif sys.platform == "darwin":
-                subprocess.Popen(["open", target])
+                opener = shutil.which("open")
+                if not opener:
+                    raise FileNotFoundError("The macOS 'open' command was not found.")
+                subprocess.Popen([opener, target])  # nosec B603
             else:
-                subprocess.Popen(["xdg-open", target])
+                opener = shutil.which("xdg-open")
+                if not opener:
+                    raise FileNotFoundError("The 'xdg-open' command was not found.")
+                subprocess.Popen([opener, target])  # nosec B603
         except Exception as exc:
             messagebox.showerror("Error", f"Could not open output folder: {exc}")
 

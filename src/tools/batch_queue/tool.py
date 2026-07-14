@@ -4,35 +4,23 @@ from __future__ import annotations
 
 import queue
 import threading
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-import fitz
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from ...base.tool import BaseTool
-from ...core.processor import BatchProcessor
+from ...core.batch import BatchJob, HeadlessBatchRunner, SUPPORTED_OPERATIONS
 from ...ui.components import FileListWidget, OutputActions
 from ...utils.errors import friendly_error_message
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
-    WorkflowReport,
     get_conflict_policy,
     remember_inputs,
 )
 from ..pdf2word.tool import PDFToWordTool
-
-
-@dataclass
-class BatchJob:
-    source: str
-    operation: str
-    options: Dict[str, Any] = field(default_factory=dict)
-
 
 class BatchQueueTool(BaseTool):
     """GUI tool for queuing mixed operations and running them sequentially."""
@@ -40,13 +28,7 @@ class BatchQueueTool(BaseTool):
     name: str = "Batch Queue"
     icon: str = "[Q]"
 
-    OPERATIONS = (
-        "Compress PDF/Image",
-        "PDF to Images",
-        "PDF to Word - Text Only",
-        "PDF to Word - Page Images",
-        "PDF to Word - OCR Text",
-    )
+    OPERATIONS = SUPPORTED_OPERATIONS
 
     def __init__(self) -> None:
         self.queue: queue.Queue = queue.Queue()
@@ -308,116 +290,14 @@ class BatchQueueTool(BaseTool):
         output_dir: str,
         cancellation_check: Optional[Callable[[], bool]] = None,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        conflict_policy: Optional[str] = None,
+        stop_on_error: bool = False,
     ) -> Dict[str, Any]:
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        report = WorkflowReport(
-            "Batch Queue",
+        return HeadlessBatchRunner.run_jobs(
+            jobs,
             output_dir,
-            options={"conflict_policy": get_conflict_policy(), "jobs": len(jobs)},
+            conflict_policy=conflict_policy or get_conflict_policy(),
+            cancellation_check=cancellation_check,
+            progress_callback=progress_callback,
+            stop_on_error=stop_on_error,
         )
-        result = {"success": 0, "failed": 0, "skipped": 0, "cancelled": False}
-        processor = BatchProcessor()
-
-        for index, job in enumerate(jobs, start=1):
-            if cancellation_check and cancellation_check():
-                result["cancelled"] = True
-                report.add(job.source, status="cancelled", message="Cancelled before job.")
-                break
-            if progress_callback:
-                progress_callback(index - 1, len(jobs), f"Running {index}/{len(jobs)}: {job.operation}")
-            try:
-                outputs = cls._run_single_job(job, output_dir, processor)
-                if not outputs:
-                    result["skipped"] += 1
-                    report.add(job.source, status="skipped", message="No output generated.")
-                else:
-                    result["success"] += 1
-                    report.add(job.source, "; ".join(outputs), message=job.operation)
-            except Exception as exc:
-                result["failed"] += 1
-                report.add(job.source, status="failed", message=friendly_error_message(exc))
-            if progress_callback:
-                progress_callback(index, len(jobs), f"Finished {index}/{len(jobs)}")
-
-        result["report_path"] = report.write()
-        return result
-
-    @classmethod
-    def _run_single_job(
-        cls, job: BatchJob, output_dir: str, processor: BatchProcessor
-    ) -> List[str]:
-        operation = job.operation
-        if operation == "Compress PDF/Image":
-            result = processor.process_files(
-                [job.source],
-                output_dir,
-                job.options.get("compression_level", "Medium"),
-                compression_options={
-                    "optimize_images": True,
-                    "lossless_only": False,
-                    "max_image_dimension": None,
-                    "jpeg_quality": None,
-                },
-                conflict_policy=get_conflict_policy(),
-            )
-            outputs = [
-                record.get("output", "")
-                for record in result.get("records", [])
-                if record.get("status") == "success" and record.get("output")
-            ]
-            if result.get("failed"):
-                raise RuntimeError("; ".join(result.get("errors", [])) or "Compression failed.")
-            return outputs
-
-        if operation == "PDF to Images":
-            return cls._convert_pdf_to_images(
-                job.source,
-                output_dir,
-                int(job.options.get("dpi", 150)),
-                str(job.options.get("format", "png")),
-                str(job.options.get("page_range", "")),
-            )
-
-        if operation.startswith("PDF to Word"):
-            if operation.endswith("Text Only"):
-                mode = "Text Only"
-            elif operation.endswith("Page Images"):
-                mode = "Page Images"
-            else:
-                mode = "OCR Text"
-            output_path = resolve_output_path(
-                str(Path(output_dir) / f"{Path(job.source).stem}.docx"),
-                get_conflict_policy(),
-            )
-            if output_path is None:
-                return []
-            PDFToWordTool.convert_pdf_to_docx(
-                job.source,
-                output_path,
-                range_text=str(job.options.get("page_range", "")),
-                mode=mode,
-                ocr_lang=str(job.options.get("ocr_lang", "eng")),
-                ocr_dpi=int(job.options.get("ocr_dpi", 200)),
-                ocr_preprocess=str(job.options.get("ocr_preprocess", "Grayscale")),
-            )
-            return [output_path]
-
-        raise ValueError(f"Unsupported batch operation: {operation}")
-
-    @staticmethod
-    def _convert_pdf_to_images(
-        input_path: str, output_dir: str, dpi: int, fmt: str, range_text: str = ""
-    ) -> List[str]:
-        page_indices = PDFToWordTool.parse_page_range(range_text, input_path)
-        outputs: List[str] = []
-        with fitz.open(input_path) as doc:
-            selected = page_indices if page_indices is not None else list(range(doc.page_count))
-            for page_index in selected:
-                pix = doc[page_index].get_pixmap(dpi=dpi)
-                requested = Path(output_dir) / f"{Path(input_path).stem}_page_{page_index + 1}.{fmt}"
-                output_path = resolve_output_path(str(requested), get_conflict_policy())
-                if output_path is None:
-                    continue
-                pix.save(output_path)
-                outputs.append(output_path)
-        return outputs

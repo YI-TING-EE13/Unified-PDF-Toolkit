@@ -5,6 +5,37 @@ on:
   pull_request:
 
 jobs:
+  quality:
+    name: Quality and security gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --dev --python 3.12
+
+      - name: Run Ruff
+        run: uv run --no-sync ruff check .
+
+      - name: Run Bandit
+        run: uv run --no-sync bandit -q -r src scripts -x tests -ll
+
+      - name: Audit dependencies
+        run: uv run --no-sync pip-audit --skip-editable
+
+      - name: Measure test coverage
+        run: |
+          uv run --no-sync coverage run -m unittest discover -s tests -v
+          uv run --no-sync coverage report
+
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -15,10 +46,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.3.2
 
       - name: Set up Python
         run: uv python install 3.12
@@ -41,14 +72,14 @@ jobs:
   package:
     name: PyInstaller smoke build
     runs-on: windows-latest
-    needs: test
+    needs: [quality, test]
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.3.2
 
       - name: Set up Python
         run: uv python install 3.12
@@ -60,8 +91,12 @@ jobs:
         shell: pwsh
         run: .\scripts\run_pyinstaller.ps1
 
+      - name: Smoke test packaged app
+        shell: pwsh
+        run: .\scripts\smoke_packaged_app.ps1
+
       - name: Upload app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: Unified-PDF-Toolkit-Windows
           path: dist/Unified PDF Toolkit

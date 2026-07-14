@@ -29,6 +29,16 @@ from ...utils.workflow import (
 )
 
 
+def _safe_pdf_page_count(path: str) -> int:
+    """Return a PDF page count, or zero for unreadable input files."""
+
+    try:
+        with fitz.open(path) as document:
+            return len(document)
+    except (OSError, RuntimeError, ValueError):
+        return 0
+
+
 class ConverterTool(BaseTool):
     """
     GUI Tool for converting PDF pages to Images (PNG/JPG/JPEG).
@@ -225,13 +235,7 @@ class ConverterTool(BaseTool):
             os.makedirs(out_dir, exist_ok=True)
 
             # Count total pages across all files for accurate progress
-            total_pages = 0
-            for f in files:
-                try:
-                    with fitz.open(f) as doc:
-                        total_pages += len(doc)
-                except Exception:
-                    pass
+            total_pages = sum(_safe_pdf_page_count(path) for path in files)
 
             if total_pages == 0:
                 self.queue.put(("error", "No valid PDF pages found."))

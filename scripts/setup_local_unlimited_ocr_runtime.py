@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
+# Commands are constructed as argv lists and executed without a shell.
+import subprocess  # nosec B404
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Sequence

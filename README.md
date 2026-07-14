@@ -5,9 +5,9 @@
 [![Release](https://img.shields.io/github/v/release/YI-TING-EE13/Unified-PDF-Toolkit?include_prereleases&label=release)](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/releases)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Unified PDF Toolkit is a local-first desktop application for everyday PDF work:
-compressing, merging, splitting, converting, page editing, OCR-assisted text
-extraction, and repeatable batch jobs.
+Unified PDF Toolkit is a local-first desktop and command-line application for
+everyday PDF work: compressing, merging, splitting, converting, page editing,
+OCR-assisted text extraction, and repeatable batch jobs.
 
 The app runs on your machine. Source files are not uploaded to any external
 service.
@@ -21,10 +21,10 @@ service.
   extraction, page images, or OCR text mode.
 - **Document OCR outputs**: extract OCR text from PDF/image files to local TXT
   or Markdown files, using Tesseract by default.
-- **Batch Queue**: run repeatable mixed jobs and generate TXT, CSV, and JSON
-  reports.
-- **Diagnostics**: check Python, Tkinter, key dependencies, Tesseract OCR, and
-  writable output folders from inside the app.
+- **GUI and headless Batch Queue**: run repeatable mixed jobs from the desktop
+  app or a JSON manifest and generate TXT, CSV, and JSON reports.
+- **Diagnostics**: check Python, Tkinter, key dependencies, Tesseract executable
+  and language data, and writable output folders from inside the app.
 - **Local release packaging**: CI builds Python packages, a Windows app bundle,
   and a Windows installer for tagged releases.
 
@@ -109,6 +109,8 @@ fidelity matters more than editability.
 - Queue mixed jobs across compression, PDF to image, and PDF to Word modes.
 - Reuse page range, OCR language, DPI, and OCR cleanup settings.
 - Run jobs sequentially with a structured completion report.
+- Run the same supported operations without a GUI through the `pdf-toolkit`
+  command and reusable JSON manifests.
 
 ### Document OCR
 
@@ -252,11 +254,34 @@ chmod +x run-macos.command
 5. Start the task and monitor the progress area.
 6. Open the output folder or copy the output path when the task completes.
 
+## Command-Line and Headless Batch
+
+Installing the project creates a `pdf-toolkit` console command. It does not open
+Tkinter and is suitable for scripts, scheduled tasks, CI, and servers without a
+display. Direct commands support compression, PDF-to-image, and PDF-to-Word
+jobs—the same operation set as Batch Queue.
+
+```powershell
+uv run --no-sync pdf-toolkit compress "input.pdf" -o "output" --level Medium
+uv run --no-sync pdf-toolkit pdf-to-images "input.pdf" -o "output" --dpi 150 --pages "1-3,5"
+uv run --no-sync pdf-toolkit pdf-to-word "input.pdf" -o "output" --mode text
+uv run --no-sync pdf-toolkit batch "docs/examples/batch-manifest.json" --json
+```
+
+Every command accepts `--conflict rename|overwrite|skip`; `rename` is the
+default. Batch source paths and an unqualified manifest `output_dir` are resolved
+relative to the manifest file. Pressing Ctrl+C stops before the next job and
+returns exit code 130. See [docs/cli.md](docs/cli.md) for the manifest schema,
+exit codes, and automation examples.
+
 ## Project Structure
 
 ```text
 src/
   app.py              # Tkinter shell and navigation
+  cli.py              # Headless CLI and manifest entry point
+  core/
+    batch.py          # GUI-independent batch execution
   base/
     tool.py           # BaseTool interface
   ui/
@@ -295,6 +320,11 @@ uv sync --dev
 Run the validation suite:
 
 ```bash
+uv run --no-sync ruff check .
+uv run --no-sync bandit -q -r src scripts -x tests -ll
+uv run --no-sync pip-audit --skip-editable
+uv run --no-sync coverage run -m unittest discover -s tests -v
+uv run --no-sync coverage report
 uv run --no-sync python -m unittest discover -s tests -v
 uv run --no-sync python verify_install.py
 uv run --no-sync python scripts/gui_smoke.py
@@ -304,14 +334,17 @@ uv build
 
 Release-specific checks are documented in
 [docs/release_checklist.md](docs/release_checklist.md). Manual GUI checks are
-documented in [docs/gui_smoke_checklist.md](docs/gui_smoke_checklist.md).
+documented in [docs/gui_smoke_checklist.md](docs/gui_smoke_checklist.md). The
+P0-P2 adversarial and resource gates are mapped in
+[docs/testing/stability_matrix.md](docs/testing/stability_matrix.md).
 
 ## Packaging
 
 Build a Windows app bundle with the repository wrapper:
 
 ```powershell
-.\scripts\run_pyinstaller.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\run_pyinstaller.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke_packaged_app.ps1
 ```
 
 Build a Windows installer when Inno Setup 6 is installed:
@@ -325,8 +358,8 @@ Tagged releases are handled by `.github/workflows/release.yml`.
 ## Roadmap
 
 Useful next improvements include searchable PDF OCR output, watermark/page
-number tools, metadata privacy cleanup, broader Batch Queue coverage, and a CLI
-for automation.
+number tools, metadata privacy cleanup, and direct CLI coverage for merge,
+split, image-to-PDF, and page-editing workflows.
 
 PDF to Word planning notes and known conversion limits are documented in
 [docs/pdf_to_word_plan.md](docs/pdf_to_word_plan.md).

@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.3.2
 
       - name: Set up Python
         run: uv python install 3.12
@@ -27,8 +27,13 @@ jobs:
       - name: Sync dependencies
         run: uv sync --dev --python 3.12
 
-      - name: Run tests
-        run: uv run --no-sync python -m unittest discover -s tests -v
+      - name: Run quality and security gates
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync bandit -q -r src scripts -x tests -ll
+          uv run --no-sync pip-audit --skip-editable
+          uv run --no-sync coverage run -m unittest discover -s tests -v
+          uv run --no-sync coverage report
 
       - name: Verify install
         run: uv run --no-sync python verify_install.py
@@ -53,6 +58,10 @@ jobs:
         shell: pwsh
         run: .\scripts\run_pyinstaller.ps1 -DistPath "$env:PYINSTALLER_DIST_PATH" -WorkPath "$env:PYINSTALLER_WORK_PATH"
 
+      - name: Smoke test packaged app
+        shell: pwsh
+        run: .\scripts\smoke_packaged_app.ps1 -AppPath "$env:APP_BUNDLE_PATH\Unified PDF Toolkit.exe"
+
       - name: Package Windows app bundle
         shell: pwsh
         run: |
@@ -67,7 +76,7 @@ jobs:
         run: .\scripts\build_installer.ps1 -AppBundlePath "$env:APP_BUNDLE_PATH"
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: Unified-PDF-Toolkit-release
           path: |
@@ -78,7 +87,7 @@ jobs:
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.2
         with:
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           files: |

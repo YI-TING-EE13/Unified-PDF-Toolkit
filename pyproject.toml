@@ -6,13 +6,19 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "pymupdf>=1.22.0",
-    "pillow>=10.0.0",
+    "pillow>=12.3.0",
     "tqdm>=4.65.0",
     "pdf2docx>=0.5.8",
     "python-docx>=1.1.0",
     "tkinterdnd2>=0.5.0",
     "pytesseract>=0.3.13",
 ]
+
+[project.scripts]
+pdf-toolkit = "src.cli:main"
+
+[project.gui-scripts]
+pdf-toolkit-gui = "src.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -23,5 +29,24 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
+    "coverage>=7.15.1",
+    "pip-audit>=2.10.1",
+    "psutil>=7.0.0",
     "pyinstaller>=6.21.0",
+    "ruff>=0.15.21",
+    "setuptools>=83.0.0",
 ]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+fail_under = 45
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

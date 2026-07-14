@@ -40,11 +40,27 @@ Run this checklist before publishing a desktop build.
 - Add PDF to Image and PDF to Word jobs to Batch Queue, run the queue, and confirm a report is written.
 - Open Diagnostics, run checks, and copy the results.
 
+## Adversarial and Recovery Inputs
+
+- Try an encrypted PDF, damaged PDF, blank PDF, and zero-page PDF; confirm the
+  workflow rejects or describes each input without a traceback.
+- Try a high-page-count PDF with a small selected range before testing a full
+  conversion.
+- Use paths containing Chinese characters, spaces, Emoji, and a long filename.
+- Test an unwritable output folder, a nearly full test volume, and an output file
+  held open by another program; confirm the recovery suggestion is specific.
+- Run the same workflow repeatedly and verify `rename`, `overwrite`, and `skip`
+  all behave as selected.
+- Process 50-100 small documents and confirm memory, open file handles, and child
+  process counts return near baseline after completion.
+
 ## OCR
 
 - If Tesseract is not installed, run OCR Text and confirm the error message explains the missing executable.
 - If Tesseract is installed, run OCR Text with `eng`.
 - If Traditional Chinese language data is installed, run OCR Text with `eng+chi_tra`.
+- In Diagnostics, confirm installed Tesseract language codes are listed and a
+  missing `chi_tra`/`chi_sim` pack produces an actionable warning.
 - Confirm OCR DPI changes are accepted and persisted.
 - Confirm OCR cleanup options are selectable and persisted.
 
@@ -56,9 +72,13 @@ Run this checklist before publishing a desktop build.
 - Start a long-running workflow, close the app, and confirm no Python or PDF
   Toolkit process remains running in the background.
 
-## Packaged Build
+## CLI and Packaged Build
 
-- Run `uv run --no-sync pyinstaller pdf-toolkit.spec --noconfirm`.
+- Run one direct `pdf-toolkit` command and one JSON manifest from a folder with
+  spaces; confirm JSON output and the process exit code.
+- Run `powershell -ExecutionPolicy Bypass -File .\scripts\run_pyinstaller.ps1`.
+- Run `powershell -ExecutionPolicy Bypass -File .\scripts\smoke_packaged_app.ps1`.
+- Repeat both commands without deleting `dist` manually.
 - Launch `dist/Unified PDF Toolkit/Unified PDF Toolkit.exe`.
 - Confirm the app window opens and all sidebar tools render.
 - If Inno Setup 6 is installed, build `installer/UnifiedPDFToolkit.iss` and launch the setup executable.

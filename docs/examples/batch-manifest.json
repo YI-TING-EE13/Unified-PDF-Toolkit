@@ -1,0 +1,22 @@
+{
+  "output_dir": "output",
+  "conflict_policy": "rename",
+  "jobs": [
+    {
+      "source": "sample.pdf",
+      "operation": "pdf-to-images",
+      "options": {
+        "dpi": 150,
+        "format": "png",
+        "page_range": "1-3"
+      }
+    },
+    {
+      "source": "sample.pdf",
+      "operation": "pdf-to-word-text",
+      "options": {
+        "page_range": "1-3"
+      }
+    }
+  ]
+}

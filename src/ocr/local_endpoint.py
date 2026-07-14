@@ -87,6 +87,7 @@ def post_json(url: str, payload: Dict[str, Any], timeout_seconds: float) -> Dict
     file paths are never added by this backend.
     """
 
+    validate_local_endpoint_url(url)
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(
         url,
@@ -95,7 +96,8 @@ def post_json(url: str, payload: Dict[str, Any], timeout_seconds: float) -> Dict
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=timeout_seconds) as response:
+        # URL validation above restricts this transport to explicit loopback HTTP.
+        with request.urlopen(req, timeout=timeout_seconds) as response:  # nosec B310
             body = response.read()
     except TimeoutError as exc:
         raise OcrBackendUnavailableError("Local OCR endpoint request timed out.") from exc

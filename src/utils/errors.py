@@ -32,6 +32,13 @@ def error_hint(message: str) -> str:
             "Install Tesseract OCR, add it to PATH, and install the selected "
             "language data such as eng, chi_tra, or chi_sim."
         )
+    if _contains(lowered, ("no space left", "disk full", "errno 28")):
+        return "Free disk space or choose an output folder on a drive with more available space."
+    if _contains(
+        lowered,
+        ("being used by another process", "sharing violation", "winerror 32", "resource busy"),
+    ):
+        return "Close the application using the output file, then retry with the same output folder."
     if _contains(lowered, ("permission denied", "access is denied", "errno 13")):
         return "Choose a writable output folder, close locked files, or run from a user-owned directory."
     if _contains(lowered, ("encrypted", "password")):

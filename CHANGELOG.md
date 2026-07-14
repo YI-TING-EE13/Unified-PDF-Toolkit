@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- Added a headless `pdf-toolkit` CLI for direct compression, PDF-to-image, and
+  PDF-to-Word jobs plus reusable JSON batch manifests, explicit conflict
+  policies, machine-readable summaries, deterministic exit codes, Ctrl+C
+  cancellation, and fail-fast operation.
+- Added adversarial and resource-lifecycle coverage for encrypted, damaged,
+  blank, zero-page, high-page-count, Unicode/emoji/long-path PDFs; permission,
+  disk-full, and locked-output failures; cancellation, repeated execution,
+  rename/overwrite/skip behavior; and a 60-document handle, process, and memory
+  stress run.
+- Upgraded CI and release workflows to current action runtimes and added Ruff,
+  Bandit, dependency audit, branch coverage, package build, and packaged GUI
+  startup/shutdown gates.
+- Updated Pillow and build/test dependencies to remove known dependency
+  vulnerabilities, validated the built wheel in an isolated environment, and
+  raised the enforced branch-coverage baseline to 45 percent.
+- Hardened loopback OCR transport validation, worker subprocess cleanup,
+  platform file opening, PDF page-count error handling, and actionable disk-full
+  and locked-file diagnostics; Bandit now reports no medium-or-higher findings.
+- Added Tesseract installed-language diagnostics, including a clear warning when
+  Traditional or Simplified Chinese language data is unavailable.
+- Hardened repeated PyInstaller builds by safely clearing read-only prior build
+  trees, detecting a still-running packaged app, and smoke-testing graceful GUI
+  shutdown after packaging.
 - Repaired launcher failures caused by incomplete editable-package metadata in `.venv`, pinned the Windows project environment to the installed uv-managed Python runtime, prevented `uv run` from redundantly synchronizing immediately after a successful `uv sync`, and excluded the optional multi-gigabyte OCR runtime from project packaging scans.
 - Fixed virtual-environment repair coverage on macOS and Linux, retained the Windows read-only metadata regression test, and deduplicated case-insensitive `site-packages` aliases on macOS.
 - Hardened GUI worker shutdown and PyMuPDF document cleanup so closing the app does not leave background worker processes running and error or cancellation paths do not retain PDF file handles; also cleaned static-analysis findings and added lifecycle regression coverage.

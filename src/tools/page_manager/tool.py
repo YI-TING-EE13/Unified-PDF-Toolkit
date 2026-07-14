@@ -293,7 +293,7 @@ class PageManagerTool(BaseTool):
             tk_img = ImageTk.PhotoImage(img)
             self.queue.put(("preview", tk_img))
         except Exception:
-            pass
+            return
 
     # Queue
 
