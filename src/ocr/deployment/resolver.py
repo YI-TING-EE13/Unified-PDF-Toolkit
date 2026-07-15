@@ -44,7 +44,15 @@ class EnvironmentResolver:
         if compatibility.recommended_backend != RuntimeBackend.TRANSFORMERS:
             blocked.append("No safe Transformers backend was selected.")
         if not profile:
-            blocked.append("No official PyTorch CUDA wheel profile matches the detected Driver.")
+            driver_is_incompatible = any(
+                "NVIDIA Driver is missing, unknown, or too old" in reason
+                for reason in compatibility.requirements_missing
+            )
+            blocked.append(
+                "No official PyTorch CUDA wheel profile matches the detected Driver."
+                if driver_is_incompatible
+                else "The PyTorch CUDA wheel profile could not be resolved from the compatibility result."
+            )
         if environment_manager not in {"uv", "conda"}:
             blocked.append("No supported private environment manager was selected.")
 
@@ -77,7 +85,7 @@ class EnvironmentResolver:
                     )
                 )
             commands.append((str(python), "-m", "pip", "install", *runtime_packages))
-        else:
+        elif environment_manager == "uv":
             commands.append(("uv", "venv", str(environment_root), "--python", "3.12"))
             if profile:
                 commands.append(

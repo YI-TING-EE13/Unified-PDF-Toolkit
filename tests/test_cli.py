@@ -11,7 +11,7 @@ from unittest import mock
 
 import fitz
 
-from src.cli import main
+from src.cli import _human_plan, main
 from src.core.batch import BatchJob, HeadlessBatchRunner
 from src.utils.diagnostics import _tesseract_language_check
 
@@ -28,6 +28,35 @@ def create_pdf(path: Path, pages: int = 1) -> None:
 
 
 class CommandLineTests(unittest.TestCase):
+    def test_blocked_ocr_plan_is_actionable_and_does_not_offer_setup(self):
+        payload = {
+            "compatibility": {
+                "status": "UNSUPPORTED",
+                "confidence": 0.9,
+                "risk_level": "BLOCKED",
+                "recommended_backend": "none",
+                "recommended_runtime": None,
+                "estimated_download_size": 12 * 1024**3,
+                "estimated_disk_usage": 20 * 1024**3,
+                "estimated_vram_requirement": 12 * 1024**3,
+                "reasons": ["Hardware requirements are not met."],
+                "requirements_met": ["Linux is eligible."],
+                "requirements_missing": ["VRAM is insufficient."],
+                "required_changes": [],
+            },
+            "plan": {
+                "plan_id": "blocked-plan",
+                "runtime_root": "/tmp/private-runtime",
+                "blocked_reasons": ["Compatibility status is UNSUPPORTED."],
+            },
+            "consent_summary": {"setup_allowed": False},
+        }
+        output = _human_plan(payload)
+        self.assertIn("Can this device install Unlimited-OCR safely now? No", output)
+        self.assertIn("Setup allowed: no", output)
+        self.assertIn("VRAM is insufficient", output)
+        self.assertIn("Tesseract remains available", output)
+
     def test_importing_cli_does_not_load_tkinter(self):
         result = subprocess.run(
             [

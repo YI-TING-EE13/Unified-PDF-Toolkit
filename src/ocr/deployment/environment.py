@@ -111,6 +111,23 @@ class EnvironmentInspector:
             )
             if result["returncode"] == 0 and result["stdout"].strip():
                 return result["stdout"].strip()
+        elif sys.platform.startswith("linux"):
+            try:
+                cpuinfo = Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                cpuinfo = ""
+            for key in ("model name", "hardware", "processor"):
+                match = re.search(
+                    rf"^{re.escape(key)}\s*:\s*(.+)$",
+                    cpuinfo,
+                    re.MULTILINE | re.IGNORECASE,
+                )
+                if match and match.group(1).strip():
+                    return match.group(1).strip()
+        elif sys.platform == "darwin":
+            result = self._run(["sysctl", "-n", "machdep.cpu.brand_string"])
+            if result["returncode"] == 0 and result["stdout"].strip():
+                return result["stdout"].strip()
         return (
             platform.processor().strip()
             or os.environ.get("PROCESSOR_IDENTIFIER", "").strip()
@@ -372,12 +389,71 @@ class EnvironmentInspector:
         if name == "pip":
             result = self._run([sys.executable, "-m", "pip", "--version"])
         else:
-            result = self._run([name, "--version"])
+            executable = self._find_tool(name)
+            result = (
+                self._run([str(executable), "--version"])
+                if executable is not None
+                else {
+                    "available": False,
+                    "returncode": None,
+                    "stdout": "",
+                    "stderr": "",
+                    "path": None,
+                }
+            )
         return {
             "available": bool(result["available"] and result["returncode"] == 0),
             "path": result.get("path"),
             "version_output": (result.get("stdout") or result.get("stderr") or "").strip(),
         }
+
+    @staticmethod
+    def _find_tool(name: str) -> Path | None:
+        """Find supported user-level environment managers without modifying PATH."""
+
+        discovered = shutil.which(name)
+        if discovered:
+            return Path(discovered)
+
+        home = Path.home()
+        candidates: list[Path] = []
+        if name == "conda":
+            if sys.platform == "win32":
+                candidates.extend(
+                    Path(root) / "Scripts" / "conda.exe"
+                    for root in (
+                        sys.base_prefix,
+                        home / "miniforge3",
+                        home / "Miniforge3",
+                        home / "miniconda3",
+                        home / "Miniconda3",
+                        home / "anaconda3",
+                        home / "Anaconda3",
+                    )
+                )
+            else:
+                candidates.extend(
+                    Path(root) / "bin" / "conda"
+                    for root in (
+                        sys.base_prefix,
+                        home / "miniforge3",
+                        home / "miniconda3",
+                        home / "anaconda3",
+                    )
+                )
+        elif name == "uv":
+            executable = "uv.exe" if sys.platform == "win32" else "uv"
+            candidates.extend(
+                (
+                    home / ".local" / "bin" / executable,
+                    home / ".cargo" / "bin" / executable,
+                )
+            )
+
+        for candidate in candidates:
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return candidate.resolve()
+        return None
 
     def _pytorch_info(self) -> dict[str, Any]:
         if importlib.util.find_spec("torch") is None:

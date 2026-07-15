@@ -545,14 +545,18 @@ def open_unlimited_ocr_setup(parent: tk.Misc) -> UnlimitedOcrSetupDialog:
 
 
 def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: dict[str, Any]) -> str:
-    gpu = next(
-        (item for item in environment.gpu if str(item.get("vendor")).upper() == "NVIDIA"),
-        {},
-    )
+    gpu = _best_nvidia_gpu_for_display(environment.gpu)
+    setup_allowed = bool(summary.get("setup_allowed"))
     lines = [
         f"Decision: {compatibility.status.value}",
         f"Confidence: {compatibility.confidence:.0%}",
         f"Risk: {compatibility.risk_level.value}",
+        f"Setup allowed: {'Yes' if setup_allowed else 'No'}",
+        (
+            "Recommendation for this device: Installation may proceed after explicit consent."
+            if setup_allowed
+            else "Recommendation for this device: Do not install Unlimited-OCR; use the Tesseract fallback."
+        ),
         "",
         "Detected device",
         f"- OS: {environment.os.get('platform')}",
@@ -577,12 +581,14 @@ def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: di
         "- NVIDIA Driver update: Not included",
         "- System CUDA modification: Not included",
         "- PATH/global Python modification: Not included",
-        f"- Backend: {summary['backend']}",
+        f"- Candidate backend: {summary['backend']}",
+        f"- Recommended backend: {summary['recommended_backend']}",
+        f"- Recommended runtime: {summary['recommended_runtime'] or 'none'}",
         f"- Private runtime: {summary['runtime_root']}",
         f"- Private model cache: {summary['model_cache_dir']}",
         f"- Model revision: {summary['model_revision']}",
         "",
-        "Why this is recommended",
+        "Why Unlimited-OCR may help on supported devices",
         summary["why_recommended"],
         summary["comparison_to_basic_ocr"],
         "",
@@ -603,7 +609,23 @@ def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: di
         lines.extend(
             ["", "Missing requirements", *[f"- {item}" for item in compatibility.requirements_missing]]
         )
+    if plan.blocked_reasons:
+        lines.extend(["", "Setup blockers", *[f"- {item}" for item in plan.blocked_reasons]])
     return "\n".join(lines)
+
+
+def _best_nvidia_gpu_for_display(items: Any) -> dict[str, Any]:
+    candidates = [item for item in items if str(item.get("vendor", "")).upper() == "NVIDIA"]
+    if not candidates:
+        return {}
+
+    def vram(item: dict[str, Any]) -> int:
+        try:
+            return int(item.get("vram_total_bytes") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return max(candidates, key=vram)
 
 
 def _format_bytes(value: Any) -> str:

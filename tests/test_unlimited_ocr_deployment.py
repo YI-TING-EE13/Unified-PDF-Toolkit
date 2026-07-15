@@ -202,6 +202,32 @@ class EnvironmentInspectorTests(unittest.TestCase):
         value = "預設版本: 2".encode("utf-16")
         self.assertEqual(_decode_command_output(value), "預設版本: 2")
 
+    def test_linux_cpu_model_uses_proc_cpuinfo_when_platform_returns_architecture(self):
+        inspector = EnvironmentInspector(command_timeout=1)
+        cpuinfo = "processor : 0\nmodel name : Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz\n"
+        with (
+            patch("src.ocr.deployment.environment.sys.platform", "linux"),
+            patch("src.ocr.deployment.environment.Path.read_text", return_value=cpuinfo),
+        ):
+            model = inspector._cpu_model()
+        self.assertEqual(model, "Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz")
+
+    def test_conda_is_found_in_base_prefix_without_path_mutation(self):
+        inspector = EnvironmentInspector(command_timeout=1)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            conda = root / "bin" / "conda"
+            conda.parent.mkdir()
+            conda.write_text("stub", encoding="utf-8")
+            with (
+                patch("src.ocr.deployment.environment.sys.platform", "linux"),
+                patch("src.ocr.deployment.environment.sys.base_prefix", str(root)),
+                patch("src.ocr.deployment.environment.shutil.which", return_value=None),
+                patch("src.ocr.deployment.environment.os.access", return_value=True),
+            ):
+                discovered = inspector._find_tool("conda")
+        self.assertEqual(discovered, conda.resolve())
+
     def test_inspector_shape_with_stubbed_collectors(self):
         inspector = EnvironmentInspector(data_root=Path(tempfile.gettempdir()) / "ocr-inspector-test")
         with (
@@ -280,6 +306,14 @@ class CompatibilityTests(unittest.TestCase):
         result = self.evaluate(env)
         self.assertEqual(result.status, CompatibilityStatus.UNKNOWN)
         self.assertIsNone(result.recommended_runtime)
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = EnvironmentResolver(self.metadata).resolve(result, data_root=Path(temporary))
+        self.assertEqual(plan.environment_manager, "unresolved")
+        self.assertEqual(plan.commands, ())
+        self.assertNotIn(
+            "No official PyTorch CUDA wheel profile matches the detected Driver.",
+            plan.blocked_reasons,
+        )
 
     def test_no_nvidia_gpu_is_unsupported(self):
         env = _environment(
@@ -425,6 +459,56 @@ class ResolverAndConsentTests(unittest.TestCase):
         self.assertFalse(summary["system_cuda_change_included"])
         self.assertGreater(summary["estimated_download_bytes"], 10 * 1024**3)
         self.assertEqual(summary["recommended_ram_bytes"], 32 * 1024**3)
+        self.assertTrue(summary["setup_allowed"])
+        self.assertIn("install_and_enable", summary["actions"])
+
+    def test_unsupported_device_never_offers_install_action(self):
+        environment = _environment(
+            memory={"total_bytes": 8 * 1024**3, "available_bytes": 6 * 1024**3},
+            gpu=(
+                {
+                    "index": 0,
+                    "vendor": "NVIDIA",
+                    "name": "NVIDIA GeForce GTX 1060",
+                    "vram_total_bytes": 6 * 1024**3,
+                    "vram_free_bytes": 5 * 1024**3,
+                    "driver_version": "570.133.07",
+                    "compute_capability": "6.1",
+                },
+            ),
+            nvidia_driver={"available": True, "driver_version": "570.133.07"},
+            python={
+                "version": "3.12.11",
+                "tools": {
+                    "uv": {"available": False},
+                    "pip": {"available": True},
+                    "conda": {"available": True},
+                },
+            },
+        )
+        compatibility = CompatibilityEngine(self.metadata).evaluate(environment)
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = EnvironmentResolver(self.metadata).resolve(
+                compatibility, data_root=Path(temporary)
+            )
+        summary = build_consent_summary(compatibility, plan)
+        self.assertEqual(compatibility.status, CompatibilityStatus.UNSUPPORTED)
+        self.assertFalse(plan.executable)
+        self.assertFalse(summary["setup_allowed"])
+        self.assertNotIn("install_and_enable", summary["actions"])
+        self.assertEqual(summary["recommended_backend"], "none")
+
+    def test_gpu_display_selects_the_nvidia_device_with_most_vram(self):
+        from src.ui.unlimited_ocr_setup import _best_nvidia_gpu_for_display
+
+        selected = _best_nvidia_gpu_for_display(
+            (
+                {"vendor": "Intel", "name": "iGPU", "vram_total_bytes": 0},
+                {"vendor": "NVIDIA", "name": "small", "vram_total_bytes": 4},
+                {"vendor": "NVIDIA", "name": "large", "vram_total_bytes": 12},
+            )
+        )
+        self.assertEqual(selected["name"], "large")
 
 
 class CacheTests(unittest.TestCase):

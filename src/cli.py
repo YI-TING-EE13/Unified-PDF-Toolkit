@@ -505,47 +505,92 @@ def _write_or_print_ocr_payload(
 
 def _human_environment(payload: dict[str, Any]) -> str:
     gpu = payload.get("gpu", [])
+    gpu_lines = [
+        f"- {item.get('name', 'unknown')} ({_human_bytes(item.get('vram_total_bytes'))} VRAM, "
+        f"compute capability {item.get('compute_capability') or 'unknown'})"
+        for item in gpu
+    ]
+    recommendation = payload.get("recommendation", {})
     lines = [
         f"OS: {payload.get('os', {}).get('platform')}",
         f"CPU: {payload.get('cpu', {}).get('model')}",
-        f"RAM bytes: {payload.get('memory', {}).get('total_bytes')}",
-        f"GPU(s): {', '.join(str(item.get('name')) for item in gpu) or 'none'}",
+        f"RAM: {_human_bytes(payload.get('memory', {}).get('total_bytes'))} "
+        f"({_human_bytes(payload.get('memory', {}).get('available_bytes'))} available)",
+        "GPU(s):",
+        *(gpu_lines or ["- none"]),
         f"NVIDIA Driver: {payload.get('nvidia_driver', {}).get('driver_version')}",
         f"CUDA Driver API: {payload.get('cuda', {}).get('driver_api_version')}",
-        f"Compatibility: {payload.get('recommendation', {}).get('status')}",
+        f"Installed CUDA Toolkit: {payload.get('cuda', {}).get('toolkit_version') or 'not found'}",
+        f"Free disk: {_human_bytes(payload.get('storage', {}).get('free_bytes'))}",
+        f"Compatibility: {recommendation.get('status')}",
+        f"Risk: {recommendation.get('risk_level')}",
     ]
+    missing = recommendation.get("requirements_missing", [])
+    if missing:
+        lines.extend(["Missing requirements:", *[f"- {item}" for item in missing]])
     return "\n".join(lines)
 
 
 def _human_plan(payload: dict[str, Any]) -> str:
     plan = payload["plan"]
     compatibility = payload["compatibility"]
-    return "\n".join(
-        [
-            f"Decision: {compatibility['status']} (confidence {compatibility['confidence']:.0%})",
-            f"Risk: {compatibility['risk_level']}",
-            f"Plan ID: {plan['plan_id']}",
-            f"Backend: {plan['backend']}",
-            f"Estimated download bytes: {compatibility['estimated_download_size']}",
-            f"Estimated disk bytes: {compatibility['estimated_disk_usage']}",
-            f"Private runtime: {plan['runtime_root']}",
-            "No Driver, system CUDA, PATH, or global Python change is included.",
-            "Run with --json or --output for complete technical and consent details.",
-        ]
-    )
+    summary = payload["consent_summary"]
+    setup_allowed = bool(summary.get("setup_allowed"))
+    lines = [
+        f"Can this device install Unlimited-OCR safely now? {'Yes' if setup_allowed else 'No'}",
+        f"Decision: {compatibility['status']} (confidence {compatibility['confidence']:.0%})",
+        f"Risk: {compatibility['risk_level']}",
+        f"Setup allowed: {'yes' if setup_allowed else 'no'}",
+        f"Recommended backend: {compatibility['recommended_backend']}",
+        f"Recommended runtime: {compatibility['recommended_runtime'] or 'none'}",
+        f"Plan ID: {plan['plan_id']}",
+        f"Estimated download: {_human_bytes(compatibility['estimated_download_size'])}",
+        f"Estimated disk use: {_human_bytes(compatibility['estimated_disk_usage'])}",
+        f"Estimated VRAM target: {_human_bytes(compatibility['estimated_vram_requirement'])}",
+        f"Private runtime: {plan['runtime_root']}",
+        "No Driver, system CUDA, PATH, or global Python change is included.",
+        "Tesseract remains available as the basic OCR fallback.",
+    ]
+    for heading, key in (
+        ("Why", "reasons"),
+        ("Requirements met", "requirements_met"),
+        ("Missing requirements", "requirements_missing"),
+        ("Changes required after consent", "required_changes"),
+        ("Setup blockers", "blocked_reasons"),
+    ):
+        values = plan.get(key, []) if key == "blocked_reasons" else compatibility.get(key, [])
+        if values:
+            lines.extend([heading + ":", *[f"- {item}" for item in values]])
+    lines.append("Run with --json or --output for complete technical and consent details.")
+    return "\n".join(lines)
 
 
 def _human_status(payload: dict[str, Any]) -> str:
     model = payload["model"]
     provider = payload["provider"]
+    compatibility = payload["compatibility"]
     return "\n".join(
         [
             f"Plan ID: {payload['plan_id']}",
+            f"Compatibility: {compatibility['status']} (risk={compatibility['risk_level']})",
             f"Provider: {provider['status']} (available={provider['available']}, loaded={provider['loaded']})",
             f"Model snapshot: exists={model['exists']}, complete={model['complete']}",
             f"Journal present: {payload['journal'] is not None}",
+            "Tesseract fallback remains available when Unlimited-OCR is unavailable.",
         ]
     )
+
+
+def _human_bytes(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if number < 1024 or unit == "TiB":
+            return f"{number:.1f} {unit}"
+        number /= 1024
+    return "unknown"
 
 
 if __name__ == "__main__":

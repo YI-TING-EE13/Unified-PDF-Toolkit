@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from .metadata import load_compatibility_metadata
-from .models import CompatibilityReport, RuntimePlan
+from .models import CompatibilityReport, CompatibilityStatus, RuntimePlan
 
 DEPLOYMENT_CONSENT_VERSION = "2026-07-14.1"
 INSTALL_ACTION = "install_and_enable"
@@ -118,6 +118,10 @@ def build_consent_summary(
     """Return all material facts that must appear before the install action."""
 
     estimates = (metadata or load_compatibility_metadata())["resource_estimates"]
+    setup_allowed = plan.executable and compatibility.status not in {
+        CompatibilityStatus.UNSUPPORTED,
+        CompatibilityStatus.UNKNOWN,
+    }
     return {
         "why_recommended": (
             "Unlimited-OCR can preserve complex document structure and mixed-language layout "
@@ -144,6 +148,10 @@ def build_consent_summary(
         "runtime_root": plan.runtime_root,
         "model_cache_dir": plan.model_cache_dir,
         "backend": plan.backend.value,
+        "recommended_backend": compatibility.recommended_backend.value,
+        "recommended_runtime": compatibility.recommended_runtime,
+        "setup_allowed": setup_allowed,
+        "blocking_reasons": plan.blocked_reasons,
         "model_id": plan.model_id,
         "model_revision": plan.model_revision,
         "reversible_changes": plan.reversible_changes,
@@ -153,5 +161,9 @@ def build_consent_summary(
             "OCR accuracy, real-time speed, full 32K context, and freedom from GPU OOM "
             "cannot be guaranteed before a real local benchmark."
         ),
-        "actions": ("install_and_enable", "view_technical_details", "not_now"),
+        "actions": (
+            ("install_and_enable", "view_technical_details", "not_now")
+            if setup_allowed
+            else ("view_technical_details", "not_now")
+        ),
     }
