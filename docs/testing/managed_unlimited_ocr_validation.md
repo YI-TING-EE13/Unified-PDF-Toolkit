@@ -198,9 +198,9 @@ package, PyInstaller, packaged GUI smoke, real provider, official metadata
 audit, and isolated cleanup gates passed. The live source audit reported
 `changed: false`.
 
-Clean-runner CI run
-[`29386808473`](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/29386808473)
-passed on commit `842dc87`: quality/security, Ubuntu, macOS, Windows, and the
+Final clean-runner CI run
+[`29392556246`](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/29392556246)
+passed on commit `ea9c902`: quality/security, Ubuntu, macOS, Windows, and the
 dependent Windows PyInstaller build, packaged-app smoke, and artifact upload all
 succeeded. GitHub emitted one non-failing setup-uv cache-reservation annotation
 because parallel Ubuntu jobs attempted to create the same cache key; it did not
