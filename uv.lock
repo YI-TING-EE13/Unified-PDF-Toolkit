@@ -757,6 +757,15 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-ml-py"
+version = "13.610.43"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f0/b5/a8fbc356f768fa5c9cfd646668fd7d34bf55bdd1c6e20754642a64d930d4/nvidia_ml_py-13.610.43.tar.gz", hash = "sha256:65437eb73d68d0c62c931ca4d45038472faff03bd0b8729abba4b899f70d60f2", size = 52109, upload-time = "2026-06-01T18:54:08.829Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/45/caa600acfab94560807a20a64b5830d2cd3c3202b7f1328644d70b7d6bd8/nvidia_ml_py-13.610.43-py3-none-any.whl", hash = "sha256:f13c72698edef492f985cc225f14faafe68ae065a2e407f45bdf6f4b9b43fde8", size = 53163, upload-time = "2026-06-01T18:54:07.704Z" },
+]
+
+[[package]]
 name = "opencv-python-headless"
 version = "4.13.0.92"
 source = { registry = "https://pypi.org/simple" }
@@ -798,8 +807,10 @@ name = "pdf-toolkit"
 version = "0.6.0b3"
 source = { editable = "." }
 dependencies = [
+    { name = "nvidia-ml-py" },
     { name = "pdf2docx" },
     { name = "pillow" },
+    { name = "psutil" },
     { name = "pymupdf" },
     { name = "pytesseract" },
     { name = "python-docx" },
@@ -812,7 +823,6 @@ dev = [
     { name = "bandit" },
     { name = "coverage" },
     { name = "pip-audit" },
-    { name = "psutil" },
     { name = "pyinstaller" },
     { name = "ruff" },
     { name = "setuptools" },
@@ -820,8 +830,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "nvidia-ml-py", specifier = ">=13.580.65" },
     { name = "pdf2docx", specifier = ">=0.5.8" },
     { name = "pillow", specifier = ">=12.3.0" },
+    { name = "psutil", specifier = ">=7.0.0" },
     { name = "pymupdf", specifier = ">=1.22.0" },
     { name = "pytesseract", specifier = ">=0.3.13" },
     { name = "python-docx", specifier = ">=1.1.0" },
@@ -834,7 +846,6 @@ dev = [
     { name = "bandit", specifier = ">=1.9.4" },
     { name = "coverage", specifier = ">=7.15.1" },
     { name = "pip-audit", specifier = ">=2.10.1" },
-    { name = "psutil", specifier = ">=7.0.0" },
     { name = "pyinstaller", specifier = ">=6.21.0" },
     { name = "ruff", specifier = ">=0.15.21" },
     { name = "setuptools", specifier = ">=83.0.0" },

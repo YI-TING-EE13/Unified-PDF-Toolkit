@@ -48,6 +48,7 @@ coverage.xml
 *.swo
 
 # Project Specific (Temporary outputs if any)
+tmp/
 # Numbered README copies created by browsers or file managers
 README ([0-9]*).md
 

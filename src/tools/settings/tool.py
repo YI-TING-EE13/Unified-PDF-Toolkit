@@ -99,6 +99,25 @@ class SettingsTool(BaseTool):
             command=self._reset_advanced_ocr_consent,
         ).pack(side="left", padx=(8, 0))
 
+        managed_frame = ttk.LabelFrame(
+            parent, text="Managed Unlimited-OCR Setup", padding=10
+        )
+        managed_frame.pack(fill="x", pady=(0, 10))
+        ttk.Label(
+            managed_frame,
+            text=(
+                "Analyze this computer, review model and hardware costs, then optionally create "
+                "an isolated runtime, download a pinned model, validate it, benchmark it, and "
+                "register it with the APP. Analysis alone never downloads or modifies the system."
+            ),
+            wraplength=900,
+        ).pack(anchor="w", pady=(0, 8))
+        ttk.Button(
+            managed_frame,
+            text="Analyze / Install / Manage Unlimited-OCR",
+            command=self._open_managed_unlimited_ocr_setup,
+        ).pack(anchor="w")
+
         runtime_frame = ttk.LabelFrame(
             parent, text="Experimental Local Model OCR Runtime", padding=10
         )
@@ -221,6 +240,11 @@ class SettingsTool(BaseTool):
 
     def execute(self, params: Optional[Dict[str, Any]] = None) -> None:
         self._save_preferences()
+
+    def _open_managed_unlimited_ocr_setup(self) -> None:
+        from ...ui.unlimited_ocr_setup import open_unlimited_ocr_setup
+
+        open_unlimited_ocr_setup(self.parent.winfo_toplevel())
 
     def _save_preferences(self) -> None:
         set_setting("output.conflict_policy", self.conflict_var.get())

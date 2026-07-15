@@ -117,6 +117,50 @@ def build_parser() -> argparse.ArgumentParser:
         default="Grayscale",
     )
     _add_execution_options(word, output_required=True)
+
+    ocr = subparsers.add_parser(
+        "ocr",
+        help="Inspect, plan, install, validate, or remove managed Unlimited-OCR.",
+    )
+    ocr_subparsers = ocr.add_subparsers(dest="ocr_command", required=True)
+    for name, help_text in (
+        ("inspect", "Collect a read-only hardware and software environment report."),
+        ("plan", "Evaluate compatibility and print the exact consent-bound setup plan."),
+        ("status", "Show managed runtime, model cache, journal, and provider health status."),
+    ):
+        command = ocr_subparsers.add_parser(name, help=help_text)
+        command.add_argument("--output", help="Optional UTF-8 JSON output file.")
+        command.add_argument("--json", action="store_true", help="Print structured JSON.")
+
+    setup = ocr_subparsers.add_parser(
+        "setup",
+        help="Execute a previously reviewed plan after explicit acknowledgements.",
+    )
+    setup.add_argument("--plan-id", required=True, help="Exact plan_id printed by 'ocr plan'.")
+    for key in (
+        "large-download",
+        "private-environment",
+        "custom-code",
+        "resource-usage",
+        "local-processing-and-temporary-files",
+        "no-performance-guarantee",
+    ):
+        setup.add_argument(f"--ack-{key}", action="store_true", help=argparse.SUPPRESS)
+    setup.add_argument("--json", action="store_true", help="Print the final journal as JSON.")
+    setup.add_argument("--quiet", action="store_true", help="Hide stage progress messages.")
+
+    uninstall = ocr_subparsers.add_parser(
+        "uninstall",
+        help="Remove only managed paths after exact plan confirmation.",
+    )
+    uninstall.add_argument(
+        "--confirm-plan-id",
+        required=True,
+        help="Exact current plan_id; prevents stale or accidental cleanup.",
+    )
+    uninstall.add_argument("--remove-model", action="store_true")
+    uninstall.add_argument("--clear-download-cache", action="store_true")
+    uninstall.add_argument("--json", action="store_true")
     return parser
 
 
@@ -205,6 +249,8 @@ def _jobs_from_args(args: argparse.Namespace) -> tuple[list[BatchJob], str, str]
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "ocr":
+        return _run_managed_ocr_command(args)
     try:
         jobs, output_dir, conflict_policy = _jobs_from_args(args)
         token = CancellationToken()
@@ -240,7 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if previous_sigint is not None:
                 signal.signal(signal.SIGINT, previous_sigint)
         if args.json:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=True, indent=2))
         else:
             print(
                 f"Complete: {result['success']} succeeded, {result['failed']} failed, "
@@ -256,6 +302,216 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+
+def _run_managed_ocr_command(args: argparse.Namespace) -> int:
+    from .ocr.consent import clear_advanced_ocr_consent
+    from .ocr.deployment.cache import ModelCacheManager
+    from .ocr.deployment.consent import DeploymentConsent, build_consent_summary
+    from .ocr.deployment.errors import DeploymentFailure
+    from .ocr.deployment.models import CompatibilityStatus
+    from .ocr.deployment.orchestrator import CancellationToken as SetupCancellationToken
+    from .ocr.deployment.orchestrator import DeploymentCleanup
+    from .ocr.deployment.providers import UnlimitedOCRProvider
+    from .ocr.deployment.validation_assets import create_validation_suite
+    from .ocr.local_model import clear_local_model_runtime_config
+
+    provider = UnlimitedOCRProvider()
+    try:
+        environment, compatibility, plan = provider.analyze()
+        if environment is None or compatibility is None:
+            raise RuntimeError("Managed OCR analysis returned no result.")
+        summary = build_consent_summary(compatibility, plan)
+
+        if args.ocr_command == "inspect":
+            payload = environment.to_dict()
+            payload["recommendation"] = compatibility.to_dict()
+            _write_or_print_ocr_payload(payload, args, human=_human_environment(payload))
+            return 0
+
+        if args.ocr_command == "plan":
+            payload = {
+                "environment": environment.to_dict(),
+                "compatibility": compatibility.to_dict(),
+                "plan": plan.to_dict(),
+                "consent_summary": summary,
+            }
+            _write_or_print_ocr_payload(payload, args, human=_human_plan(payload))
+            return (
+                3
+                if compatibility.status
+                in {CompatibilityStatus.UNSUPPORTED, CompatibilityStatus.UNKNOWN}
+                else 0
+            )
+
+        cache = ModelCacheManager(Path(plan.model_cache_dir))
+        if args.ocr_command == "status":
+            journal_path = Path(plan.runtime_root) / "state" / "installation.json"
+            journal = None
+            if journal_path.is_file():
+                try:
+                    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as exc:
+                    journal = {"error": f"Unable to read journal: {exc}"}
+            payload = {
+                "plan_id": plan.plan_id,
+                "compatibility": compatibility.to_dict(),
+                "model": cache.inspect(plan.model_revision, provider.engine.metadata).to_dict(),
+                "provider": provider.health_check().to_dict(),
+                "journal": journal,
+            }
+            _write_or_print_ocr_payload(payload, args, human=_human_status(payload))
+            return 0
+
+        if args.ocr_command == "uninstall":
+            if args.confirm_plan_id != plan.plan_id:
+                raise ValueError("confirm-plan-id does not match the current reviewed plan.")
+            provider.unload()
+            result = DeploymentCleanup(plan).uninstall(
+                confirmed=True,
+                remove_model=args.remove_model,
+                clear_download_cache=args.clear_download_cache,
+            )
+            clear_local_model_runtime_config()
+            clear_advanced_ocr_consent()
+            if args.json:
+                print(json.dumps(result, ensure_ascii=True, indent=2))
+            else:
+                print("Managed Unlimited-OCR cleanup completed.")
+                for key, value in result.items():
+                    print(f"- {key}: {value}")
+            return 0
+
+        if args.plan_id != plan.plan_id:
+            raise ValueError(
+                "plan-id does not match the current hardware/metadata plan. Run 'ocr plan' again."
+            )
+        acknowledgements = {
+            "large_download": args.ack_large_download,
+            "private_environment": args.ack_private_environment,
+            "custom_code": args.ack_custom_code,
+            "resource_usage": args.ack_resource_usage,
+            "local_processing_and_temporary_files": (
+                args.ack_local_processing_and_temporary_files
+            ),
+            "no_performance_guarantee": args.ack_no_performance_guarantee,
+        }
+        consent = DeploymentConsent.create(
+            plan=plan,
+            metadata_revision=compatibility.metadata_revision,
+            acknowledgements=acknowledgements,
+        )
+        token = SetupCancellationToken()
+        previous_sigint = signal.getsignal(signal.SIGINT)
+
+        def request_cancel(_signum: int, _frame: Any) -> None:
+            token.cancel()
+            print("Cancellation requested; stopping the active private process.", file=sys.stderr)
+
+        signal.signal(signal.SIGINT, request_cancel)
+        cases = create_validation_suite(Path(plan.runtime_root) / "state" / "validation-assets")
+
+        def progress(record: Any) -> None:
+            if not args.quiet:
+                print(
+                    f"[{record.stage.value}] {record.status.value}: {record.message}",
+                    file=sys.stderr,
+                )
+
+        try:
+            journal = provider.setup(
+                consent=consent,
+                cancellation=token,
+                progress_callback=progress,
+                validation_images=[case.image_path for case in cases],
+                validation_expectations={
+                    str(case.image_path): case.expected_terms for case in cases
+                },
+            )
+        finally:
+            signal.signal(signal.SIGINT, previous_sigint)
+        if args.json:
+            print(json.dumps(journal, ensure_ascii=True, indent=2))
+        else:
+            final = journal.get("steps", [])[-1] if journal.get("steps") else {}
+            print(f"Managed Unlimited-OCR setup status: {final.get('status', 'UNKNOWN')}")
+            print(f"Journal: {Path(plan.runtime_root) / 'state' / 'installation.json'}")
+        statuses = [step.get("status") for step in journal.get("steps", [])]
+        return 130 if any(value in {"CANCELLED", "PAUSED"} for value in statuses) else 0
+    except DeploymentFailure as exc:
+        error = exc.error.to_dict()
+        print(f"error [{error['error_code']}]: {error['user_message']}", file=sys.stderr)
+        return 4
+    except KeyboardInterrupt:
+        print("Cancelled.", file=sys.stderr)
+        return 130
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _write_or_print_ocr_payload(
+    payload: dict[str, Any],
+    args: argparse.Namespace,
+    *,
+    human: str,
+) -> None:
+    output = getattr(args, "output", None)
+    if output:
+        path = Path(output).expanduser().resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not args.json:
+            print(f"Report written: {path}")
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=True, indent=2))
+    elif not output:
+        print(human)
+
+
+def _human_environment(payload: dict[str, Any]) -> str:
+    gpu = payload.get("gpu", [])
+    lines = [
+        f"OS: {payload.get('os', {}).get('platform')}",
+        f"CPU: {payload.get('cpu', {}).get('model')}",
+        f"RAM bytes: {payload.get('memory', {}).get('total_bytes')}",
+        f"GPU(s): {', '.join(str(item.get('name')) for item in gpu) or 'none'}",
+        f"NVIDIA Driver: {payload.get('nvidia_driver', {}).get('driver_version')}",
+        f"CUDA Driver API: {payload.get('cuda', {}).get('driver_api_version')}",
+        f"Compatibility: {payload.get('recommendation', {}).get('status')}",
+    ]
+    return "\n".join(lines)
+
+
+def _human_plan(payload: dict[str, Any]) -> str:
+    plan = payload["plan"]
+    compatibility = payload["compatibility"]
+    return "\n".join(
+        [
+            f"Decision: {compatibility['status']} (confidence {compatibility['confidence']:.0%})",
+            f"Risk: {compatibility['risk_level']}",
+            f"Plan ID: {plan['plan_id']}",
+            f"Backend: {plan['backend']}",
+            f"Estimated download bytes: {compatibility['estimated_download_size']}",
+            f"Estimated disk bytes: {compatibility['estimated_disk_usage']}",
+            f"Private runtime: {plan['runtime_root']}",
+            "No Driver, system CUDA, PATH, or global Python change is included.",
+            "Run with --json or --output for complete technical and consent details.",
+        ]
+    )
+
+
+def _human_status(payload: dict[str, Any]) -> str:
+    model = payload["model"]
+    provider = payload["provider"]
+    return "\n".join(
+        [
+            f"Plan ID: {payload['plan_id']}",
+            f"Provider: {provider['status']} (available={provider['available']}, loaded={provider['loaded']})",
+            f"Model snapshot: exists={model['exists']}, complete={model['complete']}",
+            f"Journal present: {payload['journal'] is not None}",
+        ]
+    )
 
 
 if __name__ == "__main__":

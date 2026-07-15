@@ -38,6 +38,51 @@ All direct commands accept:
 - `--json` for a machine-readable final summary
 - `--quiet` to suppress progress messages
 
+## Managed Unlimited-OCR commands
+
+The advanced local OCR deployment commands are separate from normal batch jobs.
+Inspection, planning, and status are read-only:
+
+```powershell
+pdf-toolkit ocr inspect --json
+pdf-toolkit ocr plan --json
+pdf-toolkit ocr status --json
+```
+
+`ocr plan` prints the current compatibility decision, exact argv-only private
+environment plan, pinned source/model revisions, estimated download and disk
+cost, system-change boundary, and consent summary. A plan may be blocked or
+marked experimental; detecting an NVIDIA GPU does not make it automatically
+supported.
+
+Setup requires the current plan ID and six separate acknowledgements. There is
+no general `--yes` bypass:
+
+```powershell
+pdf-toolkit ocr setup `
+  --plan-id <reviewed-plan-id> `
+  --ack-large-download `
+  --ack-private-environment `
+  --ack-custom-code `
+  --ack-resource-usage `
+  --ack-local-processing-and-temporary-files `
+  --ack-no-performance-guarantee
+```
+
+Ctrl+C requests safe cancellation of the current private subprocess. Running
+the same reviewed plan again resumes its journal and reusable model cache.
+
+Cleanup is restricted to APP-managed paths and requires the exact current plan
+ID:
+
+```powershell
+pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id>
+pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id> --remove-model --clear-download-cache
+```
+
+Full behavior, privacy boundaries, and recovery rules are documented in
+[Managed Unlimited-OCR Setup](runtime/managed_unlimited_ocr.md).
+
 ## JSON manifest
 
 Edit the included example so `source` points to an existing PDF, then run it:
@@ -97,6 +142,8 @@ final JSON summary contains `success`, `failed`, `skipped`, `cancelled`, and
 | `0` | Run completed without failed jobs. Skipped outputs are not failures. |
 | `1` | One or more jobs failed. |
 | `2` | Command or manifest validation failed. |
+| `3` | Managed OCR compatibility is `UNSUPPORTED` or `UNKNOWN`. |
+| `4` | Managed OCR setup failed with a structured deployment error. |
 | `130` | Ctrl+C cancellation was requested. |
 
 Cancellation is cooperative: the current file finishes or fails, then the

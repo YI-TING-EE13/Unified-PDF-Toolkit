@@ -102,6 +102,7 @@ class PDFToolkitApp(_BaseTk):
         
         self._init_styles()
         self._init_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         
     def _init_styles(self) -> None:
         """Initialize custom ttk styles and color palette."""
@@ -245,6 +246,20 @@ class PDFToolkitApp(_BaseTk):
         
         self.current_tool = tool_id
         self.status_lbl.config(text=f"Active: {tool.name}")
+
+    def _on_close(self) -> None:
+        """Stop optional managed workers before destroying the Tk root."""
+
+        try:
+            from src.ui.unlimited_ocr_setup import cancel_active_setups
+            from src.ocr.deployment.providers import (
+                shutdown_managed_unlimited_ocr_provider,
+            )
+
+            cancel_active_setups()
+            shutdown_managed_unlimited_ocr_provider()
+        finally:
+            self.destroy()
 
 def main() -> int:
     """Start the GUI and avoid printing raw Tk/Tcl tracebacks to users."""

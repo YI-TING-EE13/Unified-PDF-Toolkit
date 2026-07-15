@@ -1,10 +1,38 @@
 # Advanced OCR Privacy and Security Review
 
 This review defines the security, privacy, and release requirements for any
-future real advanced local AI OCR or Unlimited-OCR-compatible backend. The app
-now includes an experimental local Unlimited-OCR backend path, but the default
-app does not download models, start OCR servers, call a real OCR endpoint, add
-GPU/runtime dependencies, or expose production-ready Unlimited-OCR support.
+advanced local AI OCR or Unlimited-OCR-compatible backend. The APP now includes
+a managed local deployment framework, but it performs only read-only analysis
+until the user accepts an exact plan. The default package still does not bundle
+models, torch, Transformers, CUDA runtimes, or production-ready Unlimited-OCR
+support.
+
+## Managed deployment controls (2026-07-14)
+
+- Six consent acknowledgements are unchecked by default and bound to the exact
+  plan and metadata revision.
+- Large downloads, runtime creation, and custom-code execution occur only after
+  valid consent; Driver and system CUDA changes are never in the plan.
+- The resolver uses argv-only private uv/Conda commands with `shell=False`, no
+  PATH edit, no admin requirement, and no global Python modification.
+- Metadata refresh accepts only allowlisted HTTPS hosts, limits response size,
+  is read-only by default, and pins full source/model Git revisions.
+- The model snapshot is restricted to a reviewed file inventory; the 6.67 GB
+  safetensors weight is size-checked and SHA-256 verified before loading.
+- `trust_remote_code` loads only from that verified local snapshot in the
+  private worker, with the pinned revision supplied to tokenizer and model.
+- Worker input/output paths must be regular files under APP-managed session
+  roots; model paths must remain under the managed snapshot root.
+- Setup and provider logs omit full OCR text, images, and source paths by
+  default. Hugging Face telemetry is disabled.
+- Cancellation terminates subprocess trees. Cleanup requires explicit
+  confirmation and refuses paths outside the managed data root.
+- An unhealthy or missing managed provider falls back to Tesseract and cannot
+  prevent the APP from starting.
+
+Remaining risk: pinned third-party custom Python code is still executable code.
+Revision pinning, file verification, isolation, consent, and local-only worker
+boundaries reduce but do not eliminate that supply-chain risk.
 
 ## Scope
 
@@ -15,6 +43,7 @@ backend. Covered backend types include:
 - A user-managed local OCR endpoint.
 - An in-process local model runtime.
 - The gated experimental local Unlimited-OCR worker runtime.
+- The managed Unlimited-OCR private worker and installer.
 
 This review does not approve production-ready AI OCR. Any expansion beyond the
 current gated experimental worker path must satisfy the release gates below

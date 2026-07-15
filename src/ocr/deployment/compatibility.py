@@ -1,0 +1,278 @@
+"""Metadata-driven compatibility evaluation for Unlimited-OCR."""
+
+from __future__ import annotations
+
+from typing import Any, Mapping
+
+from .metadata import load_compatibility_metadata, metadata_age_days
+from .models import (
+    CompatibilityReport,
+    CompatibilityStatus,
+    EnvironmentReport,
+    RiskLevel,
+    RuntimeBackend,
+)
+
+
+class CompatibilityEngine:
+    """Evaluate support conservatively; unknown evidence never becomes supported."""
+
+    def __init__(self, metadata: Mapping[str, Any] | None = None) -> None:
+        self.metadata = dict(metadata or load_compatibility_metadata())
+
+    def evaluate(self, report: EnvironmentReport | Mapping[str, Any]) -> CompatibilityReport:
+        env = report.to_dict() if isinstance(report, EnvironmentReport) else dict(report)
+        met: list[str] = []
+        missing: list[str] = []
+        changes: list[str] = []
+        reasons: list[str] = []
+        conflicts = list(self.metadata.get("known_conflicts", []))
+        status = CompatibilityStatus.SUPPORTED
+        confidence = 0.96
+
+        os_name = str(env.get("os", {}).get("system", ""))
+        architecture = str(env.get("os", {}).get("machine", ""))
+        is_wsl = bool(env.get("os", {}).get("is_wsl"))
+        if os_name not in {"Windows", "Linux"}:
+            missing.append(f"Unlimited-OCR has no verified NVIDIA Transformers path for {os_name or 'this OS'}.")
+            status = CompatibilityStatus.UNSUPPORTED
+        elif architecture.casefold() not in {"amd64", "x86_64"}:
+            missing.append(f"Architecture {architecture or 'unknown'} is not verified by this integration.")
+            status = CompatibilityStatus.UNKNOWN
+            confidence = min(confidence, 0.45)
+        else:
+            met.append(f"64-bit {os_name} runtime is eligible for an isolated Python environment.")
+            if is_wsl:
+                status = _degrade(status, CompatibilityStatus.EXPERIMENTAL)
+                reasons.append("WSL2 GPU pass-through must be validated inside the selected distribution.")
+
+        gpu = _best_nvidia_gpu(env.get("gpu", []))
+        estimates = self.metadata["resource_estimates"]
+        minimum_vram = int(estimates["minimum_vram_bytes"])
+        recommended_vram = int(estimates["recommended_vram_bytes"])
+        if gpu is None:
+            vendors = sorted({str(item.get("vendor", "Unknown")) for item in env.get("gpu", [])})
+            missing.append(
+                "A CUDA-capable NVIDIA GPU is required by the upstream Transformers recipe; "
+                f"detected vendors: {', '.join(vendors) or 'none'}."
+            )
+            status = CompatibilityStatus.UNSUPPORTED
+        else:
+            vram = _as_int(gpu.get("vram_total_bytes"))
+            if vram is None:
+                missing.append("NVIDIA GPU VRAM could not be measured reliably.")
+                status = _degrade(status, CompatibilityStatus.UNKNOWN)
+                confidence = min(confidence, 0.55)
+            elif vram < minimum_vram:
+                missing.append(
+                    f"GPU VRAM is {_gib(vram)} GiB; conservative minimum is {_gib(minimum_vram)} GiB."
+                )
+                status = CompatibilityStatus.UNSUPPORTED
+            elif vram < recommended_vram:
+                met.append(f"NVIDIA GPU detected with {_gib(vram)} GiB VRAM.")
+                reasons.append("VRAM is between the conservative minimum and recommended amount.")
+                status = _degrade(status, CompatibilityStatus.EXPERIMENTAL)
+                confidence = min(confidence, 0.7)
+            else:
+                met.append(
+                    f"{gpu.get('name', 'NVIDIA GPU')} has {_gib(vram)} GiB VRAM, meeting the conservative recommendation."
+                )
+            capability = _version_tuple(gpu.get("compute_capability"))
+            minimum_capability = _version_tuple(estimates["minimum_compute_capability"])
+            if capability is None:
+                missing.append("GPU compute capability could not be determined.")
+                status = _degrade(status, CompatibilityStatus.UNKNOWN)
+                confidence = min(confidence, 0.6)
+            elif capability < minimum_capability:
+                missing.append(
+                    "The official BF16 inference path requires an Ampere-class or newer GPU in this integration."
+                )
+                status = CompatibilityStatus.UNSUPPORTED
+            else:
+                met.append(f"GPU compute capability {gpu.get('compute_capability')} supports the BF16 plan.")
+
+        memory = _as_int(env.get("memory", {}).get("total_bytes")) or 0
+        if memory < int(estimates["minimum_ram_bytes"]):
+            missing.append(f"System RAM is {_gib(memory)} GiB; at least {_gib(estimates['minimum_ram_bytes'])} GiB is required.")
+            status = CompatibilityStatus.UNSUPPORTED
+        elif memory < int(estimates["recommended_ram_bytes"]):
+            met.append(f"System RAM is {_gib(memory)} GiB.")
+            reasons.append("RAM meets minimum but not the conservative recommendation.")
+            status = _degrade(status, CompatibilityStatus.EXPERIMENTAL)
+        else:
+            met.append(f"System RAM is {_gib(memory)} GiB, meeting the conservative recommendation.")
+
+        disk_free = _as_int(env.get("storage", {}).get("free_bytes")) or 0
+        if disk_free < int(estimates["minimum_free_disk_bytes"]):
+            missing.append(
+                f"Free disk is {_gib(disk_free)} GiB; setup requires at least {_gib(estimates['minimum_free_disk_bytes'])} GiB."
+            )
+            status = CompatibilityStatus.UNSUPPORTED
+        else:
+            met.append(f"Free disk space is {_gib(disk_free)} GiB.")
+        if not bool(env.get("storage", {}).get("writable_parent")):
+            missing.append("The private OCR data-root parent is not writable.")
+            status = CompatibilityStatus.UNSUPPORTED
+
+        driver = env.get("nvidia_driver", {})
+        driver_major = _driver_major(driver.get("driver_version"))
+        profile, index_url = self._select_pytorch_profile(driver_major)
+        if gpu is not None and profile is None:
+            missing.append("NVIDIA Driver is missing, unknown, or too old for an official PyTorch 2.10 CUDA wheel.")
+            status = CompatibilityStatus.UNSUPPORTED if driver_major is not None else CompatibilityStatus.UNKNOWN
+        elif profile:
+            met.append(f"NVIDIA Driver {driver.get('driver_version')} supports the PyTorch {profile} wheel family.")
+            changes.append(
+                f"Install torch 2.10.0 and torchvision 0.25.0 from {index_url} inside the private OCR runtime."
+            )
+
+        python = env.get("python", {})
+        tools = python.get("tools", {})
+        uv_available = bool(tools.get("uv", {}).get("available"))
+        conda_available = bool(tools.get("conda", {}).get("available"))
+        current_python = str(python.get("version", ""))
+        if current_python.startswith("3.12."):
+            met.append(f"Current Python {current_python} matches the upstream 3.12 major/minor.")
+        elif uv_available:
+            changes.append("Use uv to provision a private CPython 3.12 runtime without replacing system Python.")
+        elif conda_available:
+            changes.append(
+                "Use Conda to provision a private CPython 3.12 prefix without replacing system Python."
+            )
+        else:
+            missing.append(
+                "Python 3.12 is not active and neither uv nor Conda can provision it safely."
+            )
+            status = _degrade(status, CompatibilityStatus.UNKNOWN)
+        if uv_available:
+            met.append("uv is available for isolated, reproducible environment creation.")
+            environment_manager = "uv"
+        elif conda_available:
+            met.append("Conda is available for isolated prefix creation.")
+            environment_manager = "conda"
+        else:
+            environment_manager = None
+            if current_python.startswith("3.12."):
+                missing.append(
+                    "A supported environment manager is required so setup never modifies the APP runtime."
+                )
+                status = _degrade(status, CompatibilityStatus.UNKNOWN)
+
+        pytorch = env.get("pytorch", {})
+        if not pytorch.get("installed"):
+            changes.append("Install PyTorch only inside the private OCR runtime; the APP runtime remains unchanged.")
+        elif not pytorch.get("cuda_available"):
+            changes.append("Do not reuse the current CPU-only PyTorch; install a compatible private CUDA build.")
+        else:
+            met.append("The currently inspected runtime can access CUDA, but it will not be modified or reused automatically.")
+
+        changes.extend(
+            [
+                "Download the pinned Unlimited-OCR model revision after explicit consent.",
+                "Execute pinned Hugging Face custom model code only inside the private worker process.",
+            ]
+        )
+        if status == CompatibilityStatus.SUPPORTED:
+            status = CompatibilityStatus.SUPPORTED_WITH_CHANGES
+        reasons.insert(
+            0,
+            "Upstream documents NVIDIA Transformers inference, but installation and a real benchmark are still required.",
+        )
+        age = metadata_age_days(self.metadata)
+        if age > 30:
+            reasons.append(f"Bundled compatibility metadata is {age:.0f} days old and should be refreshed.")
+            status = _degrade(status, CompatibilityStatus.UNKNOWN)
+            confidence = min(confidence, 0.55)
+        if conflicts:
+            reasons.append("Known upstream metadata conflicts are recorded; incompatible backends remain blocked.")
+            confidence = min(confidence, 0.9)
+
+        artifacts = self.metadata["model_artifacts"]
+        download = int(artifacts["required_download_bytes"]) + int(
+            estimates["estimated_runtime_download_bytes"]
+        )
+        risk = RiskLevel.MEDIUM
+        if status in {CompatibilityStatus.UNSUPPORTED, CompatibilityStatus.UNKNOWN}:
+            risk = RiskLevel.BLOCKED
+        elif status == CompatibilityStatus.EXPERIMENTAL:
+            risk = RiskLevel.HIGH
+        return CompatibilityReport(
+            status=status,
+            confidence=round(max(0.0, min(confidence, 1.0)), 2),
+            reasons=tuple(_dedupe(reasons)),
+            requirements_met=tuple(_dedupe(met)),
+            requirements_missing=tuple(_dedupe(missing)),
+            required_changes=tuple(_dedupe(changes)),
+            estimated_download_size=download,
+            estimated_disk_usage=int(estimates["estimated_installed_bytes"]),
+            estimated_vram_requirement=int(estimates["recommended_vram_bytes"]),
+            recommended_backend=(
+                RuntimeBackend.TRANSFORMERS
+                if status not in {CompatibilityStatus.UNSUPPORTED, CompatibilityStatus.UNKNOWN}
+                else RuntimeBackend.NONE
+            ),
+            recommended_runtime=(
+                f"private {environment_manager} CPython 3.12 / torch 2.10.0 {profile or 'unresolved'} worker"
+                if profile and environment_manager
+                else None
+            ),
+            risk_level=risk,
+            metadata_revision=str(self.metadata["source_revision"]),
+            conflicts=tuple(conflicts),
+        )
+
+    def _select_pytorch_profile(self, driver_major: int | None) -> tuple[str | None, str | None]:
+        if driver_major is None:
+            return None, None
+        profiles = self.metadata["backends"]["transformers"]["pytorch_profiles"]
+        for name in ("cu130", "cu128", "cu126"):
+            profile = profiles[name]
+            if driver_major >= int(profile["minimum_driver_major"]):
+                return name, str(profile["index_url"])
+        return None, None
+
+
+def _best_nvidia_gpu(items: Any) -> Mapping[str, Any] | None:
+    candidates = [item for item in items or [] if str(item.get("vendor", "")).upper() == "NVIDIA"]
+    return max(candidates, key=lambda item: _as_int(item.get("vram_total_bytes")) or 0) if candidates else None
+
+
+def _driver_major(value: Any) -> int | None:
+    try:
+        return int(str(value).split(".", 1)[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _version_tuple(value: Any) -> tuple[int, ...] | None:
+    try:
+        return tuple(int(part) for part in str(value).split("."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _gib(value: Any) -> float:
+    return round(int(value) / (1024**3), 1)
+
+
+def _degrade(current: CompatibilityStatus, candidate: CompatibilityStatus) -> CompatibilityStatus:
+    order = {
+        CompatibilityStatus.SUPPORTED: 0,
+        CompatibilityStatus.SUPPORTED_WITH_CHANGES: 1,
+        CompatibilityStatus.CPU_ONLY_IF_AVAILABLE: 2,
+        CompatibilityStatus.EXPERIMENTAL: 3,
+        CompatibilityStatus.UNKNOWN: 4,
+        CompatibilityStatus.UNSUPPORTED: 5,
+    }
+    return candidate if order[candidate] > order[current] else current
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(value for value in values if value))

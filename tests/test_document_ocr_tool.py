@@ -113,6 +113,24 @@ class DocumentOcrToolTests(unittest.TestCase):
                 [TESSERACT_BACKEND_LABEL, LOCAL_UNLIMITED_BACKEND_LABEL],
             )
 
+        managed = LocalModelRuntimeConfig(
+            enabled=True,
+            mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+            options={"managed_plan_id": "reviewed-plan"},
+        )
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "src.tools.document_ocr.tool.load_local_model_runtime_config",
+                return_value=managed,
+            ),
+        ):
+            self.assertTrue(experimental_local_ocr_enabled())
+            self.assertEqual(
+                available_document_ocr_backend_labels(),
+                [TESSERACT_BACKEND_LABEL, LOCAL_UNLIMITED_BACKEND_LABEL],
+            )
+
     def test_tesseract_is_default_document_ocr_backend(self):
         tool = DocumentOcrTool()
         tool.backend_var = _FakeVar(TESSERACT_BACKEND_LABEL)

@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Added a consent-gated managed Unlimited-OCR deployment framework with
+  cross-platform hardware/software inspection, metadata-driven compatibility
+  decisions, exact private uv/Conda runtime plans, resumable staged setup,
+  pinned model inventory/SHA-256 verification, progress, retry, pause,
+  cancellation, recovery, uninstall, and cache cleanup.
+- Added a persistent advanced OCR provider with Tesseract fallback, GUI device
+  analysis and informed-consent setup, headless `pdf-toolkit ocr` inspection,
+  plan, status, setup, and cleanup commands, and APP shutdown handling for
+  installer/worker subprocesses.
+- Added deterministic plain-text, table, Chinese/English, complex-layout, and
+  rotated OCR acceptance assets plus compatibility, security, failure,
+  recovery, cache-integrity, provider, and cross-platform tests.
+- Added an allowlisted official-source metadata auditor and documented the
+  current pinned Unlimited-OCR/model revisions, PyTorch/CUDA resolver policy,
+  upstream conflicts, security boundaries, and consented real-device benchmark.
+- Fixed managed benchmark journals that omitted classification and dependency
+  versions, added targeted legacy-record refresh, corrected Basic OCR benchmark
+  metadata access, and hardened persistent-worker restart/unload queue, thread,
+  pipe, log, and temporary-session cleanup. PyInstaller now also bundles the two
+  standalone private-runtime entrypoint scripts required after installation.
 - Added a headless `pdf-toolkit` CLI for direct compression, PDF-to-image, and
   PDF-to-Word jobs plus reusable JSON batch manifests, explicit conflict
   policies, machine-readable summaries, deterministic exit codes, Ctrl+C

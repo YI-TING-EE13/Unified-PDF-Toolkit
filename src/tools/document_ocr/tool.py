@@ -1,9 +1,4 @@
-"""User-facing Document OCR tool.
-
-The default path is Tesseract. Experimental local Unlimited-OCR is visible only
-behind an explicit environment gate and must use the killable worker_process
-runtime configured by the user.
-"""
+"""User-facing Document OCR tool with Tesseract default and managed local opt-in."""
 
 from __future__ import annotations
 
@@ -48,13 +43,24 @@ EXPERIMENTAL_LOCAL_OCR_ENV = "PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR"
 
 
 def experimental_local_ocr_enabled() -> bool:
-    """Return true only when experimental local model OCR is explicitly enabled."""
+    """Return true for a dev gate or a successfully registered managed runtime."""
 
-    return os.environ.get(EXPERIMENTAL_LOCAL_OCR_ENV, "").lower() in {
+    environment_enabled = os.environ.get(EXPERIMENTAL_LOCAL_OCR_ENV, "").lower() in {
         "1",
         "true",
         "yes",
     }
+    if environment_enabled:
+        return True
+    try:
+        config = load_local_model_runtime_config()
+    except (OSError, RuntimeError):
+        return False
+    return bool(
+        config.enabled
+        and config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS
+        and config.options.get("managed_plan_id")
+    )
 
 
 def available_document_ocr_backend_labels() -> List[str]:
@@ -270,16 +276,22 @@ class DocumentOcrTool(BaseTool):
     def _refresh_experimental_status(self) -> None:
         if not experimental_local_ocr_enabled():
             self.experimental_status_var.set(
-                "Experimental Local Unlimited-OCR is hidden. Set "
-                f"{EXPERIMENTAL_LOCAL_OCR_ENV}=1 only for controlled beta "
-                "testing with a local model/runtime."
+                "Advanced Local Unlimited-OCR is not installed. Use Settings / "
+                "Recent to analyze this device and review the managed setup. "
+                f"Developers may use {EXPERIMENTAL_LOCAL_OCR_ENV}=1 for a "
+                "manually configured controlled-beta runtime."
             )
             return
         config = load_local_model_runtime_config()
+        managed = bool(config.options.get("managed_plan_id"))
         self.experimental_status_var.set(
-            "Experimental Local Unlimited-OCR is visible for controlled beta. "
-            "It runs on this computer with no upload, requires Settings / "
-            "Recent consent, a uv-managed worker Python, a local model folder, "
+            (
+                "Managed Local Unlimited-OCR is registered. "
+                if managed
+                else "Experimental Local Unlimited-OCR is visible for controlled beta. "
+            )
+            + "It runs on this computer with no upload, requires Settings / "
+            "Recent consent, a private worker Python, a local model folder, "
             "and worker_process mode. It may use GPU/VRAM and custom model "
             f"code; it is not production-ready. Current mode: "
             f"{config.mode}; device: {config.device_preference}."

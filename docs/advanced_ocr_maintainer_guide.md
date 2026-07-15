@@ -7,11 +7,29 @@ claimed yet.
 
 ## Current Status Summary
 
+Update for 2026-07-14: the preferred path is now the consent-gated managed
+deployment framework in `src/ocr/deployment/`. It implements environment
+inspection, official-metadata compatibility analysis, exact private uv/Conda
+plans, resumable model/runtime setup, integrity validation, a persistent worker,
+real OCR/benchmark gates, cleanup, GUI/CLI control, and Tesseract fallback. The
+framework is implemented and non-destructively validated; the current
+development computer's large download, real model load, OCR, and benchmark are
+still pending explicit plan-bound user consent. See
+`docs/runtime/managed_unlimited_ocr.md` and
+`docs/testing/managed_unlimited_ocr_validation.md`.
+
 Advanced OCR support is architecture-first and local-first. The production OCR
 behavior remains unchanged: PDF to Word -> OCR Text still uses Tesseract by
 default.
 
 Implemented today:
+
+- Managed Unlimited-OCR Environment Inspector, Compatibility Engine,
+  Environment Resolver, consent model, Setup Orchestrator, cache manager,
+  provider abstraction, persistent private worker, GUI setup, and headless CLI.
+- Official-source metadata auditor with pinned source/model revisions, complete
+  selected file inventory, weight SHA-256, PyTorch wheel profiles, NVIDIA Driver
+  families, stale-metadata blocking, and recorded upstream conflicts.
 
 - OCR backend abstraction and result/request models.
 - Tesseract backend wrapper used by the existing PDF to Word OCR Text path.
@@ -44,11 +62,12 @@ Implemented today:
   revision pin status, local metadata presence, and `trust_remote_code` consent
   readiness.
 
-Not implemented today:
+Not completed or not supported today:
 
-- Production-ready Baidu Unlimited-OCR inference.
+- Broad production-ready Baidu Unlimited-OCR support across a hardware matrix.
+- Consent-gated real install/OCR/benchmark evidence for every target device.
 - Bundled GPU OCR runtime.
-- Automatic model download.
+- Unattended or consent-free model download.
 - Production local OCR server.
 - In-process Transformers runtime.
 - Hosted OCR service or project-operated OCR server.
@@ -95,6 +114,19 @@ Not implemented today:
   `trust_remote_code` / model revision policy documentation.
 
 ## Key Files and Responsibilities
+
+- `src/ocr/deployment/environment.py`: read-only cross-platform hardware,
+  Driver, CUDA, Python, PyTorch, storage, Docker, and WSL inspection.
+- `src/ocr/deployment/compatibility.py`: conservative metadata-driven support
+  decision; unknown evidence never becomes supported.
+- `src/ocr/deployment/resolver.py`: exact argv-only private uv/Conda plan; no
+  Driver, system CUDA, PATH, admin, or global Python change.
+- `src/ocr/deployment/orchestrator.py`: journaled staged install, retry,
+  progress, cancellation, resume, registration, and path-bound cleanup.
+- `src/ocr/deployment/providers.py`: provider abstraction, persistent worker,
+  health/benchmark lifecycle, and Tesseract fallback.
+- `scripts/refresh_unlimited_ocr_metadata.py`: allowlisted read-only upstream
+  audit and explicitly reviewed metadata refresh.
 
 - `src/ocr/models.py`: OCR engine enum and typed request/result models.
 - `src/ocr/base.py`: backend protocol.
@@ -182,6 +214,7 @@ Not implemented today:
 | Category | Current state |
 | --- | --- |
 | Production behavior | Tesseract-backed PDF to Word OCR Text and Document OCR remain the stable real OCR paths. |
+| Managed advanced local | Consent-gated installer/provider framework implemented; each device still requires successful real OCR and benchmark acceptance. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend/settings, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
