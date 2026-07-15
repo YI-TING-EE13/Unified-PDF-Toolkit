@@ -138,8 +138,15 @@ restart and unload.
 
 The local full test, coverage, lint, security, install verification, compile,
 package, PyInstaller, packaged GUI smoke, and official metadata-audit gates all
-passed. The live source audit reported `changed: false`. Clean-runner CI is
-recorded separately after push.
+passed. The live source audit reported `changed: false`.
+
+Clean-runner CI run
+[`29386808473`](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/29386808473)
+passed on commit `842dc87`: quality/security, Ubuntu, macOS, Windows, and the
+dependent Windows PyInstaller build, packaged-app smoke, and artifact upload all
+succeeded. GitHub emitted one non-failing setup-uv cache-reservation annotation
+because parallel Ubuntu jobs attempted to create the same cache key; it did not
+skip or fail a product gate.
 
 The measurements apply only to this device and synthetic suite. They do not
 guarantee OCR accuracy, latency, or OOM behavior for arbitrary documents or
