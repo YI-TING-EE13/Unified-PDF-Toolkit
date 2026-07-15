@@ -246,6 +246,8 @@ class CompatibilityEngine:
                 if status
                 not in {CompatibilityStatus.UNSUPPORTED, CompatibilityStatus.UNKNOWN}
                 else "tesseract"
+                if bool(env.get("basic_ocr", {}).get("executable_available"))
+                else "tesseract_after_install"
             ),
         )
 
@@ -292,8 +294,13 @@ def _app_compatibility(env: Mapping[str, Any]) -> dict[str, Any]:
     version = str(env.get("python", {}).get("version", ""))
     parts = _version_tuple(version)
     supported = bool(parts and parts >= (3, 10))
+    gui = dict(env.get("runtime", {}).get("gui", {}))
     return {
         "status": "SUPPORTED" if supported else "UNSUPPORTED_SOURCE_RUNTIME",
+        "cli_status": "AVAILABLE" if supported else "PYTHON_TOO_OLD",
+        "gui_status": gui.get("status", "UNKNOWN"),
+        "tkinter_importable": gui.get("tkinter_importable"),
+        "display_available": gui.get("display_available"),
         "python_version": version,
         "requires_python": ">=3.10",
         "reason": (

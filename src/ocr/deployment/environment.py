@@ -690,6 +690,27 @@ class EnvironmentInspector:
             ),
             "ocr_data_root": str(self.data_root),
             "process_id": os.getpid(),
+            "gui": self._gui_runtime_info(),
+        }
+
+    @staticmethod
+    def _gui_runtime_info() -> dict[str, Any]:
+        tkinter_importable = importlib.util.find_spec("tkinter") is not None
+        display_available = bool(
+            sys.platform != "linux"
+            or os.environ.get("DISPLAY")
+            or os.environ.get("WAYLAND_DISPLAY")
+        )
+        if not tkinter_importable:
+            status = "TKINTER_NOT_AVAILABLE"
+        elif sys.platform == "linux" and not display_available:
+            status = "NOT_TESTED_NO_DISPLAY"
+        else:
+            status = "RUNTIME_AVAILABLE"
+        return {
+            "status": status,
+            "tkinter_importable": tkinter_importable,
+            "display_available": display_available,
         }
 
     def _container_info(self) -> dict[str, Any]:

@@ -556,7 +556,7 @@ def _human_plan(payload: dict[str, Any]) -> str:
         f"Estimated VRAM target: {_human_bytes(compatibility['estimated_vram_requirement'])}",
         f"Private runtime: {plan['runtime_root']}",
         "No Driver, system CUDA, PATH, or global Python change is included.",
-        "Tesseract remains available as the basic OCR fallback.",
+        _tesseract_fallback_message(compatibility),
     ]
     for heading, key in (
         ("Why", "reasons"),
@@ -586,7 +586,7 @@ def _human_status(payload: dict[str, Any]) -> str:
             f"Provider: {provider['status']} (available={provider['available']}, loaded={provider['loaded']})",
             f"Model snapshot: exists={model['exists']}, complete={model['complete']}",
             f"Journal present: {payload['journal'] is not None}",
-            "Tesseract fallback remains available when Unlimited-OCR is unavailable.",
+            _tesseract_fallback_message(compatibility),
         ]
     )
 
@@ -601,6 +601,15 @@ def _human_bytes(value: Any) -> str:
             return f"{number:.1f} {unit}"
         number /= 1024
     return "unknown"
+
+
+def _tesseract_fallback_message(compatibility: dict[str, Any]) -> str:
+    if compatibility.get("basic_ocr", {}).get("status") == "AVAILABLE":
+        return "Tesseract is available as the basic OCR fallback."
+    return (
+        "The Tesseract fallback architecture remains intact, but the Tesseract executable "
+        "must be installed separately on this device."
+    )
 
 
 if __name__ == "__main__":

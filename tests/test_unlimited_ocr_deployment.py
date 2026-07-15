@@ -274,6 +274,18 @@ class EnvironmentInspectorTests(unittest.TestCase):
         )
         self.assertIsNone(selected)
 
+    def test_linux_headless_session_is_not_misreported_as_missing_tkinter(self):
+        inspector = EnvironmentInspector(command_timeout=1)
+        with (
+            patch("src.ocr.deployment.environment.sys.platform", "linux"),
+            patch.dict(os.environ, {}, clear=True),
+            patch("src.ocr.deployment.environment.importlib.util.find_spec", return_value=object()),
+        ):
+            result = inspector._gui_runtime_info()
+        self.assertTrue(result["tkinter_importable"])
+        self.assertFalse(result["display_available"])
+        self.assertEqual(result["status"], "NOT_TESTED_NO_DISPLAY")
+
     def test_inspector_shape_with_stubbed_collectors(self):
         inspector = EnvironmentInspector(data_root=Path(tempfile.gettempdir()) / "ocr-inspector-test")
         with (
@@ -590,6 +602,7 @@ class ResolverAndConsentTests(unittest.TestCase):
         self.assertFalse(summary["setup_allowed"])
         self.assertNotIn("install_and_enable", summary["actions"])
         self.assertEqual(summary["recommended_backend"], "none")
+        self.assertEqual(compatibility.recommended_provider, "tesseract_after_install")
 
     def test_gpu_display_selects_the_nvidia_device_with_most_vram(self):
         from src.ui.unlimited_ocr_setup import _best_nvidia_gpu_for_display

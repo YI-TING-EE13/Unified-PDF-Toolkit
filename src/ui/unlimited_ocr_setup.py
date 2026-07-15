@@ -558,7 +558,11 @@ def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: di
         (
             "Recommendation for this device: Installation may proceed after explicit consent."
             if setup_allowed
-            else "Recommendation for this device: Do not install Unlimited-OCR; use the Tesseract fallback."
+            else (
+                "Recommendation for this device: Do not install Unlimited-OCR; use the Tesseract fallback."
+                if compatibility.basic_ocr.get("status") == "AVAILABLE"
+                else "Recommendation for this device: Do not install Unlimited-OCR; install Tesseract to enable basic OCR."
+            )
         ),
         "",
         "Detected device",

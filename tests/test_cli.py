@@ -55,7 +55,7 @@ class CommandLineTests(unittest.TestCase):
         self.assertIn("Can this device install Unlimited-OCR safely now? No", output)
         self.assertIn("Setup allowed: no", output)
         self.assertIn("VRAM is insufficient", output)
-        self.assertIn("Tesseract remains available", output)
+        self.assertIn("fallback architecture remains intact", output)
 
     def test_importing_cli_does_not_load_tkinter(self):
         result = subprocess.run(
