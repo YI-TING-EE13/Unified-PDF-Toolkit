@@ -139,6 +139,13 @@ def _make_directory_link(link: Path, target: Path) -> None:
         link.symlink_to(target, target_is_directory=True)
 
 
+def _remove_directory_link(link: Path) -> None:
+    if os.name == "nt":
+        link.rmdir()
+    else:
+        link.unlink()
+
+
 class MetadataTests(unittest.TestCase):
     def test_pyinstaller_bundles_private_runtime_entrypoint_scripts(self):
         spec = (Path(__file__).parents[1] / "pdf-toolkit.spec").read_text(
@@ -519,6 +526,25 @@ class CacheTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 ModelCacheManager(root / "models")
 
+    def test_cache_accepts_regular_root_beneath_aliased_ancestor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            actual = root / "actual"
+            actual.mkdir()
+            alias = root / "alias"
+            try:
+                _make_directory_link(alias, actual)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            try:
+                cache = alias / "models"
+                cache.mkdir()
+                manager = ModelCacheManager(cache)
+                self.assertEqual(manager.cache_root, (actual / "models").resolve())
+            finally:
+                if alias.exists() or alias.is_symlink():
+                    _remove_directory_link(alias)
+
 
 class OrchestratorTests(unittest.TestCase):
     def setUp(self):
@@ -891,8 +917,8 @@ class OrchestratorTests(unittest.TestCase):
                     DeploymentCleanup(plan).uninstall(confirmed=True)
                 self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
             finally:
-                if runtime.exists():
-                    runtime.rmdir()
+                if runtime.exists() or runtime.is_symlink():
+                    _remove_directory_link(runtime)
 
     def test_cleanup_rejects_managed_root_junction_before_any_deletion(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -921,8 +947,8 @@ class OrchestratorTests(unittest.TestCase):
                     )
                 self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
             finally:
-                if managed.exists():
-                    managed.rmdir()
+                if managed.exists() or managed.is_symlink():
+                    _remove_directory_link(managed)
 
     def test_setup_rejects_managed_root_junction_before_state_write(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -961,8 +987,8 @@ class OrchestratorTests(unittest.TestCase):
                 self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
                 self.assertFalse((outside / "state").exists())
             finally:
-                if managed.exists():
-                    managed.rmdir()
+                if managed.exists() or managed.is_symlink():
+                    _remove_directory_link(managed)
 
 
 class ProviderAndAssetTests(unittest.TestCase):
@@ -984,8 +1010,8 @@ class ProviderAndAssetTests(unittest.TestCase):
                     "PERMISSION_DENIED",
                 )
             finally:
-                if managed.exists():
-                    managed.rmdir()
+                if managed.exists() or managed.is_symlink():
+                    _remove_directory_link(managed)
 
     def test_persistent_worker_discards_stale_responses_and_closes_handles(self):
         import io

@@ -53,7 +53,7 @@ Estimated costs before consent:
 
 ## Automated results
 
-- Full suite: 228 unittest tests passed; the equivalent pytest run passed 228
+- Full suite: 229 unittest tests passed; the equivalent pytest run passed 229
   tests and 40 subtests. New regressions cover
   artifact traversal, real Windows junction substitution, cleanup escape,
   corrupt/incomplete journal recovery, actual OS setup locking, stale lock-file
@@ -174,6 +174,13 @@ Destructive full-cleanup tests used isolated temporary roots only: they removed
 multiple valid model revisions and every managed Hugging Face/Transformers cache,
 remained idempotent, rejected root/runtime junction substitution, and preserved
 external markers. The real installed snapshot was never removed.
+
+The first post-hardening CI run exposed a cross-platform false positive: comparing
+resolved and textual paths treated macOS `/tmp` and Windows runner path aliases
+as if the managed directory itself were a junction. Detection now checks the
+managed entry's own symlink/junction/reparse metadata while canonicalizing legal
+ancestor aliases. A regression covers an accepted regular cache below an aliased
+ancestor alongside the rejected managed-root junction cases.
 
 ## Final acceptance gate
 

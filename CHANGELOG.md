@@ -8,6 +8,9 @@
   worker output, cancellation-safe worker restart, subprocess reaping, and
   structured CLI errors. Explicit full cleanup now removes every managed model
   revision and isolated Hugging Face/Transformers cache.
+- Fixed managed-path hardening to distinguish an actual managed-directory
+  symlink/junction from benign OS ancestor aliases such as macOS `/tmp` and CI
+  runner path normalization, preserving cross-platform setup and tests.
 - Added an opt-in real-device validation harness covering five OCR layouts,
   repeated unload/reload, cancellation recovery, 50-request resource stability,
   worker/session cleanup, and benchmark capture without logging OCR contents.

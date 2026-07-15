@@ -16,7 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .cache import ModelCacheManager
+from .cache import ModelCacheManager, _is_link_or_junction
 from .compatibility import CompatibilityEngine
 from .environment import EnvironmentInspector, default_ocr_data_root
 from .errors import DeploymentFailure, ErrorCode, make_error
@@ -319,9 +319,10 @@ class UnlimitedOCRProvider(OCRProvider):
         resolver: EnvironmentResolver | None = None,
         data_root: Path | None = None,
     ) -> None:
-        self.data_root = Path(
+        self._declared_data_root = Path(
             os.path.abspath(str((data_root or default_ocr_data_root()).expanduser()))
         )
+        self.data_root = self._declared_data_root.resolve()
         self.inspector = environment_inspector or EnvironmentInspector(data_root=self.data_root)
         self.engine = compatibility_engine or CompatibilityEngine()
         self.resolver = resolver or EnvironmentResolver()
@@ -343,7 +344,9 @@ class UnlimitedOCRProvider(OCRProvider):
         return self._plan
 
     def _reject_linked_data_root(self) -> None:
-        if self.data_root.resolve() != self.data_root:
+        if _is_link_or_junction(self._declared_data_root) or _is_link_or_junction(
+            self.data_root
+        ):
             raise DeploymentFailure(
                 make_error(
                     ErrorCode.PERMISSION_DENIED,

@@ -32,6 +32,9 @@ support.
 - Managed cache/runtime/session paths and every worker output are resolved before
   access. Symlink/junction substitution, including an intermediate directory,
   is rejected; recursive size and cleanup scans never follow links.
+- Link checks inspect the managed directory's own symlink/junction/reparse
+  metadata. Benign operating-system aliases above that boundary are
+  canonicalized rather than misclassified as a managed-root substitution.
 - Worker prompts, options, timeouts, and aggregate output are bounded. A stale,
   malformed, or mismatched protocol response invalidates and restarts the worker.
 - Cancellation terminates the active worker and is not silently retried through

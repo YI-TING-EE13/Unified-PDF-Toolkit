@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,12 +38,17 @@ class ModelSnapshotStatus:
 class ModelCacheManager:
     def __init__(self, cache_root: Path) -> None:
         declared = Path(os.path.abspath(str(cache_root.expanduser())))
-        if declared.exists() and declared.resolve() != declared:
+        if _is_link_or_junction(declared):
             raise ValueError("Managed model cache root cannot be a symbolic link or junction.")
-        self.cache_root = declared
+        self.cache_root = declared.resolve()
         self.snapshots_root = self.cache_root / "snapshots"
 
+    def _assert_cache_root(self) -> None:
+        if _is_link_or_junction(self.cache_root):
+            raise ValueError("Managed model cache root cannot be a symbolic link or junction.")
+
     def snapshot_path(self, revision: str) -> Path:
+        self._assert_cache_root()
         if not _is_revision(revision):
             raise ValueError("Model revision must be a full 40-character Git SHA.")
         _assert_child(self.snapshots_root, self.cache_root)
@@ -111,7 +117,7 @@ class ModelCacheManager:
         _assert_child(path, self.snapshots_root)
         if not path.exists():
             return False
-        if path.resolve() != path:
+        if _is_link_or_junction(path):
             raise ValueError("Managed model snapshot was replaced by a link or junction.")
         shutil.rmtree(path, onerror=_clear_readonly_and_retry)
         return True
@@ -120,7 +126,7 @@ class ModelCacheManager:
         _assert_child(self.snapshots_root, self.cache_root)
         if not self.snapshots_root.exists():
             return 0
-        if self.snapshots_root.resolve() != self.snapshots_root:
+        if _is_link_or_junction(self.snapshots_root):
             raise ValueError("Managed snapshots root was replaced by a link or junction.")
         removed = 0
         for child in sorted(self.snapshots_root.iterdir()):
@@ -129,13 +135,14 @@ class ModelCacheManager:
         return removed
 
     def clear_download_cache(self) -> bool:
+        self._assert_cache_root()
         removed = False
         for name in ("hub", "hf-home", "modules", "transformers"):
             target = self.cache_root / name
             _assert_child(target, self.cache_root)
             if not target.exists():
                 continue
-            if target.resolve() != target:
+            if _is_link_or_junction(target):
                 raise ValueError(f"Managed {name} cache was replaced by a link or junction.")
             shutil.rmtree(target, onerror=_clear_readonly_and_retry)
             removed = True
@@ -144,6 +151,21 @@ class ModelCacheManager:
 
 def _is_revision(value: str) -> bool:
     return len(value) == 40 and all(char in "0123456789abcdef" for char in value.casefold())
+
+
+def _is_link_or_junction(path: Path) -> bool:
+    """Detect a link/reparse point on this path without rejecting aliased ancestors."""
+
+    try:
+        if path.is_symlink():
+            return True
+        is_junction = getattr(path, "is_junction", None)
+        if callable(is_junction) and is_junction():
+            return True
+        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+        return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+    except FileNotFoundError:
+        return False
 
 
 def _assert_child(path: Path, root: Path) -> None:

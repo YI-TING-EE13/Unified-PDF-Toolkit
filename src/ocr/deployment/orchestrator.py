@@ -15,7 +15,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 import psutil
 
-from .cache import ModelCacheManager
+from .cache import ModelCacheManager, _is_link_or_junction
 from .consent import DeploymentConsent
 from .errors import DeploymentFailure, ErrorCode, classify_exception, make_error
 from .metadata import load_compatibility_metadata
@@ -88,8 +88,9 @@ class SetupOrchestrator:
         self.environment = environment
         self.consent = consent
         self.metadata = dict(metadata or load_compatibility_metadata())
-        self.runtime_root = _absolute_path(Path(plan.runtime_root))
-        self.state_root = _absolute_path(state_root or self.runtime_root / "state")
+        self.runtime_root = _absolute_path(Path(plan.runtime_root)).resolve()
+        self._declared_state_root = _absolute_path(state_root or self.runtime_root / "state")
+        self.state_root = self._declared_state_root.resolve()
         self.cancellation = cancellation or CancellationToken()
         self.progress_callback = progress_callback
         self.command_runner = command_runner or self._run_command
@@ -171,10 +172,11 @@ class SetupOrchestrator:
         cache_root = _absolute_path(Path(self.plan.model_cache_dir))
         data_root = cache_root.parent
         runtime_parent = data_root / "runtimes"
+        declared_runtime = _absolute_path(Path(self.plan.runtime_root))
         if (
             cache_root.name != "models"
-            or self.runtime_root.name != "unlimited-ocr-transformers"
-            or self.runtime_root.parent != runtime_parent
+            or declared_runtime.name != "unlimited-ocr-transformers"
+            or declared_runtime.parent != runtime_parent
         ):
             raise DeploymentFailure(
                 make_error(
@@ -185,12 +187,12 @@ class SetupOrchestrator:
         for path, label in (
             (data_root, "data root"),
             (runtime_parent, "runtime parent"),
-            (self.runtime_root, "runtime root"),
-            (self.runtime_root / "environment", "private environment"),
+            (declared_runtime, "runtime root"),
+            (declared_runtime / "environment", "private environment"),
             (cache_root, "model cache root"),
-            (self.state_root, "installation state root"),
+            (self._declared_state_root, "installation state root"),
         ):
-            if path.resolve() != path:
+            if _is_link_or_junction(path):
                 raise DeploymentFailure(
                     make_error(
                         ErrorCode.PERMISSION_DENIED,
@@ -842,11 +844,11 @@ class DeploymentCleanup:
             (expected_runtime_parent, "runtime parent"),
             (cache_root, "model cache root"),
         ):
-            if declared.exists() and declared.resolve() != declared:
+            if _is_link_or_junction(declared):
                 raise ValueError(f"Managed OCR {label} was replaced by a link or junction.")
         resolved_runtime = runtime.resolve()
         resolved_runtime_parent = expected_runtime_parent.resolve()
-        if (
+        if _is_link_or_junction(runtime) or (
             resolved_runtime.parent != resolved_runtime_parent
             or resolved_runtime.name != "unlimited-ocr-transformers"
         ):
