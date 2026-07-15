@@ -110,9 +110,9 @@ snapshot, journal, benchmark, or provider registration existed. Final status
 was provider `NOT_INSTALLED`, model `exists: false`, journal absent, and the
 isolated managed root remained absent. No torch, Transformers, AI runtime, model,
 Driver, CUDA, PATH, profile, global Python, or administrator change occurred.
-Ubuntu real-machine tests passed 243 tests plus 40 subtests before the final
-minimum-uv-version regression was added; final branch CI and local gates cover
-that additional case. No Unlimited-OCR inference success is claimed on Linux.
+The final Ubuntu real-machine run on commit `bb12049` passed 244 tests plus 40
+subtests, including the minimum-uv-version regression. No Unlimited-OCR
+inference success is claimed on Linux.
 
 ## Official metadata audit
 
@@ -151,7 +151,7 @@ that additional case. No Unlimited-OCR inference success is claimed on Linux.
 - PyInstaller bundle build: passed in an isolated workspace output path; the
   bundled compatibility JSON was present under
   `_internal/src/ocr/deployment/resources` with the expected size.
-- Coverage: 51% branch coverage; the configured gate is 45%.
+- Coverage: 53% branch coverage; the configured gate is 45%.
 - `pytest` is now an explicit locked development dependency. Repairing the
   project `.venv` removed four stale editable `pdf_toolkit` metadata directories
   without `RECORD`; the final environment contains one current editable install
@@ -277,13 +277,11 @@ package, PyInstaller, packaged GUI smoke, real provider, official metadata
 audit, and isolated cleanup gates passed. The live source audit reported
 `changed: false`.
 
-Final clean-runner CI run
-[`29392556246`](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/29392556246)
-passed on commit `ea9c902`: quality/security, Ubuntu, macOS, Windows, and the
+Final implementation-baseline CI run
+[`29397624967`](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/29397624967)
+passed on commit `bb12049`: quality/security, Ubuntu, macOS, Windows, and the
 dependent Windows PyInstaller build, packaged-app smoke, and artifact upload all
-succeeded. GitHub emitted one non-failing setup-uv cache-reservation annotation
-because parallel Ubuntu jobs attempted to create the same cache key; it did not
-skip or fail a product gate.
+succeeded.
 
 The measurements apply only to this device and synthetic suite. They do not
 guarantee OCR accuracy, latency, or OOM behavior for arbitrary documents or

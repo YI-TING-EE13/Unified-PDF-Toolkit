@@ -5,6 +5,11 @@ advanced local OCR work. It summarizes what is implemented, what is scaffolded,
 what is fake/developer-only, what is documentation-only, and what must not be
 claimed yet.
 
+Forward priorities, the validation matrix, known limitations, and research
+directions are maintained only in
+`docs/roadmap/advanced_ocr_next_goals.md`. Do not create or maintain a second
+future-work queue in this guide.
+
 ## Current Status Summary
 
 Update for 2026-07-15: the preferred path is now the consent-gated managed
@@ -231,7 +236,7 @@ Not completed or not supported today:
 | Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
 | Experimental real local | `local_unlimited_ocr` direct mode and gated `worker_process` one-shot subprocess mode for user-managed local model/runtime environments. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
-| Not supported | Production Unlimited-OCR support, bundled GPU OCR runtime, automatic model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
+| Not supported | Broad production Unlimited-OCR support, bundled GPU OCR runtime, unattended or consent-free model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
 
@@ -607,21 +612,8 @@ Do not claim:
 - Saving consent enables real AI OCR in the current app.
 - Saving local runtime settings makes AI OCR the default engine.
 
-## Future Work Decision Table
+## Canonical Future Work
 
-| Future item | Prerequisites | Main risks | Recommended order |
-| --- | --- | --- | --- |
-| Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
-| Local model fake worker UI smoke path | Fake worker prototype, workflow helpers, consent tests, fake smoke template | User confusion if mistaken for real OCR, output/report leakage | 2 |
-| Experimental local Unlimited-OCR manual validation | Local model backend, optional runtime docs, manual script, local model files, GPU/runtime access | GPU/runtime mismatch, custom-code execution risk, model output drift | 3 |
-| Worker-process production hardening | Experimental worker process, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 4 |
-| Promote Document OCR AI option | Stable backend selection, consent gate, output writer tests, fake/backend real workflow smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 5 |
-| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 5 |
-| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 6 |
-| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 7 |
-| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 8 |
-
-Recommended next milestone: repeat the managed install and validation on at
-least one different Windows NVIDIA GPU and one Linux NVIDIA system, then add
-versioned OCR-quality evaluation with representative documents before widening
-the current controlled device/runtime support claim.
+Use `docs/roadmap/advanced_ocr_next_goals.md` for the ordered backlog, hardware
+matrix, optional product ideas, research directions, rejected approaches, and
+support-evidence gate. This guide intentionally does not duplicate that queue.

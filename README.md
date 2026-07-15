@@ -380,10 +380,13 @@ Tagged releases are handled by `.github/workflows/release.yml`.
 
 ## Roadmap
 
-Useful next improvements include wider managed Unlimited-OCR hardware-matrix
-validation, searchable PDF OCR output, watermark/page number tools, metadata
-privacy cleanup, and direct CLI coverage for merge, split, image-to-PDF, and
-page-editing workflows.
+The canonical [Advanced OCR Roadmap](docs/roadmap/advanced_ocr_next_goals.md)
+tracks the verified hardware matrix, next validation priorities, known limits,
+research directions, and evidence required before expanding support claims.
+
+Broader product ideas include searchable PDF OCR output, watermark/page number
+tools, metadata privacy cleanup, and direct CLI coverage for merge, split,
+image-to-PDF, and page-editing workflows.
 
 PDF to Word planning notes and known conversion limits are documented in
 [docs/pdf_to_word_plan.md](docs/pdf_to_word_plan.md).

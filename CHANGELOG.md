@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reworked the existing Advanced OCR roadmap into the canonical source for the
+  verified hardware matrix, next validation priorities, known limitations,
+  optional enhancements, research directions, rejected approaches, maintenance
+  triggers, and evidence required before expanding support claims.
 - Added bounded cross-platform discovery for real Linux CPU model names,
   alternate compatible Python interpreters, uv/Conda/pyenv installations outside
   PATH, headless GUI/display state, and actual Tesseract availability. Managed

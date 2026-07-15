@@ -4,8 +4,9 @@ This review defines the security, privacy, and release requirements for any
 advanced local AI OCR or Unlimited-OCR-compatible backend. The APP now includes
 a managed local deployment framework, but it performs only read-only analysis
 until the user accepts an exact plan. The default package still does not bundle
-models, torch, Transformers, CUDA runtimes, or production-ready Unlimited-OCR
-support.
+models, torch, Transformers, or CUDA runtimes. A consented managed provider has
+real device-specific evidence, but broad production support still requires the
+hardware and quality gates below.
 
 ## Managed deployment controls (2026-07-15)
 
@@ -246,9 +247,10 @@ Diagnostics must remain safe when optional dependencies are absent:
 - Optional runtime failures must not break Tesseract OCR or non-OCR PDF tools.
 - Heavy imports must occur only after explicit backend selection and consent.
 
-## Release Gates Before Real Model Integration
+## Release Gates Before Broad Production Support
 
-Real advanced OCR integration cannot ship until all gates pass:
+The managed real-model path is opt-in and device-gated. It must not be promoted
+as broadly production-ready until all applicable gates pass:
 
 - Security/privacy checklist passes.
 - GPU acceptance plan has been executed on approved local samples.
