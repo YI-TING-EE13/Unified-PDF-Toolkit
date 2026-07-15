@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added a primary-source-backed Apple Silicon/macOS MPS feasibility track to the
+  canonical Advanced OCR roadmap, including separate Apple/Intel Mac evidence
+  rows, CUDA-hardcoding findings, phased research, real-device acceptance gates,
+  and explicit treatment of unmerged upstream patches as non-authoritative.
 - Reworked the existing Advanced OCR roadmap into the canonical source for the
   verified hardware matrix, next validation priorities, known limitations,
   optional enhancements, research directions, rejected approaches, maintenance

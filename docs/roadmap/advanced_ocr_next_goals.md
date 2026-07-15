@@ -106,6 +106,14 @@ table structure metrics, rotation behavior, latency, and peak resources. Keep
 synthetic smoke assets for deterministic regressions, but do not use them as the
 only quality claim.
 
+### P2 / Research — Apple Silicon / MPS Feasibility Validation
+
+Follow the phased research and acceptance plan in
+[Apple Silicon / macOS MPS Support](#apple-silicon--macos-mps-support). This is
+an `EXPERIMENTAL CANDIDATE`, not an implemented backend or support commitment.
+It must not delay the P1 NVIDIA hardware-matrix validation or regress the stable
+CUDA deployment path.
+
 ### P3 — Product and Packaging Acceptance
 
 - Exercise the managed uv bootstrap on a clean eligible account where uv and
@@ -120,20 +128,199 @@ only quality claim.
 Status words describe evidence, not aspiration. `NOT_TESTED` is intentionally
 different from `UNSUPPORTED`; annotations identify CI- or unit-only evidence.
 
-| Platform / hardware | APP | GUI | Basic OCR | Unlimited-OCR | Real inference | Overall evidence |
+| Platform / hardware | APP | GUI | Basic OCR | Unlimited-OCR backend | Real inference | Overall evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Windows 11, RTX 3060 12 GiB | VERIFIED | VERIFIED | VERIFIED | SUPPORTED_WITH_CHANGES | VERIFIED | VERIFIED on this device |
-| Ubuntu 20.04, GTX 1060 6 GiB | VERIFIED | NOT_TESTED (SSH had no display) | NOT_TESTED (executable absent) | UNSUPPORTED | NOT_TESTED | VERIFIED safe rejection |
-| Linux, supported NVIDIA GPU | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | NOT_TESTED | NOT_TESTED | FUTURE — P1 |
-| Windows, second NVIDIA GPU | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | NOT_TESTED | NOT_TESTED | FUTURE — P1 |
-| WSL2 with NVIDIA GPU | EXPERIMENTAL | NOT_TESTED | NOT_TESTED | EXPERIMENTAL | NOT_TESTED | EXPERIMENTAL |
+| Windows 11, RTX 3060 12 GiB | VERIFIED | VERIFIED | VERIFIED | `transformers_cuda` / SUPPORTED_WITH_CHANGES | VERIFIED | VERIFIED on this device |
+| Ubuntu 20.04, GTX 1060 6 GiB | VERIFIED | NOT_TESTED (SSH had no display) | NOT_TESTED (executable absent) | `transformers_cuda` / UNSUPPORTED on device | NOT_TESTED | VERIFIED safe rejection |
+| Linux, supported NVIDIA GPU | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | `transformers_cuda` / NOT_TESTED | NOT_TESTED | FUTURE — P1 |
+| Windows, second NVIDIA GPU | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | `transformers_cuda` / NOT_TESTED | NOT_TESTED | FUTURE — P1 |
+| WSL2 with NVIDIA GPU | EXPERIMENTAL | NOT_TESTED | NOT_TESTED | `transformers_cuda` / EXPERIMENTAL | NOT_TESTED | EXPERIMENTAL |
 | Physical multi-GPU | NOT_TESTED | NOT_TESTED | NOT_TESTED | NOT_TESTED | NOT_TESTED | NOT_TESTED (selection logic unit-tested) |
-| AMD GPU | SUPPORTED (normal APP) | NOT_TESTED | NOT_TESTED | UNSUPPORTED (current backend) | NOT_TESTED | FUTURE research |
-| Apple Silicon | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | UNSUPPORTED (current backend) | NOT_TESTED | FUTURE research |
-| CPU-only | SUPPORTED (normal APP) | NOT_TESTED | NOT_TESTED | UNSUPPORTED (current integration) | NOT_TESTED | FUTURE feasibility research |
+| AMD GPU | SUPPORTED (normal APP) | NOT_TESTED | NOT_TESTED | none in current integration | NOT_TESTED | FUTURE research |
+| Apple Silicon Mac mini M1 | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
+| Apple Silicon Mac mini M2 | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
+| Apple Silicon Mac mini M3 | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
+| Apple Silicon Mac mini M4 | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
+| Later Apple Silicon | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
+| Intel Mac mini | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_cpu` candidate or none | NOT_TESTED | NOT_TESTED |
+| Other CPU-only | SUPPORTED (normal APP) | NOT_TESTED | NOT_TESTED | `transformers_cpu` candidate or none | NOT_TESTED | FUTURE feasibility research |
 
 `SUPPORTED (CI/source)` means the normal Python application is exercised by CI;
 it is not equivalent to a physical packaged-GUI or model-runtime verification.
+The M-series rows track evidence separately; they do not imply per-generation
+backend implementations.
+
+## Apple Silicon / macOS MPS Support
+
+Current state: **`EXPERIMENTAL CANDIDATE` / `NOT_TESTED`**. There is no
+implemented `transformers_mps` provider, no real Mac model-load or OCR result,
+and no Apple Silicon support claim. The current Compatibility Engine safely
+rejects this model path because its reviewed automatic backend is NVIDIA CUDA;
+that implementation fact is not a permanent conclusion that MPS is impossible.
+
+### Primary-source findings (reviewed 2026-07-15)
+
+- The latest [Unlimited-OCR GitHub revision](https://github.com/baidu/Unlimited-OCR/tree/528fca4e2161e23231d05666a6d35155dcb1957e)
+  is still the currently pinned source revision. Its official Transformers
+  instructions explicitly describe NVIDIA GPU inference, load BF16 weights,
+  and call `model.eval().cuda()`.
+- The latest [official Hugging Face model revision](https://huggingface.co/baidu/Unlimited-OCR/tree/ee63731b6461c8afcdcc7b15352e7d2ffecc2ead)
+  is still the pinned model/custom-code revision. Static review found 14 active
+  `.cuda()` calls and three `torch.autocast("cuda", dtype=torch.bfloat16)`
+  contexts in `modeling_unlimitedocr.py`, plus BF16 model configuration. No MPS
+  device branch exists.
+- The custom model code conditionally references FlashAttention in the language
+  model and uses scaled-dot-product attention in the vision encoder. No active
+  `torch.ops`, C++ extension loader, Triton, or xFormers invocation was found in
+  the reviewed Python files, but every executed operator and BF16 path still
+  needs real MPS validation.
+- [PyTorch documents MPS](https://docs.pytorch.org/docs/stable/notes/mps) as a
+  separate device backend and distinguishes `torch.backends.mps.is_built()`
+  from `torch.backends.mps.is_available()`. Moving a generic PyTorch module to
+  `mps` does not prove Unlimited-OCR custom code or all its operators are valid.
+- [Apple's current PyTorch/Metal guidance](https://developer.apple.com/metal/pytorch/)
+  documents Apple Silicon, MPS device creation, and a beta-status backend. Its
+  2026-07-15 page lists Apple Silicon, macOS 14+, Python 3.10+, and stable
+  PyTorch 2.11.0. Those are current-source inputs, not permanent project
+  compatibility thresholds and must be refreshed before implementation.
+- Apple Silicon uses unified memory rather than a discrete NVIDIA VRAM pool.
+  The NVIDIA VRAM gate must not be reused. Apple exposes
+  [`hasUnifiedMemory` and recommended-working-set concepts](https://developer.apple.com/documentation/metal/mtldevice/hasunifiedmemory),
+  while PyTorch exposes MPS allocator metrics such as
+  [`driver_allocated_memory`](https://docs.pytorch.org/docs/stable/generated/torch.mps.driver_allocated_memory.html)
+  and documented allocator limits.
+
+No official MPS/CPU patch is merged in the upstream default branch. Relevant
+community work must remain non-authoritative:
+
+- [issue #18](https://github.com/baidu/Unlimited-OCR/issues/18) is open and
+  reports empty MPS output caused by the image-embedding `masked_scatter` path;
+- [issue #53](https://github.com/baidu/Unlimited-OCR/issues/53) is open and
+  reports multi-page output degradation under sustained MPS/CPU inference;
+- [PR #19](https://github.com/baidu/Unlimited-OCR/pull/19) was closed without
+  merge;
+- [PR #49](https://github.com/baidu/Unlimited-OCR/pull/49),
+  [PR #56](https://github.com/baidu/Unlimited-OCR/pull/56), and
+  [PR #57](https://github.com/baidu/Unlimited-OCR/pull/57) propose macOS,
+  MPS, or CPU changes but remain open and unmerged.
+
+These reports make MPS a plausible research target while also providing direct
+evidence that model load, lack of exceptions, or `mps.is_available() == true`
+cannot be treated as successful OCR support.
+
+### Candidate provider architecture
+
+```text
+UnlimitedOCRProvider
+├── transformers_cuda       # implemented managed path
+├── transformers_mps        # design candidate; not implemented
+├── transformers_cpu        # feasibility candidate; not implemented
+└── future_quantized_backend # research only
+```
+
+Apple Silicon generations share one candidate architecture and capability
+model. M1, M2, M3, M4, and later chips remain separate matrix evidence rows so
+results are not generalized across hardware without data. Intel Mac is a
+different architecture and must be evaluated independently as CPU-only,
+another proven backend, or unsupported; it does not inherit an Apple Silicon
+MPS conclusion.
+
+### Environment Inspector extension requirements
+
+Before compatibility evaluation, a future read-only inspector must record:
+
+- macOS version and native machine architecture;
+- Apple Silicon detection and chip family/model;
+- total and available unified memory plus system memory pressure;
+- native arm64 versus Rosetta/x86_64 Python and executable paths;
+- Python, uv/Conda, and project-runtime compatibility;
+- PyTorch version and build provenance;
+- `torch.backends.mps.is_built()` and `torch.backends.mps.is_available()`;
+- successful creation and a trivial operation on `torch.device("mps")`;
+- available disk and writable managed roots;
+- custom model-code device, dtype, operator, and fallback compatibility.
+
+The inspector must remain safe when torch is absent and must not load or
+download the model. Apple Silicon receives a separate compatibility profile:
+minimum/recommended unified memory, acceptable memory pressure, swap behavior,
+model-load feasibility, inference feasibility, and performance class are
+derived only from real acceptance data. Devices with 16, 24, and 32+ GiB are
+useful validation targets, not support thresholds or guarantees.
+
+### Phase A — Static Compatibility Research
+
+- Audit every active `.cuda()` call and replaceability with explicit device
+  placement in an isolated prototype, without changing the stable CUDA path.
+- Audit CUDA-specific autocast, BF16/FP16/FP32 behavior, CPU fallback, and all
+  image/mask tensor placement.
+- Audit scaled-dot-product/FlashAttention selection, native/custom extensions,
+  unsupported operators, and all trusted custom remote model code.
+- Compare the latest GitHub and model revisions with the pinned revisions.
+- Re-check upstream issues/PRs and determine whether an MPS/CPU fix has been
+  officially merged; community patches are research inputs only.
+
+### Phase B — Environment Inspector Extension
+
+Add Apple Silicon, native/Rosetta Python, unified-memory, MPS build/availability,
+MPS smoke-device, and memory-pressure detection with fixtures for M1 through M4
+profiles. Existing Windows/Linux NVIDIA reports and decisions must remain green.
+This phase performs no model installation or inference.
+
+### Phase C — Experimental MPS Runtime
+
+Only after Phase A demonstrates a technically credible path, prototype
+`transformers_mps` behind an explicit experimental gate and private worker.
+Device placement, dtype, unsupported-op behavior, CPU fallback policy, output
+correctness, memory limits, and cancellation must be explicit. MPS availability
+alone must never produce `SUPPORTED` or trigger a model download.
+
+### Phase D — Real Mac Acceptance
+
+At least one physical Apple Silicon Mac must complete all of the following
+before any device-specific support claim:
+
+- official repository setup, native arm64 Python selection, and uv reuse or
+  verified managed bootstrap;
+- private PyTorch MPS environment, model download/resume, inventory, and
+  checksum verification;
+- actual model load and single-image OCR;
+- multi-page OCR where technically applicable and all five existing OCR test
+  classes;
+- inference benchmark, peak unified memory, memory pressure, and swap
+  observation;
+- repeated inference, cancellation, worker recovery, unload, cleanup, and
+  uninstall;
+- proof of no system-wide Python, PATH, Driver, framework, or unrelated runtime
+  modification;
+- full CUDA/backend regression suite and packaged/source APP checks.
+
+### Evidence Required Before Claiming Apple Silicon Support
+
+1. Native arm64 environment is verified.
+2. MPS is built, actually available, and passes device creation/operation.
+3. Exact source, model, and custom-code revisions are verified.
+4. No unhandled CUDA hardcoding remains in the exercised path.
+5. Model load succeeds without silent CPU/device misplacement.
+6. Real OCR output succeeds and passes correctness checks.
+7. Peak unified memory, memory pressure, and swap are measured.
+8. Repeated single- and multi-page inference is stable.
+9. Cancellation, timeout, worker recovery, and fallback are verified.
+10. Cleanup and uninstall preserve external/system state.
+11. Existing CUDA backend and default Tesseract regressions remain green.
+
+### Alternative research routes
+
+- **PyTorch MPS:** primary candidate because the official model is Transformers
+  custom code, but not proven compatible.
+- **MLX conversion:** Apple-native research only; requires verified architecture,
+  tokenizer, vision encoder, custom generation, and quality parity.
+- **Quantized model:** consider only with a reproducible conversion, exact
+  revision provenance, integrity policy, and measured OCR quality loss.
+- **GGUF / llama.cpp:** consider only if the actual multimodal architecture,
+  projector, vision preprocessing, and custom generation are verified compatible.
+- **Ollama / LM Studio:** consider only if a verified compatible quantization
+  and multimodal runtime exist; catalog presence or a community upload is not
+  evidence of compatibility.
 
 ## 4. Known Limitations
 
@@ -143,8 +330,9 @@ it is not equivalent to a physical packaged-GUI or model-runtime verification.
   headless reporting; it does not prove supported-GPU Linux inference.
 - The actual managed-uv download/extract path is automated-test evidence only
   because both real machines already had a compatible uv installation.
-- AMD ROCm, Apple Silicon, CPU-only, WSL2 inference, and physical multi-GPU paths
-  have no support claim beyond the matrix above.
+- AMD ROCm, Apple Silicon/MPS, Intel Mac/CPU-only, WSL2 inference, and physical
+  multi-GPU paths have no support claim beyond the matrix above. Apple Silicon
+  is an experimental candidate, not a permanently rejected platform.
 - SGLang automation remains blocked by conflicting upstream dependency pins;
   Docker/vLLM paths are metadata/research candidates only.
 - OCR accuracy is currently demonstrated with deterministic synthetic assets,
@@ -181,7 +369,9 @@ These are optional product ideas, not scheduled commitments:
 - Docker/container isolation and WSL2 GPU behavior.
 - Quantized and low-VRAM inference with quality/resource comparisons.
 - CPU-only feasibility rather than an assumed fallback.
-- AMD ROCm and Apple Silicon acceleration only with upstream-compatible evidence.
+- Apple Silicon PyTorch MPS, MLX conversion, and verified quantized routes under
+  the dedicated phased research gate above.
+- AMD ROCm acceleration only with upstream-compatible evidence.
 - Physical multi-GPU selection, isolation, and optional work distribution.
 - Alternative local OCR providers behind the existing `OCRProvider` interface.
 
@@ -203,6 +393,11 @@ gate below is satisfied.
 - Do not operate a project-hosted OCR service or upload user documents by
   default. The local endpoint scaffold remains a developer option.
 - Do not add a single consent-bypassing `--yes` switch for managed setup.
+- Do not permanently classify Apple Silicon as impossible based only on the
+  current CUDA-only integration; keep it blocked from installation while its
+  evidence status remains `NOT_TESTED` / `EXPERIMENTAL CANDIDATE`.
+- Do not reuse NVIDIA VRAM thresholds as Apple unified-memory thresholds or
+  treat an unmerged community MPS patch as official upstream support.
 
 ## 8. Evidence Required Before Claiming Support
 
@@ -232,12 +427,15 @@ real-device acceptance when any of these changes:
 - Unlimited-OCR upstream source or model revision;
 - PyTorch/torchvision major or minor version or published CUDA wheel families;
 - NVIDIA Driver/CUDA compatibility policy;
+- PyTorch/Apple MPS requirements, operator support, allocator behavior, or
+  official macOS guidance;
 - Transformers or custom model-code dependencies;
 - selected model inventory, size, license, or checksum;
 - managed uv pinned or minimum-compatible version;
 - supported Python versions or APP packaging/runtime layout;
 - compatibility thresholds for RAM, VRAM, GPU generation, or disk;
 - the live metadata audit reports `changed: true` or conflicting sources.
+- an Apple Silicon/CPU issue or PR is merged into an official upstream revision.
 
 Conflicting authoritative metadata blocks automatic high-risk changes until a
 maintainer records a reviewed resolution.

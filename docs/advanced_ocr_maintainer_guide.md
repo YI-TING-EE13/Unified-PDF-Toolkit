@@ -10,6 +10,10 @@ directions are maintained only in
 `docs/roadmap/advanced_ocr_next_goals.md`. Do not create or maintain a second
 future-work queue in this guide.
 
+The roadmap's `Apple Silicon / macOS MPS Support` section is the canonical
+feasibility plan for M1 and later Apple Silicon plus the separate Intel Mac
+track. No MPS/CPU provider is implemented or supported by this guide.
+
 ## Current Status Summary
 
 Update for 2026-07-15: the preferred path is now the consent-gated managed
