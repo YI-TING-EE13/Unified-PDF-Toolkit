@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 RESULT_PREFIX = "PDF_TOOLKIT_RESULT="
+MAX_OUTPUT_CHARACTERS = 16 * 1024 * 1024
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -310,18 +311,37 @@ def _benchmark_classification(
 
 def _find_output_text(returned: Any, output_dir: Path) -> str:
     if isinstance(returned, str):
-        return returned
+        return _bounded_output_text(returned)
     if isinstance(returned, dict) and isinstance(returned.get("text"), str):
-        return returned["text"]
+        return _bounded_output_text(returned["text"])
+    resolved_root = output_dir.resolve()
     values = []
     for path in sorted(output_dir.rglob("*")):
-        if (
-            path.suffix.casefold() in {".txt", ".md"}
-            and path.is_file()
-            and not path.is_symlink()
-        ):
-            values.append(path.read_text(encoding="utf-8", errors="replace"))
+        try:
+            if path.is_symlink() or path.suffix.casefold() not in {".txt", ".md"}:
+                continue
+            resolved = path.resolve()
+            if resolved == resolved_root or resolved_root not in resolved.parents:
+                continue
+            if not resolved.is_file():
+                continue
+            remaining = MAX_OUTPUT_CHARACTERS - sum(len(value) for value in values)
+            if remaining <= 0:
+                raise ValueError("OCR output exceeds the private runtime safety limit.")
+            with resolved.open("r", encoding="utf-8", errors="replace") as handle:
+                value = handle.read(remaining + 1)
+            if len(value) > remaining:
+                raise ValueError("OCR output exceeds the private runtime safety limit.")
+            values.append(value)
+        except OSError:
+            continue
     return "\n".join(values)
+
+
+def _bounded_output_text(value: str) -> str:
+    if len(value) > MAX_OUTPUT_CHARACTERS:
+        raise ValueError("OCR output exceeds the private runtime safety limit.")
+    return value
 
 
 def _normalize_for_comparison(value: str) -> str:

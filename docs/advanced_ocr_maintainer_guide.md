@@ -7,14 +7,15 @@ claimed yet.
 
 ## Current Status Summary
 
-Update for 2026-07-14: the preferred path is now the consent-gated managed
+Update for 2026-07-15: the preferred path is now the consent-gated managed
 deployment framework in `src/ocr/deployment/`. It implements environment
 inspection, official-metadata compatibility analysis, exact private uv/Conda
 plans, resumable model/runtime setup, integrity validation, a persistent worker,
 real OCR/benchmark gates, cleanup, GUI/CLI control, and Tesseract fallback. The
-framework is implemented and non-destructively validated; the current
-development computer's large download, real model load, OCR, and benchmark are
-still pending explicit plan-bound user consent. See
+framework is implemented and adversarially validated. The development computer
+completed the consented private install, five-layout real OCR suite, unload/load
+cycles, cancellation recovery, 50-request resource run, and benchmark. This is
+device-specific evidence, not broad platform support. See
 `docs/runtime/managed_unlimited_ocr.md` and
 `docs/testing/managed_unlimited_ocr_validation.md`.
 
@@ -127,6 +128,9 @@ Not completed or not supported today:
   health/benchmark lifecycle, and Tesseract fallback.
 - `scripts/refresh_unlimited_ocr_metadata.py`: allowlisted read-only upstream
   audit and explicitly reviewed metadata refresh.
+- `scripts/validate_managed_unlimited_ocr.py`: opt-in installed-runtime OCR,
+  reload, benchmark, and resource-stability validation. It never installs or
+  downloads and does not write raw OCR text to its report.
 
 - `src/ocr/models.py`: OCR engine enum and typed request/result models.
 - `src/ocr/base.py`: backend protocol.
@@ -550,6 +554,8 @@ uv sync --dev
 uv run --no-sync python -m unittest discover -s tests -v
 uv run --no-sync python verify_install.py
 uv run --no-sync python -m compileall -q src tests verify_install.py scripts
+uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
+  --reload-cycles 2 --stress-iterations 50 --output <report.json>
 ```
 
 In this local checkout, if `uv` or the requested `..venv` path is unavailable,
@@ -577,8 +583,8 @@ changes that instruction.
 
 Do not claim:
 
-- Real Unlimited-OCR inference is production-ready.
-- GPU OCR is supported.
+- Real Unlimited-OCR inference is broadly production-ready.
+- GPU OCR is supported beyond the specifically validated device/runtime matrix.
 - The app bundles AI models or a GPU runtime.
 - Endpoint OCR is production-ready.
 - A production local OCR server is included.
@@ -604,7 +610,7 @@ Do not claim:
 | In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 7 |
 | User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 8 |
 
-Recommended next milestone: run manual real-model validation on a machine with
-the optional torch/transformers/CUDA runtime and a local Unlimited-OCR model
-directory, then record GPU/runtime/model compatibility and any output-shape
-fixes needed before UI exposure.
+Recommended next milestone: repeat the managed install and validation on at
+least one different Windows NVIDIA GPU and one Linux NVIDIA system, then add
+versioned OCR-quality evaluation with representative documents before widening
+the current controlled device/runtime support claim.

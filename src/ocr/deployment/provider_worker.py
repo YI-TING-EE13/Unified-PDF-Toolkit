@@ -17,6 +17,9 @@ try:
 except ImportError:  # Executed as a standalone file by the private Python runtime.
     from runtime_tasks import _load_model, _validate_model_path
 
+_MAX_OUTPUT_CHARACTERS = 16 * 1024 * 1024
+_MAX_PROMPT_CHARACTERS = 4096
+
 
 class Worker:
     def __init__(self) -> None:
@@ -51,6 +54,7 @@ class Worker:
 
         return {
             "success": True,
+            "pid": os.getpid(),
             "loaded": self.model is not None,
             "revision": self.revision,
             "cuda_available": bool(torch.cuda.is_available()),
@@ -140,10 +144,13 @@ class Worker:
 
     def _infer(self, image_paths: list[Path], output_dir: Path, options: dict[str, Any]) -> Any:
         max_length = _bounded_int(options.get("max_length"), 32768, 1024, 32768)
+        prompt = str(options.get("prompt", "<image>document parsing."))
+        if len(prompt) > _MAX_PROMPT_CHARACTERS:
+            raise ValueError("OCR prompt exceeds the managed worker safety limit.")
         if len(image_paths) == 1:
             return self.model.infer(
                 self.tokenizer,
-                prompt=str(options.get("prompt", "<image>document parsing.")),
+                prompt=prompt,
                 image_file=str(image_paths[0]),
                 output_path=str(output_dir),
                 base_size=1024,
@@ -158,7 +165,11 @@ class Worker:
             raise RuntimeError("Pinned model does not expose infer_multi.")
         return self.model.infer_multi(
             self.tokenizer,
-            prompt=str(options.get("prompt", "<image>Multi page parsing.")),
+            prompt=(
+                prompt
+                if "prompt" in options
+                else "<image>Multi page parsing."
+            ),
             image_files=[str(path) for path in image_paths],
             output_path=str(output_dir),
             image_size=1024,
@@ -201,28 +212,53 @@ def _require_child(path: Path, root: Path, *, require_file: bool) -> Path:
 
 def _collect_outputs(returned: Any, output_dir: Path) -> list[str]:
     if isinstance(returned, str):
-        return [returned]
+        return _bounded_output_texts([returned])
     if isinstance(returned, (list, tuple)):
-        return [item for item in returned if isinstance(item, str) and item]
+        return _bounded_output_texts(
+            [item for item in returned if isinstance(item, str) and item]
+        )
     if isinstance(returned, dict):
         pages = returned.get("pages")
         if isinstance(pages, list):
-            return [
-                str(page.get("text", ""))
-                for page in pages
-                if isinstance(page, dict) and page.get("text")
-            ]
+            return _bounded_output_texts(
+                [
+                    str(page.get("text", ""))
+                    for page in pages
+                    if isinstance(page, dict) and page.get("text")
+                ]
+            )
         if isinstance(returned.get("text"), str):
-            return [returned["text"]]
+            return _bounded_output_texts([returned["text"]])
+    resolved_root = output_dir.resolve()
     values = []
     for path in sorted(output_dir.rglob("*")):
-        if (
-            path.is_file()
-            and not path.is_symlink()
-            and path.suffix.casefold() in {".txt", ".md"}
-        ):
-            values.append(path.read_text(encoding="utf-8", errors="replace"))
-    return [value for value in values if value]
+        try:
+            if path.is_symlink() or path.suffix.casefold() not in {".txt", ".md"}:
+                continue
+            resolved = path.resolve()
+            if resolved == resolved_root or resolved_root not in resolved.parents:
+                continue
+            if not resolved.is_file():
+                continue
+            remaining = _MAX_OUTPUT_CHARACTERS - sum(len(value) for value in values)
+            if remaining <= 0:
+                raise ValueError("OCR output exceeds the managed worker safety limit.")
+            with resolved.open("r", encoding="utf-8", errors="replace") as handle:
+                value = handle.read(remaining + 1)
+            if len(value) > remaining:
+                raise ValueError("OCR output exceeds the managed worker safety limit.")
+            if value:
+                values.append(value)
+        except OSError:
+            continue
+    return values
+
+
+def _bounded_output_texts(values: list[str]) -> list[str]:
+    total = sum(len(value) for value in values)
+    if total > _MAX_OUTPUT_CHARACTERS:
+        raise ValueError("OCR output exceeds the managed worker safety limit.")
+    return values
 
 
 def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:

@@ -100,7 +100,18 @@ attempt count, retry policy, recovery strategy, timestamps, and structured
 details. Package/environment creation retries transient failures. Model download
 uses the Hugging Face resumable cache, reports byte progress, and retries up to
 three attempts. Cancellation terminates the subprocess tree; a later run resumes
-the same pinned plan without repeating completed stages.
+the same pinned plan without repeating completed stages. Terminated command
+handles are explicitly reaped so repeated timeout/cancel cycles do not retain
+controller-side process resources.
+
+An operating-system-held lock permits only one installer for the managed root.
+The lock is released automatically if the APP or computer stops, so a leftover
+lock file alone does not block recovery. Invalid or partially written journals
+are quarantined as `installation.corrupt-*.json`, then rebuilt with recovery
+metadata instead of being trusted or silently overwritten. Atomic state writes
+retry bounded transient sharing violations. A valid existing private
+environment and a complete pinned model snapshot are reused; the integrity
+stage still verifies the complete required-file inventory and weight hash.
 
 ## GUI workflow
 
@@ -153,6 +164,10 @@ pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id>
 pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id> --remove-model --clear-download-cache
 ```
 
+The second form is the explicit full cleanup: it removes every managed pinned
+model revision plus the isolated Hugging Face/Transformers download and custom-
+module caches. Runtime-only uninstall keeps all model/cache data for reuse.
+
 ## Validation and benchmark
 
 Setup verifies the private Python executable, pinned dependency imports,
@@ -167,6 +182,17 @@ The benchmark classifies the device as real-time suitable, general OCR
 suitable, usable but slow, easily OOM, or not recommended for local use. A model
 load alone does not count as successful setup.
 
+Maintainers with an already installed, consented runtime can run the opt-in
+real-device harness without installing or downloading again:
+
+```powershell
+uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
+  --reload-cycles 2 --stress-iterations 50 --output <report.json>
+```
+
+The report records timing, hashes/lengths, expected-term matches, RAM/VRAM,
+worker PID/handles, cleanup, and dependency versions, but not full OCR text.
+
 ## Security and privacy boundaries
 
 - Document pages and OCR text remain on the device.
@@ -175,6 +201,10 @@ load alone does not count as successful setup.
 - Pinned custom model code runs only in the private worker process and loads
   from the verified local snapshot.
 - Model inputs and outputs are restricted to APP-managed session paths.
+- Cache, runtime, session, and worker-output checks resolve every path and reject
+  symlink/junction escapes before reading, executing, or deleting content.
+- Worker requests enforce bounded prompt, timeout, option, and aggregate output
+  limits. Protocol corruption or response-ID mismatch forces a clean restart.
 - Normal logs omit source paths, image data, and OCR text.
 - No Driver update, system CUDA change, PATH edit, admin elevation, or global
   Python modification is part of the managed plan.
@@ -193,6 +223,10 @@ export, but a traceback is not the only user message.
 If the advanced provider is missing, unhealthy, or fails during recognition,
 the provider router preserves the existing Tesseract path. Unlimited-OCR does
 not prevent the APP from starting or using its normal PDF tools.
+
+Explicit cancellation is not treated as a provider failure and is never routed
+into an unexpected Tesseract retry. The persistent worker is terminated, and a
+later request performs an idempotent model reload in a new worker.
 
 ## Known limitations
 

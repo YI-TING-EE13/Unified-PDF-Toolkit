@@ -7,7 +7,7 @@ until the user accepts an exact plan. The default package still does not bundle
 models, torch, Transformers, CUDA runtimes, or production-ready Unlimited-OCR
 support.
 
-## Managed deployment controls (2026-07-14)
+## Managed deployment controls (2026-07-15)
 
 - Six consent acknowledgements are unchecked by default and bound to the exact
   plan and metadata revision.
@@ -27,6 +27,15 @@ support.
   default. Hugging Face telemetry is disabled.
 - Cancellation terminates subprocess trees. Cleanup requires explicit
   confirmation and refuses paths outside the managed data root.
+- An OS-held lock serializes setup without trusting a stale lock-file timestamp;
+  corrupt/incomplete journals are quarantined and rebuilt with recovery details.
+- Managed cache/runtime/session paths and every worker output are resolved before
+  access. Symlink/junction substitution, including an intermediate directory,
+  is rejected; recursive size and cleanup scans never follow links.
+- Worker prompts, options, timeouts, and aggregate output are bounded. A stale,
+  malformed, or mismatched protocol response invalidates and restarts the worker.
+- Cancellation terminates the active worker and is not silently retried through
+  Tesseract. A later explicit request reloads the model in a clean worker.
 - An unhealthy or missing managed provider falls back to Tesseract and cannot
   prevent the APP from starting.
 

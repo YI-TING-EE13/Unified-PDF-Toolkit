@@ -4,13 +4,12 @@ import copy
 import hashlib
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
-
-import psutil
 
 from src.ocr.consent import create_advanced_ocr_consent
 from src.ocr.deployment.cache import ModelCacheManager
@@ -28,6 +27,7 @@ from src.ocr.deployment.errors import (
     DeploymentFailure,
     ErrorCode,
     classify_exception,
+    make_error,
 )
 from src.ocr.deployment.metadata import (
     CompatibilityMetadataError,
@@ -46,16 +46,22 @@ from src.ocr.deployment.orchestrator import (
     CancellationToken,
     DeploymentCleanup,
     SetupOrchestrator,
+    _atomic_json,
 )
 from src.ocr.deployment.provider_worker import (
     _benchmark_classification,
     _bounded_int,
+    _bounded_output_texts,
+    _collect_outputs,
     _require_child,
 )
 from src.ocr.deployment.providers import (
     BasicOCRProvider,
     OCRProviderRouter,
     PersistentRuntimeWorker,
+    UnlimitedOCRProvider,
+    _bounded_timeout,
+    _safe_worker_options,
     _worker_error_code,
 )
 from src.ocr.deployment.resolver import EnvironmentResolver
@@ -119,6 +125,20 @@ def _acknowledgements():
     return {key: True for key in REQUIRED_INSTALL_ACKNOWLEDGEMENTS}
 
 
+def _make_directory_link(link: Path, target: Path) -> None:
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            raise OSError(result.stderr or result.stdout)
+    else:
+        link.symlink_to(target, target_is_directory=True)
+
+
 class MetadataTests(unittest.TestCase):
     def test_pyinstaller_bundles_private_runtime_entrypoint_scripts(self):
         spec = (Path(__file__).parents[1] / "pdf-toolkit.spec").read_text(
@@ -151,6 +171,12 @@ class MetadataTests(unittest.TestCase):
         metadata["backends"]["transformers"]["pytorch_profiles"]["cu130"][
             "index_url"
         ] = "https://example.com/fake-wheels"
+        with self.assertRaises(CompatibilityMetadataError):
+            validate_compatibility_metadata(metadata)
+
+    def test_metadata_rejects_parent_traversing_artifact_paths(self):
+        metadata = copy.deepcopy(load_compatibility_metadata())
+        metadata["model_artifacts"]["required_files"] = ["../outside.txt"]
         with self.assertRaises(CompatibilityMetadataError):
             validate_compatibility_metadata(metadata)
 
@@ -445,6 +471,54 @@ class CacheTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 manager.snapshot_path("../outside")
 
+    def test_explicit_full_cleanup_removes_all_snapshots_and_managed_caches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            manager = ModelCacheManager(Path(temporary))
+            for revision in ("a" * 40, "b" * 40):
+                snapshot = manager.snapshot_path(revision)
+                snapshot.mkdir(parents=True)
+                (snapshot / "file").write_text("x", encoding="utf-8")
+            for name in ("hub", "hf-home", "modules", "transformers"):
+                target = manager.cache_root / name
+                target.mkdir()
+                (target / "cache-file").write_text("x", encoding="utf-8")
+            self.assertEqual(manager.uninstall_all_snapshots(), 2)
+            self.assertTrue(manager.clear_download_cache())
+            self.assertFalse(any(manager.snapshots_root.iterdir()))
+            self.assertFalse(
+                any((manager.cache_root / name).exists() for name in (
+                    "hub", "hf-home", "modules", "transformers"
+                ))
+            )
+
+    def test_cache_rejects_junctioned_snapshots_root(self):
+        revision = "d" * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cache = root / "cache"
+            outside = root / "outside"
+            cache.mkdir()
+            outside.mkdir()
+            try:
+                _make_directory_link(cache / "snapshots", outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            manager = ModelCacheManager(cache)
+            with self.assertRaises(ValueError):
+                manager.snapshot_path(revision)
+
+    def test_cache_rejects_junctioned_cache_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            outside = root / "outside"
+            outside.mkdir()
+            try:
+                _make_directory_link(root / "models", outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            with self.assertRaises(ValueError):
+                ModelCacheManager(root / "models")
+
 
 class OrchestratorTests(unittest.TestCase):
     def setUp(self):
@@ -541,6 +615,107 @@ class OrchestratorTests(unittest.TestCase):
             self.assertEqual(create_step["attempts"], 1)
             self.assertEqual(install_step["status"], "SUCCEEDED")
 
+    def test_corrupt_journal_is_quarantined_and_existing_environment_is_reused(self):
+        calls = []
+
+        def runner(command, environment, timeout, cancellation):
+            calls.append(command)
+            return {"returncode": 0, "stdout": "", "stderr": ""}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan, _consent, orchestrator = self._build(root, command_runner=runner)
+            python = Path(plan.runtime_root) / "environment" / (
+                "Scripts/python.exe" if os.name == "nt" else "bin/python"
+            )
+            python.parent.mkdir(parents=True)
+            python.write_bytes(b"private runtime marker")
+            orchestrator.state_root.mkdir(parents=True)
+            orchestrator.journal_path.write_text("{not-json", encoding="utf-8")
+
+            journal = orchestrator.run(until=InstallStage.CREATE_ISOLATED_ENV)
+
+            self.assertIn("recovered_from", journal)
+            self.assertTrue(Path(journal["recovered_from"]).is_file())
+            create = next(
+                step for step in journal["steps"] if step["stage"] == "CREATE_ISOLATED_ENV"
+            )
+            self.assertTrue(create["details"]["reused_existing_environment"])
+            self.assertEqual(calls, [])
+
+    def test_incomplete_journal_is_quarantined_and_rebuilt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan, _consent, orchestrator = self._build(root)
+            orchestrator.state_root.mkdir(parents=True)
+            orchestrator.journal_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "plan_id": plan.plan_id,
+                        "steps": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            journal = orchestrator.run(until=InstallStage.PRECHECK)
+
+            self.assertIn("recovered_from", journal)
+            self.assertEqual(len(journal["steps"]), len(tuple(InstallStage)))
+
+    def test_atomic_journal_replace_retries_transient_permission_error(self):
+        real_replace = os.replace
+        calls = 0
+
+        def flaky_replace(source, destination):
+            nonlocal calls
+            calls += 1
+            if calls < 3:
+                raise PermissionError("transient scanner lock")
+            return real_replace(source, destination)
+
+        with tempfile.TemporaryDirectory() as temporary, patch(
+            "src.ocr.deployment.orchestrator.os.replace", side_effect=flaky_replace
+        ):
+            path = Path(temporary) / "journal.json"
+            _atomic_json(path, {"ok": True})
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {"ok": True})
+        self.assertEqual(calls, 3)
+
+    def test_complete_model_snapshot_skips_network_download(self):
+        content = b"small pinned model"
+        metadata = copy.deepcopy(self.metadata)
+        metadata["model_artifacts"].update(
+            {
+                "weight_file": "weight.bin",
+                "weight_bytes": len(content),
+                "weight_sha256": hashlib.sha256(content).hexdigest(),
+                "required_files": ["weight.bin", "config.json"],
+            }
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan, consent, _orchestrator = self._build(root)
+            orchestrator = SetupOrchestrator(
+                plan=plan,
+                compatibility=self.compatibility,
+                environment=self.environment,
+                consent=consent,
+                metadata=metadata,
+                state_root=root / "state",
+                command_runner=lambda *_args: self.fail("download command should not run"),
+            )
+            manager = ModelCacheManager(Path(plan.model_cache_dir))
+            snapshot = manager.snapshot_path(plan.model_revision)
+            snapshot.mkdir(parents=True)
+            (snapshot / "weight.bin").write_bytes(content)
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+
+            result = orchestrator._stage_download_model()
+
+            self.assertTrue(result["reused_existing_snapshot"])
+
     def test_cancelled_command_marks_step_and_keeps_resume_state(self):
         token = CancellationToken()
 
@@ -569,20 +744,15 @@ class OrchestratorTests(unittest.TestCase):
     def test_active_install_lock_blocks_duplicate_setup(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            _plan, _consent, orchestrator = self._build(root)
-            orchestrator.state_root.mkdir(parents=True)
-            orchestrator.lock_path.write_text(
-                json.dumps(
-                    {
-                        "pid": os.getpid(),
-                        "process_created_at": psutil.Process().create_time(),
-                    }
-                ),
-                encoding="utf-8",
-            )
-            with self.assertRaises(DeploymentFailure) as caught:
-                orchestrator.run(until=InstallStage.PRECHECK)
-        self.assertEqual(caught.exception.error.error_code, "SUBPROCESS_CRASH")
+            _plan, _consent, owner = self._build(root)
+            _plan, _consent, contender = self._build(root)
+            owner._acquire_lock()
+            try:
+                with self.assertRaises(DeploymentFailure) as caught:
+                    contender.run(until=InstallStage.PRECHECK)
+            finally:
+                owner._release_lock()
+        self.assertEqual(caught.exception.error.error_code, "SETUP_ALREADY_RUNNING")
 
     def test_stale_reboot_lock_is_removed_instead_of_blocking_resume(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -652,6 +822,17 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(received[0].count("--expected-term"), 2)
         self.assertNotIn("中英文", result)
 
+    def test_real_subprocess_timeout_terminates_private_command(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            _plan, _consent, orchestrator = self._build(Path(temporary))
+            with self.assertRaises(TimeoutError):
+                orchestrator._run_command(
+                    [os.sys.executable, "-c", "import time; time.sleep(30)"],
+                    dict(os.environ),
+                    0.1,
+                    CancellationToken(),
+                )
+
     def test_cleanup_requires_confirmation_and_stays_inside_data_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -666,8 +847,146 @@ class OrchestratorTests(unittest.TestCase):
             self.assertTrue(result["runtime_removed"])
             self.assertTrue(root.exists())
 
+    def test_explicit_cleanup_removes_current_and_old_managed_revisions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = EnvironmentResolver(self.metadata).resolve(
+                self.compatibility,
+                data_root=root,
+            )
+            Path(plan.runtime_root).mkdir(parents=True)
+            cache = ModelCacheManager(Path(plan.model_cache_dir))
+            for revision in (plan.model_revision, "f" * 40):
+                snapshot = cache.snapshot_path(revision)
+                snapshot.mkdir(parents=True)
+                (snapshot / "file").write_text("x", encoding="utf-8")
+            (cache.cache_root / "modules").mkdir()
+            result = DeploymentCleanup(plan).uninstall(
+                confirmed=True,
+                remove_model=True,
+                clear_download_cache=True,
+            )
+            self.assertTrue(result["runtime_removed"])
+            self.assertTrue(result["model_removed"])
+            self.assertTrue(result["download_cache_cleared"])
+            self.assertFalse(any(cache.snapshots_root.iterdir()))
+            self.assertFalse((cache.cache_root / "modules").exists())
+
+    def test_cleanup_rejects_runtime_junction_escape(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = EnvironmentResolver(self.metadata).resolve(self.compatibility, data_root=root)
+            runtime = Path(plan.runtime_root)
+            outside = root / "outside-runtime"
+            outside.mkdir()
+            marker = outside / "must-survive.txt"
+            marker.write_text("safe", encoding="utf-8")
+            runtime.parent.mkdir(parents=True)
+            try:
+                _make_directory_link(runtime, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            try:
+                with self.assertRaises(ValueError):
+                    DeploymentCleanup(plan).uninstall(confirmed=True)
+                self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
+            finally:
+                if runtime.exists():
+                    runtime.rmdir()
+
+    def test_cleanup_rejects_managed_root_junction_before_any_deletion(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            container = Path(temporary)
+            managed = container / "managed"
+            outside = container / "outside-managed"
+            plan = EnvironmentResolver(self.metadata).resolve(
+                self.compatibility,
+                data_root=managed,
+            )
+            outside_runtime = outside / "runtimes" / "unlimited-ocr-transformers"
+            outside_runtime.mkdir(parents=True)
+            (outside / "models").mkdir()
+            marker = outside_runtime / "must-survive.txt"
+            marker.write_text("safe", encoding="utf-8")
+            try:
+                _make_directory_link(managed, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            try:
+                with self.assertRaises(ValueError):
+                    DeploymentCleanup(plan).uninstall(
+                        confirmed=True,
+                        remove_model=True,
+                        clear_download_cache=True,
+                    )
+                self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
+            finally:
+                if managed.exists():
+                    managed.rmdir()
+
+    def test_setup_rejects_managed_root_junction_before_state_write(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            container = Path(temporary)
+            managed = container / "managed"
+            outside = container / "outside-managed"
+            plan = EnvironmentResolver(self.metadata).resolve(
+                self.compatibility,
+                data_root=managed,
+            )
+            consent = DeploymentConsent.create(
+                plan=plan,
+                metadata_revision=self.compatibility.metadata_revision,
+                acknowledgements=_acknowledgements(),
+            )
+            outside.mkdir()
+            marker = outside / "must-survive.txt"
+            marker.write_text("safe", encoding="utf-8")
+            try:
+                _make_directory_link(managed, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            try:
+                orchestrator = SetupOrchestrator(
+                    plan=plan,
+                    compatibility=self.compatibility,
+                    environment=self.environment,
+                    consent=consent,
+                    metadata=self.metadata,
+                    state_root=managed / "state",
+                    command_runner=self._success_runner,
+                )
+                with self.assertRaises(DeploymentFailure) as caught:
+                    orchestrator.run(until=InstallStage.PRECHECK)
+                self.assertEqual(caught.exception.error.error_code, "PERMISSION_DENIED")
+                self.assertEqual(marker.read_text(encoding="utf-8"), "safe")
+                self.assertFalse((outside / "state").exists())
+            finally:
+                if managed.exists():
+                    managed.rmdir()
+
 
 class ProviderAndAssetTests(unittest.TestCase):
+    def test_provider_rejects_junctioned_data_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            container = Path(temporary)
+            managed = container / "managed"
+            outside = container / "outside"
+            outside.mkdir()
+            try:
+                _make_directory_link(managed, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+            try:
+                provider = UnlimitedOCRProvider(data_root=managed)
+                self.assertFalse(provider.is_available())
+                self.assertEqual(
+                    provider._last_error["error_code"],
+                    "PERMISSION_DENIED",
+                )
+            finally:
+                if managed.exists():
+                    managed.rmdir()
+
     def test_persistent_worker_discards_stale_responses_and_closes_handles(self):
         import io
         from unittest.mock import Mock
@@ -770,6 +1089,128 @@ class ProviderAndAssetTests(unittest.TestCase):
             self.assertEqual(_require_child(child, root, require_file=True), child)
             with self.assertRaises(PermissionError):
                 _require_child(root.parent / "outside.txt", root, require_file=False)
+
+    def test_worker_output_collection_does_not_follow_directory_links(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            output = root / "output"
+            outside = root / "outside"
+            output.mkdir()
+            outside.mkdir()
+            (output / "safe.txt").write_text("safe", encoding="utf-8")
+            (outside / "secret.txt").write_text("secret", encoding="utf-8")
+            try:
+                _make_directory_link(output / "linked", outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            self.assertEqual(_collect_outputs(None, output), ["safe"])
+
+    def test_worker_output_and_request_options_are_bounded(self):
+        with patch("src.ocr.deployment.provider_worker._MAX_OUTPUT_CHARACTERS", 3):
+            with self.assertRaises(ValueError):
+                _bounded_output_texts(["four"])
+        self.assertEqual(_bounded_timeout(float("nan")), 1800.0)
+        self.assertEqual(_bounded_timeout(-1), 1.0)
+        self.assertEqual(_bounded_timeout(99999), 7200.0)
+        self.assertEqual(
+            _safe_worker_options({"prompt": "safe", "max_length": 1024, "bad": "ignored"}),
+            {"prompt": "safe", "max_length": 1024},
+        )
+
+    def test_persistent_worker_cancellation_terminates_active_process(self):
+        import io
+        from unittest.mock import Mock
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worker = PersistentRuntimeWorker(
+                python_executable=Path(os.sys.executable),
+                model_root=root / "models",
+                session_root=root / "sessions",
+                environment={},
+                log_path=root / "worker.log",
+            )
+            process = Mock()
+            process.poll.return_value = None
+            process.stdin = io.StringIO()
+            worker.process = process
+            with patch.object(worker, "start"), patch.object(worker, "stop") as stop:
+                with self.assertRaises(DeploymentFailure) as caught:
+                    worker.request("health", timeout=10, cancellation_check=lambda: True)
+            self.assertEqual(caught.exception.error.error_code, "CANCELLED")
+            stop.assert_called_once_with(force=True)
+
+    def test_persistent_worker_protocol_mismatch_forces_restart(self):
+        import io
+        from unittest.mock import Mock
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worker = PersistentRuntimeWorker(
+                python_executable=Path(os.sys.executable),
+                model_root=root / "models",
+                session_root=root / "sessions",
+                environment={},
+                log_path=root / "worker.log",
+            )
+            process = Mock()
+            process.poll.return_value = None
+            process.stdin = io.StringIO()
+            worker.process = process
+            worker._responses.put({"id": "wrong", "result": {"success": True}})
+            with patch.object(worker, "start"), patch.object(worker, "stop") as stop:
+                with self.assertRaises(DeploymentFailure) as caught:
+                    worker.request("health", timeout=1)
+            self.assertEqual(caught.exception.error.error_code, "SUBPROCESS_CRASH")
+            stop.assert_called_once_with(force=True)
+
+    def test_provider_recognize_revalidates_worker_load_before_request(self):
+        from unittest.mock import Mock
+
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as temporary:
+            provider = UnlimitedOCRProvider(data_root=Path(temporary))
+            worker = Mock()
+            worker.request.return_value = {
+                "texts": ["recovered"],
+                "inference_seconds": 0.1,
+                "peak_vram_bytes": 1,
+            }
+            provider._worker = worker
+            provider._plan = Mock(model_revision="a" * 40)
+            with patch.object(provider, "load") as load:
+                result = provider.recognize(
+                    OcrRequest(
+                        engine=OcrEngine.LOCAL_MODEL,
+                        images=[Image.new("RGB", (8, 8), "white")],
+                    )
+                )
+            load.assert_called_once_with()
+            self.assertEqual(result.text, "recovered")
+
+    def test_router_does_not_fallback_after_user_cancellation(self):
+        class Basic:
+            @staticmethod
+            def recognize(request):
+                raise AssertionError("fallback should not run")
+
+        class Advanced:
+            @staticmethod
+            def is_available():
+                return True
+
+            @staticmethod
+            def recognize(request):
+                raise DeploymentFailure(make_error(ErrorCode.CANCELLED))
+
+        with self.assertRaises(DeploymentFailure) as caught:
+            OCRProviderRouter(basic=Basic(), advanced=Advanced()).recognize(
+                OcrRequest(engine=OcrEngine.LOCAL_MODEL, images=[]),
+                prefer_advanced=True,
+            )
+        self.assertEqual(caught.exception.error.error_code, "CANCELLED")
 
     def test_bounded_options_and_benchmark_classification(self):
         self.assertEqual(_bounded_int("999999", 10, 1, 100), 100)

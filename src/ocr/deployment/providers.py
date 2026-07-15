@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .cache import ModelCacheManager
 from .compatibility import CompatibilityEngine
@@ -132,45 +134,53 @@ class PersistentRuntimeWorker:
         self.log_path = log_path
         self.process: subprocess.Popen[str] | None = None
         self._responses: queue.Queue[dict[str, Any] | BaseException] = queue.Queue()
-        self._request_lock = threading.Lock()
+        self._request_lock = threading.RLock()
         self._log_handle: Any = None
         self._reader_thread: threading.Thread | None = None
 
     def start(self) -> None:
-        if self.process and self.process.poll() is None:
-            return
-        self._finalize_stopped_process()
-        self._discard_stale_responses()
-        self.session_root.mkdir(parents=True, exist_ok=True)
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ)
-        env.update(self.environment)
-        env["PDF_TOOLKIT_OCR_MODEL_ROOT"] = str(self.model_root)
-        env["PDF_TOOLKIT_OCR_SESSION_ROOT"] = str(self.session_root)
-        env["PYTHONIOENCODING"] = "utf-8"
-        self._log_handle = self.log_path.open("a", encoding="utf-8")
-        self.process = subprocess.Popen(
-            [str(self.python_executable), str(Path(__file__).with_name("provider_worker.py"))],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=self._log_handle,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            shell=False,
-            env=env,
-            creationflags=_CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP,
-        )
-        self._reader_thread = threading.Thread(target=self._read_responses, daemon=True)
-        self._reader_thread.start()
-
-    def request(self, command: str, *, timeout: float = 1800, **payload: Any) -> dict[str, Any]:
-        self.start()
-        assert self.process is not None
-        request_id = uuid.uuid4().hex
-        message = {"id": request_id, "command": command, **payload}
         with self._request_lock:
+            if self.process and self.process.poll() is None:
+                return
+            self._finalize_stopped_process()
+            self._discard_stale_responses()
+            self.session_root.mkdir(parents=True, exist_ok=True)
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            env = dict(os.environ)
+            env.update(self.environment)
+            env["PDF_TOOLKIT_OCR_MODEL_ROOT"] = str(self.model_root)
+            env["PDF_TOOLKIT_OCR_SESSION_ROOT"] = str(self.session_root)
+            env["PYTHONIOENCODING"] = "utf-8"
+            self._log_handle = self.log_path.open("a", encoding="utf-8")
+            self.process = subprocess.Popen(
+                [str(self.python_executable), str(Path(__file__).with_name("provider_worker.py"))],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=self._log_handle,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                shell=False,
+                env=env,
+                creationflags=_CREATE_NO_WINDOW | _CREATE_NEW_PROCESS_GROUP,
+            )
+            self._reader_thread = threading.Thread(target=self._read_responses, daemon=True)
+            self._reader_thread.start()
+
+    def request(
+        self,
+        command: str,
+        *,
+        timeout: float = 1800,
+        cancellation_check: Callable[[], bool] | None = None,
+        **payload: Any,
+    ) -> dict[str, Any]:
+        with self._request_lock:
+            self.start()
+            assert self.process is not None
+            request_id = uuid.uuid4().hex
+            message = {"id": request_id, "command": command, **payload}
             if self.process.poll() is not None or self.process.stdin is None:
                 raise DeploymentFailure(make_error(ErrorCode.SUBPROCESS_CRASH))
             try:
@@ -181,29 +191,56 @@ class PersistentRuntimeWorker:
                 raise DeploymentFailure(
                     make_error(ErrorCode.SUBPROCESS_CRASH, technical_details=str(exc))
                 ) from exc
-            try:
-                response = self._responses.get(timeout=timeout)
-            except queue.Empty as exc:
-                self.stop(force=True)
-                raise DeploymentFailure(
-                    make_error(
-                        ErrorCode.SUBPROCESS_CRASH,
-                        technical_details=f"Worker request timed out after {timeout:.0f}s.",
+            deadline = time.monotonic() + _bounded_timeout(timeout)
+            while True:
+                if cancellation_check is not None and cancellation_check():
+                    self.stop(force=True)
+                    raise DeploymentFailure(make_error(ErrorCode.CANCELLED))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self.stop(force=True)
+                    raise DeploymentFailure(
+                        make_error(
+                            ErrorCode.SUBPROCESS_CRASH,
+                            technical_details=f"Worker request timed out after {timeout:.0f}s.",
+                        )
                     )
-                ) from exc
+                try:
+                    response = self._responses.get(timeout=min(0.2, remaining))
+                    break
+                except queue.Empty:
+                    continue
             if isinstance(response, BaseException):
+                self.stop(force=True)
                 raise DeploymentFailure(
                     make_error(ErrorCode.SUBPROCESS_CRASH, technical_details=str(response))
                 )
             if response.get("id") != request_id:
+                self.stop(force=True)
                 raise DeploymentFailure(
                     make_error(ErrorCode.SUBPROCESS_CRASH, technical_details="Worker response id mismatch.")
                 )
             if "error" in response:
                 error = response["error"]
                 code = _worker_error_code(command, error)
+                if code in {
+                    ErrorCode.CUDA_OOM,
+                    ErrorCode.RAM_OOM,
+                    ErrorCode.MODEL_LOAD_FAILED,
+                    ErrorCode.PYTORCH_CUDA_MISMATCH,
+                }:
+                    self.stop(force=True)
                 raise DeploymentFailure(make_error(code, technical_details=json.dumps(error)))
-            return dict(response.get("result", {}))
+            result = response.get("result", {})
+            if not isinstance(result, Mapping):
+                self.stop(force=True)
+                raise DeploymentFailure(
+                    make_error(
+                        ErrorCode.SUBPROCESS_CRASH,
+                        technical_details="Worker result must be a JSON object.",
+                    )
+                )
+            return dict(result)
 
     def stop(self, *, force: bool = False) -> None:
         process = self.process
@@ -223,6 +260,8 @@ class PersistentRuntimeWorker:
             process.wait(timeout=5)
         self._finalize_stopped_process()
         self._discard_stale_responses()
+        if force:
+            self._responses.put(RuntimeError("Worker was stopped."))
 
     def _finalize_stopped_process(self) -> None:
         process = self.process
@@ -258,12 +297,14 @@ class PersistentRuntimeWorker:
         try:
             for line in process.stdout:
                 try:
-                    self._responses.put(json.loads(line))
+                    response = json.loads(line)
+                    if not isinstance(response, dict):
+                        raise ValueError("Worker response must be a JSON object.")
+                    self._responses.put(response)
                 except json.JSONDecodeError as exc:
                     self._responses.put(exc)
         finally:
-            if process.poll() not in {None, 0}:
-                self._responses.put(RuntimeError(f"Worker exited with code {process.returncode}."))
+            self._responses.put(RuntimeError(f"Worker exited with code {process.poll()}."))
 
 
 class UnlimitedOCRProvider(OCRProvider):
@@ -278,7 +319,9 @@ class UnlimitedOCRProvider(OCRProvider):
         resolver: EnvironmentResolver | None = None,
         data_root: Path | None = None,
     ) -> None:
-        self.data_root = (data_root or default_ocr_data_root()).expanduser().resolve()
+        self.data_root = Path(
+            os.path.abspath(str((data_root or default_ocr_data_root()).expanduser()))
+        )
         self.inspector = environment_inspector or EnvironmentInspector(data_root=self.data_root)
         self.engine = compatibility_engine or CompatibilityEngine()
         self.resolver = resolver or EnvironmentResolver()
@@ -287,8 +330,10 @@ class UnlimitedOCRProvider(OCRProvider):
         self._plan: RuntimePlan | None = None
         self._worker: PersistentRuntimeWorker | None = None
         self._last_error: dict[str, Any] | None = None
+        self._lifecycle_lock = threading.RLock()
 
     def _refresh_plan(self) -> RuntimePlan:
+        self._reject_linked_data_root()
         inspected = self.inspector.inspect()
         self._compatibility = self.engine.evaluate(inspected)
         self._environment = replace(
@@ -296,6 +341,17 @@ class UnlimitedOCRProvider(OCRProvider):
         )
         self._plan = self.resolver.resolve(self._compatibility, data_root=self.data_root)
         return self._plan
+
+    def _reject_linked_data_root(self) -> None:
+        if self.data_root.resolve() != self.data_root:
+            raise DeploymentFailure(
+                make_error(
+                    ErrorCode.PERMISSION_DENIED,
+                    technical_details=(
+                        "Managed OCR data root was replaced by a link or junction."
+                    ),
+                )
+            )
 
     @property
     def plan(self) -> RuntimePlan:
@@ -308,15 +364,25 @@ class UnlimitedOCRProvider(OCRProvider):
         return self._environment, self._compatibility, plan
 
     def is_available(self) -> bool:
-        plan = self.plan
-        python = _runtime_python(
-            Path(plan.runtime_root) / "environment", plan.environment_manager
-        )
-        status = ModelCacheManager(Path(plan.model_cache_dir)).inspect(
-            plan.model_revision,
-            self.engine.metadata,
-        )
-        return plan.executable and python.is_file() and status.complete
+        try:
+            plan = self.plan
+            python = _runtime_python(
+                Path(plan.runtime_root) / "environment", plan.environment_manager
+            )
+            status = ModelCacheManager(Path(plan.model_cache_dir)).inspect(
+                plan.model_revision,
+                self.engine.metadata,
+            )
+            return plan.executable and python.is_file() and status.complete
+        except DeploymentFailure as exc:
+            self._last_error = exc.error.to_dict()
+            return False
+        except (OSError, ValueError) as exc:
+            self._last_error = make_error(
+                ErrorCode.MODEL_INTEGRITY_FAILED,
+                technical_details=f"{type(exc).__name__}: {exc}",
+            ).to_dict()
+            return False
 
     def check_compatibility(self) -> CompatibilityReport:
         self._refresh_plan()
@@ -338,47 +404,51 @@ class UnlimitedOCRProvider(OCRProvider):
         ).run()
 
     def load(self) -> None:
-        if not self.is_available():
-            raise DeploymentFailure(make_error(ErrorCode.MODEL_LOAD_FAILED))
-        plan = self.plan
-        session_root = self.data_root / "sessions"
-        self._worker = self._worker or PersistentRuntimeWorker(
-            python_executable=_runtime_python(
-                Path(plan.runtime_root) / "environment", plan.environment_manager
-            ),
-            model_root=Path(plan.model_cache_dir) / "snapshots",
-            session_root=session_root,
-            environment=plan.environment,
-            log_path=self.data_root / "logs" / "provider-worker.log",
-        )
-        snapshot = ModelCacheManager(Path(plan.model_cache_dir)).snapshot_path(plan.model_revision)
-        self._worker.request(
-            "load",
-            model_path=str(snapshot),
-            revision=plan.model_revision,
-            timeout=1800,
-        )
+        with self._lifecycle_lock:
+            if not self.is_available():
+                raise DeploymentFailure(make_error(ErrorCode.MODEL_LOAD_FAILED))
+            plan = self.plan
+            session_root = self.data_root / "sessions"
+            self._worker = self._worker or PersistentRuntimeWorker(
+                python_executable=_runtime_python(
+                    Path(plan.runtime_root) / "environment", plan.environment_manager
+                ),
+                model_root=Path(plan.model_cache_dir) / "snapshots",
+                session_root=session_root,
+                environment=plan.environment,
+                log_path=self.data_root / "logs" / "provider-worker.log",
+            )
+            snapshot = ModelCacheManager(Path(plan.model_cache_dir)).snapshot_path(
+                plan.model_revision
+            )
+            self._worker.request(
+                "load",
+                model_path=str(snapshot),
+                revision=plan.model_revision,
+                timeout=1800,
+            )
 
     def recognize(self, input_data: OcrRequest) -> OcrResult:
-        if self._worker is None:
+        with self._lifecycle_lock:
             self.load()
-        assert self._worker is not None
-        session_root = self.data_root / "sessions"
-        session_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="request-", dir=session_root) as temporary:
-            root = Path(temporary)
-            image_paths = []
-            for index, image in enumerate(input_data.images):
-                path = root / f"page-{index + 1:04d}.png"
-                image.save(path, format="PNG")
-                image_paths.append(str(path))
-            result = self._worker.request(
-                "recognize",
-                images=image_paths,
-                output_dir=str(root / "output"),
-                options=_safe_worker_options(input_data.options),
-                timeout=float(input_data.options.get("timeout_seconds", 1800)),
-            )
+            assert self._worker is not None
+            session_root = self.data_root / "sessions"
+            session_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="request-", dir=session_root) as temporary:
+                root = Path(temporary)
+                image_paths = []
+                for index, image in enumerate(input_data.images):
+                    path = root / f"page-{index + 1:04d}.png"
+                    image.save(path, format="PNG")
+                    image_paths.append(str(path))
+                result = self._worker.request(
+                    "recognize",
+                    images=image_paths,
+                    output_dir=str(root / "output"),
+                    options=_safe_worker_options(input_data.options),
+                    timeout=_bounded_timeout(input_data.options.get("timeout_seconds", 1800)),
+                    cancellation_check=_cancellation_check(input_data.options),
+                )
         texts = list(result.get("texts", []))
         warnings = []
         if result.get("combined_multi_page"):
@@ -413,22 +483,23 @@ class UnlimitedOCRProvider(OCRProvider):
     def benchmark(self, input_data: OcrRequest) -> BenchmarkResult:
         if not input_data.images:
             raise ValueError("Benchmark requires one image.")
-        if self._worker is None:
+        with self._lifecycle_lock:
             self.load()
-        assert self._worker is not None
-        session_root = self.data_root / "sessions"
-        session_root.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="benchmark-", dir=session_root) as temporary:
-            root = Path(temporary)
-            image = root / "benchmark.png"
-            input_data.images[0].save(image, format="PNG")
-            result = self._worker.request(
-                "benchmark",
-                images=[str(image)],
-                output_dir=str(root / "output"),
-                options=_safe_worker_options(input_data.options),
-                timeout=float(input_data.options.get("timeout_seconds", 1800)),
-            )
+            assert self._worker is not None
+            session_root = self.data_root / "sessions"
+            session_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="benchmark-", dir=session_root) as temporary:
+                root = Path(temporary)
+                image = root / "benchmark.png"
+                input_data.images[0].save(image, format="PNG")
+                result = self._worker.request(
+                    "benchmark",
+                    images=[str(image)],
+                    output_dir=str(root / "output"),
+                    options=_safe_worker_options(input_data.options),
+                    timeout=_bounded_timeout(input_data.options.get("timeout_seconds", 1800)),
+                    cancellation_check=_cancellation_check(input_data.options),
+                )
         return BenchmarkResult(
             success=bool(result.get("success")),
             classification=str(result.get("classification", "UNKNOWN")),
@@ -437,25 +508,36 @@ class UnlimitedOCRProvider(OCRProvider):
             peak_vram_bytes=_optional_int(result.get("peak_vram_bytes")),
             backend=self.provider_id,
             model_revision=self.plan.model_revision,
-            dependency_versions={},
+            dependency_versions=dict(result.get("dependency_versions", {})),
         )
 
     def health_check(self) -> ProviderHealth:
         if not self.is_available():
             return ProviderHealth(False, False, "NOT_INSTALLED", last_error=self._last_error)
-        if self._worker is None:
-            return ProviderHealth(True, False, "READY", last_error=self._last_error)
-        try:
-            details = self._worker.request("health", timeout=15)
-            return ProviderHealth(True, bool(details.get("loaded")), "HEALTHY", details)
-        except DeploymentFailure as exc:
-            self._last_error = exc.error.to_dict()
-            return ProviderHealth(True, False, "UNHEALTHY", last_error=self._last_error)
+        with self._lifecycle_lock:
+            if (
+                self._worker is None
+                or self._worker.process is None
+                or self._worker.process.poll() is not None
+            ):
+                return ProviderHealth(True, False, "READY", last_error=self._last_error)
+            try:
+                details = self._worker.request("health", timeout=15)
+                return ProviderHealth(True, bool(details.get("loaded")), "HEALTHY", details)
+            except DeploymentFailure as exc:
+                self._last_error = exc.error.to_dict()
+                return ProviderHealth(True, False, "UNHEALTHY", last_error=self._last_error)
 
-    def unload(self) -> None:
-        if self._worker:
-            self._worker.stop()
-            self._worker = None
+    def unload(self, *, force: bool = False) -> None:
+        if force:
+            worker, self._worker = self._worker, None
+            if worker:
+                worker.stop(force=True)
+            return
+        with self._lifecycle_lock:
+            if self._worker:
+                self._worker.stop()
+                self._worker = None
 
 
 class OCRProviderRouter:
@@ -478,6 +560,11 @@ class OCRProviderRouter:
             try:
                 return self.advanced.recognize(request)
             except Exception as exc:
+                if (
+                    isinstance(exc, DeploymentFailure)
+                    and exc.error.error_code == ErrorCode.CANCELLED.value
+                ):
+                    raise
                 if not allow_fallback:
                     raise
                 fallback = self.basic.recognize(request)
@@ -513,7 +600,7 @@ def get_managed_unlimited_ocr_provider() -> UnlimitedOCRProvider:
 def shutdown_managed_unlimited_ocr_provider() -> None:
     global _MANAGED_PROVIDER
     if _MANAGED_PROVIDER is not None:
-        _MANAGED_PROVIDER.unload()
+        _MANAGED_PROVIDER.unload(force=True)
         _MANAGED_PROVIDER = None
 
 
@@ -528,8 +615,29 @@ def _runtime_python(environment_root: Path, manager: str = "uv") -> Path:
 
 
 def _safe_worker_options(value: Mapping[str, Any]) -> dict[str, Any]:
-    allowed = {"prompt", "max_length"}
-    return {key: item for key, item in value.items() if key in allowed and isinstance(item, (str, int))}
+    result: dict[str, Any] = {}
+    prompt = value.get("prompt")
+    if isinstance(prompt, str) and len(prompt) <= 4096:
+        result["prompt"] = prompt
+    max_length = value.get("max_length")
+    if isinstance(max_length, int) and not isinstance(max_length, bool):
+        result["max_length"] = max_length
+    return result
+
+
+def _cancellation_check(value: Mapping[str, Any]) -> Callable[[], bool] | None:
+    callback = value.get("_cancellation_check")
+    return callback if callable(callback) else None
+
+
+def _bounded_timeout(value: Any, *, default: float = 1800.0) -> float:
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(timeout):
+        return default
+    return min(max(timeout, 1.0), 7200.0)
 
 
 def _optional_int(value: Any) -> int | None:

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Hardened the managed Unlimited-OCR final audit with OS-held single-installer
+  locking, corrupt-journal quarantine and recovery, existing environment/model
+  reuse, atomic state-write retries, junction/symlink escape prevention, bounded
+  worker output, cancellation-safe worker restart, subprocess reaping, and
+  structured CLI errors. Explicit full cleanup now removes every managed model
+  revision and isolated Hugging Face/Transformers cache.
+- Added an opt-in real-device validation harness covering five OCR layouts,
+  repeated unload/reload, cancellation recovery, 50-request resource stability,
+  worker/session cleanup, and benchmark capture without logging OCR contents.
+- Repaired the local editable project environment by making pytest an explicit
+  development dependency, and made Windows CLI output resilient to Unicode,
+  spaces, emoji, long paths, and legacy console encodings.
 - Added a consent-gated managed Unlimited-OCR deployment framework with
   cross-platform hardware/software inspection, metadata-driven compatibility
   decisions, exact private uv/Conda runtime plans, resumable staged setup,

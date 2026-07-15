@@ -72,6 +72,11 @@ pdf-toolkit ocr setup `
 Ctrl+C requests safe cancellation of the current private subprocess. Running
 the same reviewed plan again resumes its journal and reusable model cache.
 
+With `--json`, managed OCR failures are emitted as a structured object with
+`success: false` and the deployment `error` payload. The CLI also configures a
+replacement-safe console encoding so a successful Unicode/space/emoji/long-path
+operation cannot be converted into an error by a legacy Windows code page.
+
 Cleanup is restricted to APP-managed paths and requires the exact current plan
 ID:
 
@@ -80,8 +85,20 @@ pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id>
 pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id> --remove-model --clear-download-cache
 ```
 
+With both optional flags, cleanup removes all APP-managed pinned model revisions
+and the isolated Hugging Face/Transformers caches. Without them, only the private
+runtime is removed so verified model data can be reused.
+
 Full behavior, privacy boundaries, and recovery rules are documented in
 [Managed Unlimited-OCR Setup](runtime/managed_unlimited_ocr.md).
+
+For an already installed and consented runtime, maintainers can perform real
+OCR/reload/resource validation without setup or model download:
+
+```powershell
+uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
+  --reload-cycles 2 --stress-iterations 50 --output <report.json>
+```
 
 ## JSON manifest
 

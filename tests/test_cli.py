@@ -43,6 +43,25 @@ class CommandLineTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_managed_ocr_json_error_is_structured(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exit_code = main(
+                [
+                    "ocr",
+                    "setup",
+                    "--plan-id",
+                    "not-the-current-plan",
+                    "--json",
+                ]
+            )
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 2)
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["error"]["error_code"], "INVALID_REQUEST")
+        self.assertEqual(stderr.getvalue(), "")
+
     def test_manifest_resolves_relative_paths_and_generates_json_result(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)

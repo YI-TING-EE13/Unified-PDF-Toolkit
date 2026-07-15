@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -35,13 +36,19 @@ class ModelSnapshotStatus:
 
 class ModelCacheManager:
     def __init__(self, cache_root: Path) -> None:
-        self.cache_root = cache_root.expanduser().resolve()
+        declared = Path(os.path.abspath(str(cache_root.expanduser())))
+        if declared.exists() and declared.resolve() != declared:
+            raise ValueError("Managed model cache root cannot be a symbolic link or junction.")
+        self.cache_root = declared
         self.snapshots_root = self.cache_root / "snapshots"
 
     def snapshot_path(self, revision: str) -> Path:
         if not _is_revision(revision):
             raise ValueError("Model revision must be a full 40-character Git SHA.")
-        return self.snapshots_root / revision
+        _assert_child(self.snapshots_root, self.cache_root)
+        path = self.snapshots_root / revision
+        _assert_child(path, self.snapshots_root)
+        return path
 
     def inspect(self, revision: str, metadata: Mapping[str, Any]) -> ModelSnapshotStatus:
         path = self.snapshot_path(revision)
@@ -104,16 +111,35 @@ class ModelCacheManager:
         _assert_child(path, self.snapshots_root)
         if not path.exists():
             return False
+        if path.resolve() != path:
+            raise ValueError("Managed model snapshot was replaced by a link or junction.")
         shutil.rmtree(path, onerror=_clear_readonly_and_retry)
         return True
 
+    def uninstall_all_snapshots(self) -> int:
+        _assert_child(self.snapshots_root, self.cache_root)
+        if not self.snapshots_root.exists():
+            return 0
+        if self.snapshots_root.resolve() != self.snapshots_root:
+            raise ValueError("Managed snapshots root was replaced by a link or junction.")
+        removed = 0
+        for child in sorted(self.snapshots_root.iterdir()):
+            if child.is_dir() and _is_revision(child.name):
+                removed += int(self.uninstall_snapshot(child.name))
+        return removed
+
     def clear_download_cache(self) -> bool:
-        hub = self.cache_root / "hub"
-        _assert_child(hub, self.cache_root)
-        if not hub.exists():
-            return False
-        shutil.rmtree(hub, onerror=_clear_readonly_and_retry)
-        return True
+        removed = False
+        for name in ("hub", "hf-home", "modules", "transformers"):
+            target = self.cache_root / name
+            _assert_child(target, self.cache_root)
+            if not target.exists():
+                continue
+            if target.resolve() != target:
+                raise ValueError(f"Managed {name} cache was replaced by a link or junction.")
+            shutil.rmtree(target, onerror=_clear_readonly_and_retry)
+            removed = True
+        return removed
 
 
 def _is_revision(value: str) -> bool:
@@ -128,11 +154,17 @@ def _assert_child(path: Path, root: Path) -> None:
 
 
 def _directory_size(path: Path) -> int:
+    resolved_root = path.resolve()
     total = 0
     for item in path.rglob("*"):
         try:
-            if item.is_file() and not item.is_symlink():
-                total += item.stat().st_size
+            if item.is_symlink():
+                continue
+            resolved_item = item.resolve()
+            if resolved_item != resolved_root and resolved_root not in resolved_item.parents:
+                continue
+            if resolved_item.is_file():
+                total += resolved_item.stat().st_size
         except OSError:
             continue
     return total
@@ -150,7 +182,14 @@ def _atomic_json_write(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(temporary, path)
+    for attempt in range(8):
+        try:
+            os.replace(temporary, path)
+            break
+        except PermissionError:
+            if attempt == 7:
+                raise
+            time.sleep(min(0.05 * (2**attempt), 0.5))
 
 
 def _clear_readonly_and_retry(function: Any, path: str, exc_info: Any) -> None:

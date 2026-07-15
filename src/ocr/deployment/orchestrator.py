@@ -88,8 +88,8 @@ class SetupOrchestrator:
         self.environment = environment
         self.consent = consent
         self.metadata = dict(metadata or load_compatibility_metadata())
-        self.runtime_root = Path(plan.runtime_root).resolve()
-        self.state_root = (state_root or self.runtime_root / "state").resolve()
+        self.runtime_root = _absolute_path(Path(plan.runtime_root))
+        self.state_root = _absolute_path(state_root or self.runtime_root / "state")
         self.cancellation = cancellation or CancellationToken()
         self.progress_callback = progress_callback
         self.command_runner = command_runner or self._run_command
@@ -103,9 +103,11 @@ class SetupOrchestrator:
         self.lock_path = self.state_root / "installation.lock"
         self._journal: dict[str, Any] = {}
         self._active_record: InstallStepRecord | None = None
+        self._lock_handle: Any = None
 
     def run(self, *, until: InstallStage | None = None) -> dict[str, Any]:
         self._validate_consent()
+        self._validate_managed_paths()
         self.state_root.mkdir(parents=True, exist_ok=True)
         self._acquire_lock()
         try:
@@ -164,6 +166,39 @@ class SetupOrchestrator:
             return self._journal
         finally:
             self._release_lock()
+
+    def _validate_managed_paths(self) -> None:
+        cache_root = _absolute_path(Path(self.plan.model_cache_dir))
+        data_root = cache_root.parent
+        runtime_parent = data_root / "runtimes"
+        if (
+            cache_root.name != "models"
+            or self.runtime_root.name != "unlimited-ocr-transformers"
+            or self.runtime_root.parent != runtime_parent
+        ):
+            raise DeploymentFailure(
+                make_error(
+                    ErrorCode.PLAN_CHANGED,
+                    technical_details="Managed OCR path layout no longer matches the reviewed plan.",
+                )
+            )
+        for path, label in (
+            (data_root, "data root"),
+            (runtime_parent, "runtime parent"),
+            (self.runtime_root, "runtime root"),
+            (self.runtime_root / "environment", "private environment"),
+            (cache_root, "model cache root"),
+            (self.state_root, "installation state root"),
+        ):
+            if path.resolve() != path:
+                raise DeploymentFailure(
+                    make_error(
+                        ErrorCode.PERMISSION_DENIED,
+                        technical_details=(
+                            f"Managed OCR {label} was replaced by a link or junction."
+                        ),
+                    )
+                )
 
     @staticmethod
     def _completed_record_is_current(record: InstallStepRecord) -> bool:
@@ -307,6 +342,11 @@ class SetupOrchestrator:
         return {"snapshot_dir": str(snapshot_dir)}
 
     def _stage_create_isolated_env(self) -> dict[str, Any]:
+        python = _runtime_python(
+            Path(self.plan.runtime_root) / "environment", self.plan.environment_manager
+        )
+        if python.is_file():
+            return {"reused_existing_environment": True, "python": str(python)}
         return self._execute_commands(self.plan.commands[:1], timeout=900)
 
     def _stage_install_dependencies(self) -> dict[str, Any]:
@@ -316,6 +356,13 @@ class SetupOrchestrator:
         cache = ModelCacheManager(Path(self.plan.model_cache_dir))
         snapshot = cache.snapshot_path(self.plan.model_revision)
         artifacts = self.metadata["model_artifacts"]
+        existing = cache.inspect(self.plan.model_revision, self.metadata)
+        if existing.complete:
+            return {
+                "snapshot_path": str(snapshot),
+                "reused_existing_snapshot": True,
+                "total_bytes": existing.total_bytes,
+            }
         command = [
             str(
                 _runtime_python(
@@ -548,10 +595,10 @@ class SetupOrchestrator:
             last_progress_update = 0.0
             while process.poll() is None:
                 if cancellation.cancellation_requested or cancellation.pause_requested:
-                    _terminate_process_tree(process.pid)
+                    _terminate_and_reap(process)
                     raise _StopRequested(paused=cancellation.pause_requested)
                 if time.monotonic() - started > timeout:
-                    _terminate_process_tree(process.pid)
+                    _terminate_and_reap(process)
                     raise TimeoutError(f"Command exceeded {timeout:.0f} seconds.")
                 if (
                     self._active_record is not None
@@ -597,10 +644,17 @@ class SetupOrchestrator:
 
     def _load_or_create_journal(self) -> dict[str, Any]:
         if self.journal_path.exists():
-            value = json.loads(self.journal_path.read_text(encoding="utf-8"))
-            if value.get("plan_id") != self.plan.plan_id:
-                raise DeploymentFailure(make_error(ErrorCode.PLAN_CHANGED))
-            return value
+            try:
+                value = json.loads(self.journal_path.read_text(encoding="utf-8"))
+                self._validate_journal(value)
+            except DeploymentFailure:
+                raise
+            except (json.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
+                return self._recover_corrupt_journal(exc)
+            return dict(value)
+        return self._new_journal()
+
+    def _new_journal(self, **recovery: Any) -> dict[str, Any]:
         value = {
             "schema_version": "1.0",
             "plan_id": self.plan.plan_id,
@@ -616,9 +670,47 @@ class SetupOrchestrator:
                 ).to_dict()
                 for index, stage in enumerate(self.stages)
             ],
+            **recovery,
         }
         _atomic_json(self.journal_path, value)
         return value
+
+    def _validate_journal(self, value: Any) -> None:
+        if not isinstance(value, Mapping):
+            raise TypeError("Installation journal must be a JSON object.")
+        plan_id = value.get("plan_id")
+        if isinstance(plan_id, str) and plan_id and plan_id != self.plan.plan_id:
+            raise DeploymentFailure(make_error(ErrorCode.PLAN_CHANGED))
+        if plan_id != self.plan.plan_id or value.get("schema_version") != "1.0":
+            raise ValueError("Installation journal identity or schema is invalid.")
+        steps = value.get("steps")
+        if not isinstance(steps, list) or len(steps) != len(self.stages):
+            raise ValueError("Installation journal stage inventory is invalid.")
+        expected = {stage.value for stage in self.stages}
+        actual: list[str] = []
+        for item in steps:
+            if not isinstance(item, Mapping):
+                raise TypeError("Installation journal step must be a JSON object.")
+            stage = str(item.get("stage", ""))
+            actual.append(stage)
+            StepStatus(str(item.get("status", "")))
+            if not str(item.get("step_id", "")):
+                raise ValueError("Installation journal step_id is missing.")
+            if not isinstance(item.get("details", {}), Mapping):
+                raise TypeError("Installation journal step details must be an object.")
+        if len(set(actual)) != len(actual) or set(actual) != expected:
+            raise ValueError("Installation journal stages are missing or duplicated.")
+
+    def _recover_corrupt_journal(self, exc: BaseException) -> dict[str, Any]:
+        quarantine = self.journal_path.with_name(
+            f"installation.corrupt-{time.time_ns()}.json"
+        )
+        _replace_with_retry(self.journal_path, quarantine)
+        return self._new_journal(
+            recovered_from=str(quarantine),
+            recovery_reason=f"{type(exc).__name__}: {exc}",
+            recovered_at=_now(),
+        )
 
     def _record(self, stage: InstallStage) -> InstallStepRecord:
         for value in self._journal["steps"]:
@@ -665,44 +757,59 @@ class SetupOrchestrator:
 
     def _acquire_lock(self) -> None:
         self.state_root.mkdir(parents=True, exist_ok=True)
-        if self.lock_path.exists():
-            try:
-                lock = json.loads(self.lock_path.read_text(encoding="utf-8"))
-                pid = int(lock["pid"])
-                expected_created = float(lock["process_created_at"])
-                process = psutil.Process(pid)
-                active = abs(process.create_time() - expected_created) < 1.0
-            except (
-                OSError,
-                TypeError,
-                ValueError,
-                KeyError,
-                json.JSONDecodeError,
-                psutil.Error,
-            ):
-                pid = -1
-                active = False
-            if active:
-                raise DeploymentFailure(
-                    make_error(
-                        ErrorCode.SUBPROCESS_CRASH,
-                        technical_details=f"Another setup process is active (PID {pid}).",
-                    )
+        handle = self.lock_path.open("a+b")
+        try:
+            handle.seek(0)
+            previous = handle.read().decode("utf-8", errors="replace")
+        except OSError as exc:
+            handle.close()
+            raise DeploymentFailure(
+                make_error(
+                    ErrorCode.SETUP_ALREADY_RUNNING,
+                    technical_details="Another setup owns the installation lock.",
                 )
-            self.lock_path.unlink(missing_ok=True)
-        descriptor = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(
+            ) from exc
+        try:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            _lock_file_nonblocking(handle)
+        except OSError as exc:
+            handle.close()
+            try:
+                lock = json.loads(previous)
+                pid = int(lock.get("pid", -1))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pid = -1
+            raise DeploymentFailure(
+                make_error(
+                    ErrorCode.SETUP_ALREADY_RUNNING,
+                    technical_details=f"Another setup owns the installation lock (PID {pid}).",
+                )
+            ) from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(
+            json.dumps(
                 {
                     "pid": os.getpid(),
                     "process_created_at": psutil.Process().create_time(),
                     "plan_id": self.plan.plan_id,
-                },
-                handle,
-            )
+                }
+            ).encode("utf-8")
+        )
+        handle.flush()
+        self._lock_handle = handle
 
     def _release_lock(self) -> None:
-        self.lock_path.unlink(missing_ok=True)
+        handle, self._lock_handle = self._lock_handle, None
+        if handle is None:
+            return
+        try:
+            _unlock_file(handle)
+        finally:
+            handle.close()
 
 
 class DeploymentCleanup:
@@ -720,15 +827,38 @@ class DeploymentCleanup:
     ) -> dict[str, bool]:
         if not confirmed:
             raise ValueError("Explicit uninstall confirmation is required.")
-        runtime = Path(self.plan.runtime_root).resolve()
-        data_root = runtime.parents[1]
-        _assert_managed_child(runtime, data_root)
+        runtime = Path(os.path.abspath(str(Path(self.plan.runtime_root).expanduser())))
+        cache_root = Path(os.path.abspath(str(Path(self.plan.model_cache_dir).expanduser())))
+        data_root = cache_root.parent
+        expected_runtime_parent = data_root / "runtimes"
+        if (
+            cache_root.name != "models"
+            or runtime.name != "unlimited-ocr-transformers"
+            or runtime.parent != expected_runtime_parent
+        ):
+            raise ValueError("Cleanup plan does not use the managed OCR directory layout.")
+        for declared, label in (
+            (data_root, "data root"),
+            (expected_runtime_parent, "runtime parent"),
+            (cache_root, "model cache root"),
+        ):
+            if declared.exists() and declared.resolve() != declared:
+                raise ValueError(f"Managed OCR {label} was replaced by a link or junction.")
+        resolved_runtime = runtime.resolve()
+        resolved_runtime_parent = expected_runtime_parent.resolve()
+        if (
+            resolved_runtime.parent != resolved_runtime_parent
+            or resolved_runtime.name != "unlimited-ocr-transformers"
+        ):
+            raise ValueError("Managed runtime cleanup target was replaced by a link or junction.")
+        _assert_managed_child(runtime, expected_runtime_parent)
+        _assert_managed_child(cache_root, data_root)
+        cache = ModelCacheManager(cache_root)
         removed_runtime = False
         if runtime.exists():
             shutil.rmtree(runtime, onerror=_clear_readonly_and_retry)
             removed_runtime = True
-        cache = ModelCacheManager(Path(self.plan.model_cache_dir))
-        removed_model = cache.uninstall_snapshot(self.plan.model_revision) if remove_model else False
+        removed_model = bool(cache.uninstall_all_snapshots()) if remove_model else False
         cleared_cache = cache.clear_download_cache() if clear_download_cache else False
         return {
             "runtime_removed": removed_runtime,
@@ -743,6 +873,10 @@ def _runtime_python(environment_root: Path, manager: str = "uv") -> Path:
             return environment_root / "python.exe"
         return environment_root / "Scripts" / "python.exe"
     return environment_root / "bin" / "python"
+
+
+def _absolute_path(path: Path) -> Path:
+    return Path(os.path.abspath(str(Path(path).expanduser())))
 
 
 def _parse_runtime_result(stdout: str) -> dict[str, Any]:
@@ -791,11 +925,17 @@ def _technical_result(result: Mapping[str, Any]) -> str:
 def _directory_size(root: Path) -> int:
     if not root.exists():
         return 0
+    resolved_root = root.resolve()
     total = 0
     for path in root.rglob("*"):
         try:
-            if path.is_file():
-                total += path.stat().st_size
+            if path.is_symlink():
+                continue
+            resolved = path.resolve()
+            if resolved != resolved_root and resolved_root not in resolved.parents:
+                continue
+            if resolved.is_file():
+                total += resolved.stat().st_size
         except OSError:
             continue
     return total
@@ -828,13 +968,63 @@ def _terminate_process_tree(pid: int) -> None:
             process.kill()
         except psutil.Error:
             continue
+    if alive:
+        psutil.wait_procs(alive, timeout=5)
+
+
+def _terminate_and_reap(process: subprocess.Popen[Any]) -> None:
+    """Terminate a process tree and always reap the controller's Popen handle."""
+
+    _terminate_process_tree(process.pid)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+def _lock_file_nonblocking(handle: Any) -> None:
+    handle.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_file(handle: Any) -> None:
+    handle.seek(0)
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    _replace_with_retry(temporary, path)
+
+
+def _replace_with_retry(source: Path, destination: Path, *, attempts: int = 8) -> None:
+    """Tolerate short Windows scanner/indexer locks without hiding real permission failures."""
+
+    for attempt in range(attempts):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(min(0.05 * (2**attempt), 0.5))
 
 
 def _append_jsonl(path: Path, value: Mapping[str, Any]) -> None:
@@ -890,7 +1080,9 @@ def _recovery_strategy(stage: InstallStage) -> str:
 
 
 def _assert_managed_child(path: Path, root: Path) -> None:
-    if path == root or root not in path.parents:
+    resolved_path = path.resolve()
+    resolved_root = root.resolve()
+    if resolved_path == resolved_root or resolved_root not in resolved_path.parents:
         raise ValueError("Cleanup target is outside the managed data root.")
 
 

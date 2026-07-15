@@ -11,19 +11,19 @@ computer. This project does not plan a hosted OCR service, cloud upload path, or
 project-operated server for user documents. The local endpoint scaffold remains
 an advanced/developer loopback option, not the main product path.
 
-## 2026-07-14 Managed Deployment Milestone
+## 2026-07-15 Managed Deployment Milestone
 
-- Status: Framework implemented; development-machine real install and benchmark
-  await explicit plan-bound consent.
+- Status: Framework and consented development-machine install are complete. The
+  RTX 3060 passed real model load, five-layout OCR, cancellation/recovery, two
+  unload/reload cycles, benchmark, and a 50-request resource-stability run.
 - Delivered: Environment Inspector, metadata-driven Compatibility Engine,
   private uv/Conda resolver, six-item informed consent, resumable staged
   installer, model inventory/SHA-256 verification, persistent provider worker,
   Tesseract fallback, GUI/CLI setup and cleanup, synthetic OCR suite, and
   structured diagnostics.
-- Current highest-value next gate: complete the consent-gated RTX 3060 install,
-  five-case OCR run, measured RAM/VRAM/latency benchmark, registration/fallback
-  smoke, and cleanup/resume verification; then repeat on at least one different
-  Windows NVIDIA GPU and one Linux NVIDIA system.
+- Current highest-value next gate: repeat the same managed install and validation
+  on at least one different Windows NVIDIA GPU and one Linux NVIDIA system, then
+  build a versioned quality suite from representative, non-sensitive documents.
 - Do not claim AMD, Apple Silicon, CPU-only, SGLang, Docker/vLLM, or broad
   production support until each path has official evidence and real acceptance
   results.

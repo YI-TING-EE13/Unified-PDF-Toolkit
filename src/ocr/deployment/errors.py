@@ -30,6 +30,7 @@ class ErrorCode(str, Enum):
     NETWORK_ERROR = "NETWORK_ERROR"
     CONSENT_REQUIRED = "CONSENT_REQUIRED"
     PLAN_CHANGED = "PLAN_CHANGED"
+    SETUP_ALREADY_RUNNING = "SETUP_ALREADY_RUNNING"
     SUBPROCESS_CRASH = "SUBPROCESS_CRASH"
     CANCELLED = "CANCELLED"
     UNKNOWN_ERROR = "UNKNOWN_ERROR"
@@ -56,6 +57,7 @@ _MESSAGES: dict[ErrorCode, tuple[str, str, bool, bool, bool]] = {
     ErrorCode.NETWORK_ERROR: ("Network error", "The trusted model or package source could not be reached.", True, False, True),
     ErrorCode.CONSENT_REQUIRED: ("Consent required", "Installation cannot start until all required facts are acknowledged.", False, False, True),
     ErrorCode.PLAN_CHANGED: ("Installation plan changed", "Hardware, metadata, or commands changed after consent. Review the new plan.", False, False, True),
+    ErrorCode.SETUP_ALREADY_RUNNING: ("Setup already running", "Another managed Unlimited-OCR setup is already active.", False, False, True),
     ErrorCode.SUBPROCESS_CRASH: ("Setup process stopped", "A private setup or worker process exited unexpectedly.", True, False, True),
     ErrorCode.CANCELLED: ("Setup cancelled", "Setup stopped safely. Completed cache data is retained for resume.", True, False, True),
     ErrorCode.UNKNOWN_ERROR: ("Unexpected setup error", "Setup stopped without modifying system-wide Python, CUDA, or PATH.", False, False, True),

@@ -53,13 +53,17 @@ Estimated costs before consent:
 
 ## Automated results
 
-- Managed deployment and metadata tests: 58 tests passed after adding
-  benchmark-journal, typed Basic benchmark, and persistent-worker lifecycle
-  regressions plus a packaged-runtime entrypoint assertion.
-- Full unittest suite: 207 tests passed.
+- Full suite: 228 unittest tests passed; the equivalent pytest run passed 228
+  tests and 40 subtests. New regressions cover
+  artifact traversal, real Windows junction substitution, cleanup escape,
+  corrupt/incomplete journal recovery, actual OS setup locking, stale lock-file
+  recovery, environment/model reuse, transient atomic-write sharing violations,
+  real subprocess timeout, worker cancellation, protocol mismatch, bounded
+  worker input/output, provider reload, and structured CLI errors.
+- The focused managed-deployment/CLI set passed three consecutive runs during
+  race and file-sharing review before the final full-suite pass.
 - Ruff: passed.
-- Bandit medium/high gate: passed after adding the explicit revision to local
-  `from_pretrained` calls.
+- Bandit medium/high gate: passed.
 - `verify_install.py`: all tool classes loaded; this shell reported the existing
   Tk/Tcl runtime warning rather than a product traceback.
 - `compileall`: passed.
@@ -68,11 +72,14 @@ Estimated costs before consent:
 - PyInstaller bundle build: passed in an isolated workspace output path; the
   bundled compatibility JSON was present under
   `_internal/src/ocr/deployment/resources` with the expected size.
-- Coverage: 48% branch coverage; the configured gate is 45%.
-- `pip-audit`: initially found vulnerable `pytest 8.4.2`, which was not in
-  `pyproject.toml` or `uv.lock` and was a stale local-environment package. The
-  scoped pytest/pytest-cov/plugin residue was removed, `uv sync --dev` became
-  idempotent, and the final audit reported no known vulnerabilities.
+- Coverage: 51% branch coverage; the configured gate is 45%.
+- `pytest` is now an explicit locked development dependency. Repairing the
+  project `.venv` removed four stale editable `pdf_toolkit` metadata directories
+  without `RECORD`; the final environment contains one current editable install
+  with a valid `RECORD`, and `uv sync --all-groups` is idempotent.
+- `pip-audit`: no known vulnerabilities. The editable project distribution is
+  intentionally skipped because it is local source rather than an index
+  artifact.
 - `uv build`: passed; wheel and source distribution were created.
 - PyInstaller packaged GUI: rebuilt successfully and passed the startup plus
   graceful-shutdown smoke test. The final bundle was inspected and contained
@@ -87,9 +94,12 @@ resource stress run.
 ## Synthetic OCR assets
 
 Five deterministic PDF/PNG cases were generated for plain text, table,
-Chinese/English, complex two-column layout, and 90-degree rotation. The PDFs
-were rendered and visually inspected for clipping, missing glyphs, overlap, and
-rotation correctness.
+Chinese/English, complex two-column layout, and 90-degree rotation. PyMuPDF
+rendered each page and every PNG was visually inspected at original detail for
+clipping, missing glyphs, overlap, background color, and rotation correctness.
+The bundled local `pdftoppm.cmd` override was also attempted but has a broken
+external path on this computer, so no Poppler result is claimed; this did not
+affect the independent PyMuPDF render or real OCR inference.
 
 ## Consented installation and real inference
 
@@ -105,14 +115,14 @@ bytes for the private runtime and 6,683,583,739 bytes for model/cache content.
 - CUDA smoke: passed on NVIDIA GeForce RTX 3060; torch CUDA 13.0 and cuDNN
   9.12 were visible inside the private runtime.
 - Model load: 10.025 seconds with 6,770,339,840 peak VRAM bytes.
-- Functional OCR: every expected term matched in all five cases. Inference
-  times were 3.923 seconds (plain text), 3.399 (table), 3.921
-  (Chinese/English), 21.047 (complex two-column), and 5.378 (rotation).
-- Functional peak process RAM was about 1.82-1.87 GiB; peak VRAM was about
-  7.04 GiB for four cases and 7.53 GiB for the rotated case.
-- Benchmark after the schema-completeness fix: `GENERAL_OCR_SUITABLE`, 8.055
-  seconds inference, 1,951,903,744 peak RAM bytes, and 7,564,874,752 peak VRAM
-  bytes out of 12,884,377,600 detected bytes.
+- Final five-case OCR harness: every expected term matched. Inference times were
+  3.640 seconds (plain text), 2.664 (table), 2.978 (Chinese/English), 8.439
+  (complex two-column), and 2.296 (rotation). Peak VRAM was 7,564,874,752 bytes
+  for four cases and 8,083,605,504 bytes for rotation.
+- Final benchmark: `REAL_TIME_SUITABLE`, 3.112 seconds inference,
+  1,955,713,024 peak RAM bytes, and 7,564,874,752 peak VRAM bytes out of
+  12,884,377,600 detected bytes. This synthetic classification is not a promise
+  for arbitrary production documents.
 - Provider integration: a live persistent worker reported `HEALTHY`, loaded the
   pinned revision, recognized all three expected plain-text terms in 8.4
   seconds, wrote real Document OCR TXT and Markdown outputs, and unloaded
@@ -121,24 +131,65 @@ bytes for the private runtime and 6,683,583,739 bytes for model/cache content.
   worker completed in 8.205 and 7.378 seconds, both matched every expected term,
   health remained `HEALTHY`, and no request temporary directories remained
   after unload.
+- Final lifecycle run: two unload/reload cycles created new worker PIDs, both old
+  workers exited, and both new workers recognized the expected terms in 3.764
+  and 3.894 seconds. A cancellation during active inference returned
+  `CANCELLED`, terminated the worker, left provider health `READY`, and the next
+  explicit request automatically loaded a new worker and succeeded in 3.666
+  seconds.
+- Fifty consecutive real inferences all succeeded with exactly one worker PID.
+  Worker RSS changed from 1,911,431,168 to 1,911,181,312 bytes (-249,856), and
+  handle count changed from 433 to 425 (-8); peaks were 1,911,463,936 bytes and
+  433 handles. Average latency was 3.088 seconds and maximum latency was 3.343.
+  Final unload terminated the worker, left no child process, and left zero
+  managed session directories.
+- After the final junction/TOCTOU changes, a fresh full SHA-256 verification
+  still reported the pinned snapshot complete (6,683,158,594 bytes). A final
+  no-download recheck again passed all five cases, one worker reload, benchmark
+  (`REAL_TIME_SUITABLE`, 3.095 seconds), worker exit, child-process cleanup, and
+  zero session leftovers.
 - Resume/migration: rerunning the same setup skipped environment creation,
   dependency installation, model download, checksum, and OCR stages. It reran
   only the legacy benchmark record that lacked classification and dependency
   versions, completing in about 26 seconds.
 
-The first real run revealed that the installation benchmark journal omitted the
-classification and dependency-version fields even though the persistent
-provider benchmark had them. The runtime task and resume validator were fixed;
-the journal now records the complete result, and regression tests cover the
-targeted migration. Code review also found and fixed typed-result access in the
-Basic provider benchmark plus stale response/file-handle cleanup across worker
-restart and unload.
+The final adversarial review found and fixed additional defects: cleanup could
+follow a substituted Windows junction outside the managed root; corrupt journals
+were not recoverable; lock-file-only setup exclusion was race-prone; transient
+Windows sharing violations could break atomic state writes; a cancelled worker
+did not automatically reload for the next request; response-ID/protocol errors
+ did not always invalidate the worker; and a CP950 console could turn successful
+emoji-path JSON output into exit code 2. The gate also exposed a terminated but
+unreaped timeout-process handle; it is now explicitly waited and passes with
+`ResourceWarning` promoted to an error. Each fix has a regression test.
+
+Actual CLI checks covered inspect/plan/status, repeat setup with all six
+acknowledgements, and a Chinese/space/emoji output path. Repeat setup reused the
+existing environment and verified snapshot; model-download attempts remained
+at one. Isolated temporary data roots covered status, uninstall, second
+idempotent uninstall, and cleanup without touching the real 6.2 GiB snapshot.
+The APP `.venv` still has no torch or transformers; the private runtime retained
+torch 2.10.0+cu130 and CUDA availability, and system `CUDA_PATH` remained 12.2.
+Destructive full-cleanup tests used isolated temporary roots only: they removed
+multiple valid model revisions and every managed Hugging Face/Transformers cache,
+remained idempotent, rejected root/runtime junction substitution, and preserved
+external markers. The real installed snapshot was never removed.
 
 ## Final acceptance gate
 
+The source GUI was exercised with a real Tk event loop: Settings / Recent opened
+the managed setup dialog, completed device analysis, displayed
+`SUPPORTED_WITH_CHANGES`, kept install disabled until acknowledgements, and
+closed cleanly. The Windows PyInstaller bundle was rebuilt and passed actual
+startup plus graceful-shutdown smoke. Internal packaged Tk child navigation
+could not be driven through Windows UI Automation because ttk descendants were
+not exposed, so that specific packaged-dialog click path remains unverified;
+the source dialog and packaged process lifecycle are real tests, not mocks.
+
 The local full test, coverage, lint, security, install verification, compile,
-package, PyInstaller, packaged GUI smoke, and official metadata-audit gates all
-passed. The live source audit reported `changed: false`.
+package, PyInstaller, packaged GUI smoke, real provider, official metadata
+audit, and isolated cleanup gates passed. The live source audit reported
+`changed: false`.
 
 Clean-runner CI run
 [`29386808473`](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/29386808473)

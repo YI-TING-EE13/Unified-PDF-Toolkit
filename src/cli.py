@@ -247,6 +247,7 @@ def _jobs_from_args(args: argparse.Namespace) -> tuple[list[BatchJob], str, str]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_console_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "ocr":
@@ -302,6 +303,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+
+
+def _configure_console_streams() -> None:
+    """Prevent legacy Windows console encodings from turning success into an error."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(errors="backslashreplace")
+            except (OSError, ValueError):
+                continue
 
 
 def _run_managed_ocr_command(args: argparse.Namespace) -> int:
@@ -440,13 +453,34 @@ def _run_managed_ocr_command(args: argparse.Namespace) -> int:
         return 130 if any(value in {"CANCELLED", "PAUSED"} for value in statuses) else 0
     except DeploymentFailure as exc:
         error = exc.error.to_dict()
-        print(f"error [{error['error_code']}]: {error['user_message']}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(json.dumps({"success": False, "error": error}, ensure_ascii=True, indent=2))
+        else:
+            print(f"error [{error['error_code']}]: {error['user_message']}", file=sys.stderr)
         return 4
     except KeyboardInterrupt:
         print("Cancelled.", file=sys.stderr)
         return 130
     except (OSError, RuntimeError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": {
+                            "error_code": "INVALID_REQUEST",
+                            "title": "Managed OCR command could not run",
+                            "user_message": str(exc),
+                            "technical_details": f"{type(exc).__name__}: {exc}",
+                            "safe_to_retry": True,
+                        },
+                    },
+                    ensure_ascii=True,
+                    indent=2,
+                )
+            )
+        else:
+            print(f"error: {exc}", file=sys.stderr)
         return 2
 
 

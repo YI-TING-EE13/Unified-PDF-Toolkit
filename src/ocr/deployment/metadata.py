@@ -6,7 +6,7 @@ import json
 import re
 from datetime import datetime, timezone
 from importlib import resources
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
@@ -70,6 +70,16 @@ def validate_compatibility_metadata(data: Mapping[str, Any]) -> None:
     required_files = artifacts.get("required_files")
     if not isinstance(required_files, list) or not required_files:
         raise CompatibilityMetadataError("Pinned model artifact inventory is required.")
+    for name in required_files:
+        _validate_relative_artifact_path(str(name), label="required model file")
+    _validate_relative_artifact_path(
+        str(artifacts.get("weight_file", "")), label="model weight file"
+    )
+    allow_patterns = artifacts.get("allow_patterns")
+    if not isinstance(allow_patterns, list) or not allow_patterns:
+        raise CompatibilityMetadataError("Pinned model allow-pattern inventory is required.")
+    for pattern in allow_patterns:
+        _validate_relative_artifact_path(str(pattern), label="model allow pattern")
     weight_sha256 = str(artifacts.get("weight_sha256", ""))
     if len(weight_sha256) != 64 or any(
         char not in "0123456789abcdef" for char in weight_sha256.casefold()
@@ -102,6 +112,16 @@ def _validate_trusted_url(value: str, *, label: str) -> None:
     parsed = urlparse(value)
     if parsed.scheme != "https" or parsed.hostname not in TRUSTED_SOURCE_HOSTS:
         raise CompatibilityMetadataError(f"Untrusted HTTPS URL for {label}.")
+
+
+def _validate_relative_artifact_path(value: str, *, label: str) -> None:
+    """Reject absolute and parent-traversing repository artifact paths."""
+
+    if not value or "\\" in value:
+        raise CompatibilityMetadataError(f"Unsafe {label} path in compatibility metadata.")
+    path = PurePosixPath(value)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise CompatibilityMetadataError(f"Unsafe {label} path in compatibility metadata.")
 
 
 def metadata_age_days(data: Mapping[str, Any], *, now: datetime | None = None) -> float:

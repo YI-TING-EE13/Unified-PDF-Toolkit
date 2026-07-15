@@ -19,7 +19,10 @@ from ..ocr.deployment.consent import (
 from ..ocr.deployment.errors import DeploymentFailure
 from ..ocr.deployment.models import CompatibilityStatus, InstallStepRecord
 from ..ocr.deployment.orchestrator import CancellationToken, DeploymentCleanup
-from ..ocr.deployment.providers import UnlimitedOCRProvider
+from ..ocr.deployment.providers import (
+    UnlimitedOCRProvider,
+    shutdown_managed_unlimited_ocr_provider,
+)
 from ..ocr.deployment.validation_assets import create_validation_suite
 from ..ocr.local_model import clear_local_model_runtime_config
 
@@ -197,8 +200,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             available = self.provider.is_available()
             managed_data_exists = (
                 Path(plan.runtime_root).exists()
-                or Path(plan.model_cache_dir, "snapshots", plan.model_revision).exists()
-                or Path(plan.model_cache_dir, "hub").exists()
+                or Path(plan.model_cache_dir).exists()
             )
         except Exception as exc:
             self.after(0, lambda error=exc: self._analysis_failed(error))
@@ -453,7 +455,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
     def _remove_all(self) -> None:
         if not self.plan or not messagebox.askyesno(
             "Remove Runtime, Model and Cache",
-            "Permanently remove the private runtime, the pinned model snapshot, and download cache?",
+            "Permanently remove the private runtime, all managed model snapshots, and managed caches?",
             parent=self,
         ):
             return
@@ -461,7 +463,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             remove_model=True,
             clear_download_cache=True,
             success_message=(
-                "Managed runtime, model snapshot, and download cache removed."
+                "Managed runtime, model snapshots, and caches removed."
             ),
         )
 
@@ -484,7 +486,8 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
 
         def worker() -> None:
             try:
-                self.provider.unload()
+                self.provider.unload(force=True)
+                shutdown_managed_unlimited_ocr_provider()
                 DeploymentCleanup(plan).uninstall(
                     confirmed=True,
                     remove_model=remove_model,
