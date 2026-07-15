@@ -129,6 +129,9 @@ class CompatibilityEngine:
         python = env.get("python", {})
         tools = python.get("tools", {})
         uv_available = bool(tools.get("uv", {}).get("available"))
+        uv_bootstrap_available = bool(tools.get("uv", {}).get("bootstrap_available")) and bool(
+            _uv_bootstrap_asset(self.metadata, env)
+        )
         conda_available = bool(tools.get("conda", {}).get("available"))
         current_python = str(python.get("version", ""))
         if current_python.startswith("3.12."):
@@ -139,17 +142,34 @@ class CompatibilityEngine:
             changes.append(
                 "Use Conda to provision a private CPython 3.12 prefix without replacing system Python."
             )
+        elif uv_bootstrap_available:
+            changes.append(
+                "Use the verified APP-managed uv bootstrap to provision private CPython 3.12."
+            )
         else:
             missing.append(
                 "Python 3.12 is not active and neither uv nor Conda can provision it safely."
             )
             status = _degrade(status, CompatibilityStatus.UNKNOWN)
         if uv_available:
-            met.append("uv is available for isolated, reproducible environment creation.")
+            uv_details = tools.get("uv", {})
+            suffix = (
+                f" at {uv_details.get('path')} (outside PATH; the absolute executable will be used)"
+                if uv_details.get("state") == "DETECTED_OUTSIDE_PATH"
+                else ""
+            )
+            met.append(f"uv is available{suffix} for isolated, reproducible environment creation.")
             environment_manager = "uv"
         elif conda_available:
             met.append("Conda is available for isolated prefix creation.")
             environment_manager = "conda"
+        elif uv_bootstrap_available:
+            bootstrap = self.metadata["uv_bootstrap"]
+            changes.append(
+                f"After consent, download and SHA-256 verify uv {bootstrap['version']} "
+                "inside the APP-managed OCR runtime without editing PATH or shell profiles."
+            )
+            environment_manager = "managed_uv"
         else:
             environment_manager = None
             if current_python.startswith("3.12."):
@@ -219,6 +239,14 @@ class CompatibilityEngine:
             risk_level=risk,
             metadata_revision=str(self.metadata["source_revision"]),
             conflicts=tuple(conflicts),
+            app_compatibility=_app_compatibility(env),
+            basic_ocr=_basic_ocr_compatibility(env),
+            recommended_provider=(
+                "unlimited_ocr_after_setup"
+                if status
+                not in {CompatibilityStatus.UNSUPPORTED, CompatibilityStatus.UNKNOWN}
+                else "tesseract"
+            ),
         )
 
     def _select_pytorch_profile(self, driver_major: int | None) -> tuple[str | None, str | None]:
@@ -235,6 +263,55 @@ class CompatibilityEngine:
 def _best_nvidia_gpu(items: Any) -> Mapping[str, Any] | None:
     candidates = [item for item in items or [] if str(item.get("vendor", "")).upper() == "NVIDIA"]
     return max(candidates, key=lambda item: _as_int(item.get("vram_total_bytes")) or 0) if candidates else None
+
+
+def _uv_bootstrap_asset(
+    metadata: Mapping[str, Any], env: Mapping[str, Any]
+) -> Mapping[str, Any] | None:
+    os_info = env.get("os", {})
+    system = str(os_info.get("system", ""))
+    machine = str(os_info.get("machine", "")).casefold()
+    normalized = (
+        "x86_64"
+        if machine in {"amd64", "x86_64"}
+        else "arm64"
+        if machine in {"arm64", "aarch64"}
+        else ""
+    )
+    if not normalized or (
+        system == "Linux" and "musl" in str(os_info.get("platform", "")).casefold()
+    ):
+        return None
+    asset = metadata.get("uv_bootstrap", {}).get("assets", {}).get(
+        f"{system}-{normalized}"
+    )
+    return asset if isinstance(asset, Mapping) else None
+
+
+def _app_compatibility(env: Mapping[str, Any]) -> dict[str, Any]:
+    version = str(env.get("python", {}).get("version", ""))
+    parts = _version_tuple(version)
+    supported = bool(parts and parts >= (3, 10))
+    return {
+        "status": "SUPPORTED" if supported else "UNSUPPORTED_SOURCE_RUNTIME",
+        "python_version": version,
+        "requires_python": ">=3.10",
+        "reason": (
+            "The active APP runtime satisfies the project Python requirement."
+            if supported
+            else "The active source runtime is older than the project Python requirement."
+        ),
+    }
+
+
+def _basic_ocr_compatibility(env: Mapping[str, Any]) -> dict[str, Any]:
+    detected = dict(env.get("basic_ocr", {}))
+    available = bool(detected.get("executable_available"))
+    return {
+        **detected,
+        "status": "AVAILABLE" if available else "OPTIONAL_DEPENDENCY_MISSING",
+        "app_usable_without_it": True,
+    }
 
 
 def _driver_major(value: Any) -> int | None:

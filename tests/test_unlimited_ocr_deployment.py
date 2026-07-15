@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import json
 import os
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from dataclasses import replace
@@ -13,6 +15,7 @@ from unittest.mock import patch
 
 from src.ocr.consent import create_advanced_ocr_consent
 from src.ocr.deployment.cache import ModelCacheManager
+from src.ocr.deployment.bootstrap import UvBootstrapper
 from src.ocr.deployment.compatibility import CompatibilityEngine
 from src.ocr.deployment.consent import (
     REQUIRED_INSTALL_ACKNOWLEDGEMENTS,
@@ -22,6 +25,7 @@ from src.ocr.deployment.consent import (
 from src.ocr.deployment.environment import (
     EnvironmentInspector,
     _decode_command_output,
+    _recommended_project_interpreter,
 )
 from src.ocr.deployment.errors import (
     DeploymentFailure,
@@ -212,6 +216,16 @@ class EnvironmentInspectorTests(unittest.TestCase):
             model = inspector._cpu_model()
         self.assertEqual(model, "Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz")
 
+    def test_cpu_model_and_architecture_remain_separate(self):
+        inspector = EnvironmentInspector(command_timeout=1)
+        with (
+            patch.object(inspector, "_cpu_model", return_value="Intel Core i7-8750H"),
+            patch("src.ocr.deployment.environment.platform.machine", return_value="x86_64"),
+        ):
+            info = inspector._cpu_info()
+        self.assertEqual(info["model"], "Intel Core i7-8750H")
+        self.assertEqual(info["architecture"], "x86_64")
+
     def test_conda_is_found_in_base_prefix_without_path_mutation(self):
         inspector = EnvironmentInspector(command_timeout=1)
         with tempfile.TemporaryDirectory() as temporary:
@@ -227,6 +241,38 @@ class EnvironmentInspectorTests(unittest.TestCase):
             ):
                 discovered = inspector._find_tool("conda")
         self.assertEqual(discovered, conda.resolve())
+
+    def test_missing_uv_reports_safe_bootstrap_state(self):
+        inspector = EnvironmentInspector(command_timeout=1)
+        with (
+            patch("src.ocr.deployment.environment.shutil.which", return_value=None),
+            patch.object(inspector, "_find_tool", return_value=None),
+            patch.object(inspector, "_uv_bootstrap_supported", return_value=True),
+        ):
+            details = inspector._tool_version("uv")
+        self.assertFalse(details["available"])
+        self.assertEqual(details["state"], "BOOTSTRAP_AVAILABLE")
+        self.assertTrue(details["bootstrap_requires_consent"])
+
+    def test_project_python_prefers_compatible_active_interpreter(self):
+        selected = _recommended_project_interpreter(
+            (
+                {"path": "/usr/bin/python3", "version": "3.8.10", "meets_project_requirement": False},
+                {
+                    "path": "/home/user/miniforge3/bin/python",
+                    "version": "3.12.11",
+                    "meets_project_requirement": True,
+                    "selected_for_app": True,
+                },
+            )
+        )
+        self.assertEqual(selected["version"], "3.12.11")
+
+    def test_project_python_is_none_when_no_compatible_interpreter_exists(self):
+        selected = _recommended_project_interpreter(
+            ({"path": "/usr/bin/python3", "version": "3.8.10", "meets_project_requirement": False},)
+        )
+        self.assertIsNone(selected)
 
     def test_inspector_shape_with_stubbed_collectors(self):
         inspector = EnvironmentInspector(data_root=Path(tempfile.gettempdir()) / "ocr-inspector-test")
@@ -313,6 +359,53 @@ class CompatibilityTests(unittest.TestCase):
         self.assertNotIn(
             "No official PyTorch CUDA wheel profile matches the detected Driver.",
             plan.blocked_reasons,
+        )
+
+    def test_missing_managers_use_verified_managed_uv_bootstrap_when_supported(self):
+        env = _environment(
+            python={
+                "version": "3.8.10",
+                "tools": {
+                    "uv": {"available": False, "bootstrap_available": True},
+                    "pip": {"available": True},
+                    "conda": {"available": False},
+                },
+            }
+        )
+        result = self.evaluate(env)
+        self.assertEqual(result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES)
+        self.assertIn("private managed_uv", result.recommended_runtime)
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = EnvironmentResolver(self.metadata).resolve(
+                result,
+                data_root=Path(temporary),
+                environment=env,
+            )
+        self.assertTrue(plan.executable)
+        self.assertEqual(plan.environment_manager, "managed_uv")
+        self.assertEqual(plan.bootstrap["state"], "BOOTSTRAP_REQUIRED")
+        self.assertTrue(Path(plan.commands[0][0]).is_absolute())
+
+    def test_outside_path_uv_absolute_executable_is_used_in_plan(self):
+        env = _environment().to_dict()
+        env["python"] = copy.deepcopy(env["python"])
+        env["python"]["tools"]["uv"].update(
+            {
+                "available": True,
+                "path": "/home/user/.local/bin/uv",
+                "state": "DETECTED_OUTSIDE_PATH",
+            }
+        )
+        result = self.evaluate(env)
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = EnvironmentResolver(self.metadata).resolve(
+                result,
+                data_root=Path(temporary),
+                environment=env,
+            )
+        self.assertEqual(plan.commands[0][0], "/home/user/.local/bin/uv")
+        self.assertFalse(
+            any("No official PyTorch CUDA wheel" in reason for reason in plan.blocked_reasons)
         )
 
     def test_no_nvidia_gpu_is_unsupported(self):
@@ -509,6 +602,59 @@ class ResolverAndConsentTests(unittest.TestCase):
             )
         )
         self.assertEqual(selected["name"], "large")
+
+
+class UvBootstrapTests(unittest.TestCase):
+    def _plan(self, root: Path) -> dict[str, object]:
+        return {
+            "version": "0.11.28",
+            "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/test.tar.gz",
+            "sha256": "a" * 64,
+            "size": 1,
+            "filename": "test.tar.gz",
+            "install_dir": str(root / "prerequisites" / "uv"),
+            "executable": str(root / "prerequisites" / "uv" / "uv"),
+        }
+
+    def test_verified_bootstrap_extracts_only_managed_uv_executables(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manager = UvBootstrapper(self._plan(root), runtime_root=root)
+
+            def fake_download(_url, destination, *, check_cancel):
+                check_cancel()
+                payload = b"verified uv"
+                with tarfile.open(destination, "w:gz") as archive:
+                    info = tarfile.TarInfo("uv-x86_64/uv")
+                    info.size = len(payload)
+                    archive.addfile(info, io.BytesIO(payload))
+                return "a" * 64, 1
+
+            with patch.object(manager, "_download", side_effect=fake_download):
+                result = manager.install(check_cancel=lambda: None)
+
+            executable = root / "prerequisites" / "uv" / "uv"
+            self.assertEqual(executable.read_bytes(), b"verified uv")
+            self.assertFalse(result["path_modified"])
+            self.assertFalse(result["shell_profile_modified"])
+
+    def test_failed_bootstrap_checksum_cleans_partial_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manager = UvBootstrapper(self._plan(root), runtime_root=root)
+
+            def wrong_download(_url, destination, *, check_cancel):
+                check_cancel()
+                destination.write_bytes(b"wrong")
+                return "b" * 64, 1
+
+            with patch.object(manager, "_download", side_effect=wrong_download):
+                with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
+                    manager.install(check_cancel=lambda: None)
+
+            prerequisites = root / "prerequisites"
+            self.assertFalse((prerequisites / "test.tar.gz.part").exists())
+            self.assertEqual(list(prerequisites.glob("uv-bootstrap-*")), [])
 
 
 class CacheTests(unittest.TestCase):

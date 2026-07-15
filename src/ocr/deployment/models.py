@@ -35,6 +35,7 @@ class InstallStage(str, Enum):
     COMPATIBILITY_ANALYSIS = "COMPATIBILITY_ANALYSIS"
     USER_CONSENT = "USER_CONSENT"
     SNAPSHOT_CURRENT_STATE = "SNAPSHOT_CURRENT_STATE"
+    UV_BOOTSTRAP = "UV_BOOTSTRAP"
     CREATE_ISOLATED_ENV = "CREATE_ISOLATED_ENV"
     INSTALL_DEPENDENCIES = "INSTALL_DEPENDENCIES"
     DOWNLOAD_MODEL = "DOWNLOAD_MODEL"
@@ -73,6 +74,7 @@ class EnvironmentReport:
     storage: Mapping[str, Any]
     runtime: Mapping[str, Any]
     containers: Mapping[str, Any]
+    basic_ocr: Mapping[str, Any] = field(default_factory=dict)
     recommendation: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
@@ -96,6 +98,9 @@ class CompatibilityReport:
     risk_level: RiskLevel
     metadata_revision: str
     conflicts: tuple[str, ...] = ()
+    app_compatibility: Mapping[str, Any] = field(default_factory=dict)
+    basic_ocr: Mapping[str, Any] = field(default_factory=dict)
+    recommended_provider: str = "tesseract"
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -140,6 +145,7 @@ class RuntimePlan:
     reversible_changes: tuple[str, ...]
     warnings: tuple[str, ...]
     blocked_reasons: tuple[str, ...] = ()
+    bootstrap: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def executable(self) -> bool:
@@ -149,6 +155,8 @@ class RuntimePlan:
         data = asdict(self)
         data["backend"] = self.backend.value
         data["executable"] = self.executable
+        data["plan_kind"] = "EXECUTABLE" if self.executable else "BLOCKED_INFORMATIONAL"
+        data["commands_executable"] = self.executable
         return data
 
 

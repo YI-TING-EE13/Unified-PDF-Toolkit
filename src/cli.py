@@ -524,6 +524,9 @@ def _human_environment(payload: dict[str, Any]) -> str:
         f"Free disk: {_human_bytes(payload.get('storage', {}).get('free_bytes'))}",
         f"Compatibility: {recommendation.get('status')}",
         f"Risk: {recommendation.get('risk_level')}",
+        f"APP compatibility: {recommendation.get('app_compatibility', {}).get('status')}",
+        f"Basic OCR: {recommendation.get('basic_ocr', {}).get('status')}",
+        f"Recommended provider: {recommendation.get('recommended_provider')}",
     ]
     missing = recommendation.get("requirements_missing", [])
     if missing:
@@ -541,8 +544,12 @@ def _human_plan(payload: dict[str, Any]) -> str:
         f"Decision: {compatibility['status']} (confidence {compatibility['confidence']:.0%})",
         f"Risk: {compatibility['risk_level']}",
         f"Setup allowed: {'yes' if setup_allowed else 'no'}",
+        f"Plan kind: {plan.get('plan_kind', 'unknown')}",
         f"Recommended backend: {compatibility['recommended_backend']}",
         f"Recommended runtime: {compatibility['recommended_runtime'] or 'none'}",
+        f"Recommended provider: {compatibility.get('recommended_provider', 'tesseract')}",
+        f"APP compatibility: {compatibility.get('app_compatibility', {}).get('status', 'unknown')}",
+        f"Basic OCR: {compatibility.get('basic_ocr', {}).get('status', 'unknown')}",
         f"Plan ID: {plan['plan_id']}",
         f"Estimated download: {_human_bytes(compatibility['estimated_download_size'])}",
         f"Estimated disk use: {_human_bytes(compatibility['estimated_disk_usage'])}",
@@ -573,6 +580,9 @@ def _human_status(payload: dict[str, Any]) -> str:
         [
             f"Plan ID: {payload['plan_id']}",
             f"Compatibility: {compatibility['status']} (risk={compatibility['risk_level']})",
+            f"APP compatibility: {compatibility.get('app_compatibility', {}).get('status', 'unknown')}",
+            f"Basic OCR: {compatibility.get('basic_ocr', {}).get('status', 'unknown')}",
+            f"Recommended provider: {compatibility.get('recommended_provider', 'tesseract')}",
             f"Provider: {provider['status']} (available={provider['available']}, loaded={provider['loaded']})",
             f"Model snapshot: exists={model['exists']}, complete={model['complete']}",
             f"Journal present: {payload['journal'] is not None}",

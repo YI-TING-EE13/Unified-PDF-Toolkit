@@ -67,6 +67,7 @@ class EnvironmentInspector:
             storage=self._storage_info(),
             runtime=self._runtime_info(),
             containers=self._container_info(),
+            basic_ocr=self._basic_ocr_info(),
             recommendation={"status": "NOT_EVALUATED"},
             warnings=tuple(self._warnings),
         )
@@ -373,7 +374,12 @@ class EnvironmentInspector:
         }
 
     def _python_info(self) -> dict[str, Any]:
-        tools = {name: self._tool_version(name) for name in ("uv", "conda", "pip")}
+        tools = {
+            name: self._tool_version(name)
+            for name in ("uv", "conda", "pyenv", "pip")
+        }
+        interpreters = self._python_interpreters()
+        project_interpreter = _recommended_project_interpreter(interpreters)
         return {
             "version": platform.python_version(),
             "implementation": platform.python_implementation(),
@@ -383,13 +389,19 @@ class EnvironmentInspector:
             "is_virtual_environment": sys.prefix != sys.base_prefix,
             "architecture": platform.architecture()[0],
             "tools": tools,
+            "interpreters": interpreters,
+            "selected_interpreter": sys.executable,
+            "project_interpreter": project_interpreter,
         }
 
     def _tool_version(self, name: str) -> dict[str, Any]:
+        on_path = shutil.which(name) if name != "pip" else None
         if name == "pip":
             result = self._run([sys.executable, "-m", "pip", "--version"])
+            source = "current_interpreter"
         else:
             executable = self._find_tool(name)
+            source = self._tool_source(executable, on_path=on_path)
             result = (
                 self._run([str(executable), "--version"])
                 if executable is not None
@@ -401,11 +413,45 @@ class EnvironmentInspector:
                     "path": None,
                 }
             )
-        return {
-            "available": bool(result["available"] and result["returncode"] == 0),
+        available = bool(result["available"] and result["returncode"] == 0)
+        details = {
+            "available": available,
             "path": result.get("path"),
             "version_output": (result.get("stdout") or result.get("stderr") or "").strip(),
+            "on_path": bool(on_path) if name != "pip" else True,
+            "source": source if available else "not_detected",
+            "confidence": 1.0 if available else 0.0,
         }
+        if name == "uv":
+            bootstrap_available = self._uv_bootstrap_supported()
+            details.update(
+                {
+                    "state": (
+                        "AVAILABLE_ON_PATH"
+                        if available and on_path
+                        else "DETECTED_OUTSIDE_PATH"
+                        if available
+                        else "BOOTSTRAP_AVAILABLE"
+                        if bootstrap_available
+                        else "BOOTSTRAP_UNAVAILABLE"
+                    ),
+                    "bootstrap_available": bootstrap_available,
+                    "bootstrap_requires_consent": not available and bootstrap_available,
+                }
+            )
+        elif name == "conda":
+            prefix = os.environ.get("CONDA_PREFIX")
+            details.update(
+                {
+                    "active_environment": prefix,
+                    "base_installation": (
+                        str(Path(result["path"]).resolve().parents[1])
+                        if available and result.get("path")
+                        else None
+                    ),
+                }
+            )
+        return details
 
     @staticmethod
     def _find_tool(name: str) -> Path | None:
@@ -449,11 +495,142 @@ class EnvironmentInspector:
                     home / ".cargo" / "bin" / executable,
                 )
             )
+        elif name == "pyenv":
+            executable = "pyenv.bat" if sys.platform == "win32" else "pyenv"
+            candidates.extend(
+                (
+                    home / ".pyenv" / "bin" / executable,
+                    home / ".pyenv" / "pyenv-win" / "bin" / executable,
+                )
+            )
 
         for candidate in candidates:
             if candidate.is_file() and os.access(candidate, os.X_OK):
                 return candidate.resolve()
         return None
+
+    @staticmethod
+    def _tool_source(executable: Path | None, *, on_path: str | None) -> str:
+        if executable is None:
+            return "not_detected"
+        if on_path:
+            return "path"
+        try:
+            resolved = executable.resolve()
+            base = Path(sys.base_prefix).resolve()
+            home = Path.home().resolve()
+            if resolved.is_relative_to(base):
+                return "base_prefix"
+            if resolved.is_relative_to(home):
+                return "user_local_common_path"
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return "common_path"
+
+    @staticmethod
+    def _uv_bootstrap_supported() -> bool:
+        machine = platform.machine().casefold()
+        if machine not in {"amd64", "x86_64", "arm64", "aarch64"}:
+            return False
+        if sys.platform.startswith("linux"):
+            return platform.libc_ver()[0].casefold() != "musl"
+        return sys.platform in {"win32", "darwin"}
+
+    def _python_interpreters(self) -> tuple[dict[str, Any], ...]:
+        home = Path.home()
+        executable = "python.exe" if sys.platform == "win32" else "python"
+        candidates = [
+            Path(sys.executable),
+            Path(sys.base_prefix) / executable,
+        ]
+        for name in ("python3.12", "python3", "python"):
+            found = shutil.which(name)
+            if found:
+                candidates.append(Path(found))
+        if sys.platform == "win32":
+            candidates.extend(
+                root / "python.exe"
+                for root in (
+                    home / "miniforge3",
+                    home / "Miniforge3",
+                    home / "miniconda3",
+                    home / "Miniconda3",
+                    home / "anaconda3",
+                    home / "Anaconda3",
+                )
+            )
+        else:
+            candidates.extend(
+                root / "bin" / "python"
+                for root in (
+                    home / "miniforge3",
+                    home / "miniconda3",
+                    home / "anaconda3",
+                )
+            )
+
+        results: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        probe = (
+            "import json,platform,sys; print(json.dumps({"
+            "'version':platform.python_version(),'architecture':platform.architecture()[0],"
+            "'machine':platform.machine(),'executable':sys.executable}))"
+        )
+        for candidate in candidates[:12]:
+            try:
+                resolved = candidate.expanduser().resolve()
+            except (OSError, RuntimeError):
+                continue
+            key = os.path.normcase(str(resolved))
+            if key in seen or not resolved.is_file():
+                continue
+            seen.add(key)
+            result = self._run([str(resolved), "-c", probe], timeout=5.0)
+            if result.get("returncode") != 0:
+                continue
+            try:
+                details = json.loads(result["stdout"])
+            except (KeyError, json.JSONDecodeError):
+                continue
+            version = str(details.get("version", ""))
+            parts = _version_parts(version)
+            details.update(
+                {
+                    "path": str(resolved),
+                    "meets_project_requirement": bool(parts and parts >= (3, 10)),
+                    "selected_for_app": os.path.normcase(str(Path(sys.executable).resolve()))
+                    == key,
+                    "source": self._python_source(resolved),
+                }
+            )
+            results.append(details)
+        return tuple(results)
+
+    @staticmethod
+    def _python_source(path: Path) -> str:
+        try:
+            if path == Path(sys.executable).resolve():
+                return "app_runtime"
+            if path.is_relative_to(Path(sys.base_prefix).resolve()):
+                return "base_prefix"
+            if path.is_relative_to(Path.home().resolve()):
+                return "user_common_path"
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return "system_or_path"
+
+    def _basic_ocr_info(self) -> dict[str, Any]:
+        result = self._run(["tesseract", "--version"])
+        available = bool(result["available"] and result["returncode"] == 0)
+        first_line = (result.get("stdout") or result.get("stderr") or "").splitlines()
+        return {
+            "provider": "tesseract",
+            "python_binding_installed": importlib.util.find_spec("pytesseract") is not None,
+            "executable_available": available,
+            "executable_path": result.get("path"),
+            "version_output": first_line[0] if first_line else "",
+            "status": "AVAILABLE" if available else "EXECUTABLE_NOT_FOUND",
+        }
 
     def _pytorch_info(self) -> dict[str, Any]:
         if importlib.util.find_spec("torch") is None:
@@ -592,6 +769,22 @@ def _safe_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _version_parts(value: str) -> tuple[int, ...] | None:
+    match = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?", value)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups(default="0"))
+
+
+def _recommended_project_interpreter(
+    interpreters: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
+    compatible = [item for item in interpreters if item.get("meets_project_requirement")]
+    if not compatible:
+        return None
+    return next((item for item in compatible if item.get("selected_for_app")), compatible[0])
 
 
 def _regex_group(value: str, pattern: str) -> str | None:

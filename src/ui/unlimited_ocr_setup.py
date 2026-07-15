@@ -551,6 +551,9 @@ def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: di
         f"Decision: {compatibility.status.value}",
         f"Confidence: {compatibility.confidence:.0%}",
         f"Risk: {compatibility.risk_level.value}",
+        f"APP compatibility: {compatibility.app_compatibility.get('status', 'unknown')}",
+        f"Basic OCR: {compatibility.basic_ocr.get('status', 'unknown')}",
+        f"Recommended provider: {compatibility.recommended_provider}",
         f"Setup allowed: {'Yes' if setup_allowed else 'No'}",
         (
             "Recommendation for this device: Installation may proceed after explicit consent."
@@ -573,6 +576,7 @@ def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: di
         f"- Fully local processing: {'Yes' if summary['local_only'] else 'No'}",
         f"- Documents leave this device: {'Yes' if summary['data_leaves_device'] else 'No'}",
         f"- Estimated download: {_format_bytes(summary['estimated_download_bytes'])}",
+        f"- Optional uv prerequisite download: {_format_bytes(summary['prerequisite_download_bytes'])}",
         f"- Estimated installed disk use: {_format_bytes(summary['estimated_disk_usage_bytes'])}",
         f"- Minimum / recommended RAM: {_format_bytes(summary['minimum_ram_bytes'])} / "
         f"{_format_bytes(summary['recommended_ram_bytes'])}",
@@ -587,6 +591,7 @@ def _format_summary(environment: Any, compatibility: Any, plan: Any, summary: di
         f"- Private runtime: {summary['runtime_root']}",
         f"- Private model cache: {summary['model_cache_dir']}",
         f"- Model revision: {summary['model_revision']}",
+        f"- Plan type: {'Executable' if plan.executable else 'Blocked informational only'}",
         "",
         "Why Unlimited-OCR may help on supported devices",
         summary["why_recommended"],

@@ -9,7 +9,13 @@ from typing import Any, Mapping
 
 from .environment import default_ocr_data_root
 from .metadata import load_compatibility_metadata
-from .models import CompatibilityReport, CompatibilityStatus, RuntimeBackend, RuntimePlan
+from .models import (
+    CompatibilityReport,
+    CompatibilityStatus,
+    EnvironmentReport,
+    RuntimeBackend,
+    RuntimePlan,
+)
 
 
 class EnvironmentResolver:
@@ -23,7 +29,13 @@ class EnvironmentResolver:
         compatibility: CompatibilityReport,
         *,
         data_root: Path | None = None,
+        environment: EnvironmentReport | Mapping[str, Any] | None = None,
     ) -> RuntimePlan:
+        env = (
+            environment.to_dict()
+            if isinstance(environment, EnvironmentReport)
+            else dict(environment or {})
+        )
         root = (data_root or default_ocr_data_root()).expanduser().resolve()
         runtime_root = root / "runtimes" / "unlimited-ocr-transformers"
         environment_root = runtime_root / "environment"
@@ -34,6 +46,7 @@ class EnvironmentResolver:
         backend = self.metadata["backends"]["transformers"]
         profile_name = _profile_from_runtime(compatibility.recommended_runtime)
         environment_manager = _manager_from_runtime(compatibility.recommended_runtime)
+        bootstrap = _bootstrap_plan(self.metadata, env, runtime_root, environment_manager)
         profile = backend["pytorch_profiles"].get(profile_name or "")
         blocked: list[str] = []
         if compatibility.status in {
@@ -53,8 +66,10 @@ class EnvironmentResolver:
                 if driver_is_incompatible
                 else "The PyTorch CUDA wheel profile could not be resolved from the compatibility result."
             )
-        if environment_manager not in {"uv", "conda"}:
+        if environment_manager not in {"uv", "conda", "managed_uv"}:
             blocked.append("No supported private environment manager was selected.")
+        if environment_manager == "managed_uv" and not bootstrap:
+            blocked.append("No verified uv bootstrap asset matches this OS and architecture.")
 
         packages = backend["packages"]
         torch_packages = (
@@ -67,10 +82,19 @@ class EnvironmentResolver:
             if name not in {"torch", "torchvision"}
         )
         commands: list[tuple[str, ...]] = []
+        manager_executable = _manager_executable(environment_manager, env, bootstrap)
         if environment_manager == "conda":
             python = _runtime_python(environment_root, environment_manager)
             commands.append(
-                ("conda", "create", "--yes", "--prefix", str(environment_root), "python=3.12", "pip")
+                (
+                    manager_executable,
+                    "create",
+                    "--yes",
+                    "--prefix",
+                    str(environment_root),
+                    "python=3.12",
+                    "pip",
+                )
             )
             if profile:
                 commands.append(
@@ -85,12 +109,14 @@ class EnvironmentResolver:
                     )
                 )
             commands.append((str(python), "-m", "pip", "install", *runtime_packages))
-        elif environment_manager == "uv":
-            commands.append(("uv", "venv", str(environment_root), "--python", "3.12"))
+        elif environment_manager in {"uv", "managed_uv"}:
+            commands.append(
+                (manager_executable, "venv", str(environment_root), "--python", "3.12")
+            )
             if profile:
                 commands.append(
                     (
-                        "uv",
+                        manager_executable,
                         "pip",
                         "install",
                         "--python",
@@ -102,7 +128,7 @@ class EnvironmentResolver:
                 )
             commands.append(
                 (
-                    "uv",
+                    manager_executable,
                     "pip",
                     "install",
                     "--python",
@@ -120,7 +146,12 @@ class EnvironmentResolver:
             "PYTHONNOUSERSITE": "1",
         }
         plan_material = "\n".join(
-            [model_revision, str(runtime_root), *(" ".join(command) for command in commands)]
+            [
+                model_revision,
+                str(runtime_root),
+                str(bootstrap),
+                *(" ".join(command) for command in commands),
+            ]
         )
         plan_id = hashlib.sha256(plan_material.encode("utf-8")).hexdigest()[:16]
         warnings = [
@@ -145,12 +176,14 @@ class EnvironmentResolver:
             requires_admin=False,
             system_changes=(),
             reversible_changes=(
+                *((f"Create verified managed uv under {bootstrap['install_dir']}",) if bootstrap else ()),
                 f"Create private runtime under {runtime_root}",
                 f"Create private model cache under {model_cache}",
                 "Register provider settings in the APP user configuration",
             ),
             warnings=tuple(warnings),
             blocked_reasons=tuple(blocked),
+            bootstrap=bootstrap,
         )
 
 
@@ -174,7 +207,64 @@ def _profile_from_runtime(value: str | None) -> str | None:
 def _manager_from_runtime(value: str | None) -> str | None:
     if not value:
         return None
-    for manager in ("uv", "conda"):
+    for manager in ("managed_uv", "uv", "conda"):
         if f"private {manager} " in value.casefold():
             return manager
     return None
+
+
+def _manager_executable(
+    manager: str | None,
+    env: Mapping[str, Any],
+    bootstrap: Mapping[str, Any],
+) -> str:
+    if manager == "managed_uv":
+        return str(bootstrap.get("executable", "uv"))
+    tool = env.get("python", {}).get("tools", {}).get(manager or "", {})
+    return str(tool.get("path") or manager or "uv")
+
+
+def _bootstrap_plan(
+    metadata: Mapping[str, Any],
+    env: Mapping[str, Any],
+    runtime_root: Path,
+    manager: str | None,
+) -> dict[str, Any]:
+    if manager != "managed_uv":
+        return {}
+    os_info = env.get("os", {})
+    system = str(os_info.get("system", ""))
+    machine = str(os_info.get("machine", "")).casefold()
+    arch = (
+        "x86_64"
+        if machine in {"amd64", "x86_64"}
+        else "arm64"
+        if machine in {"arm64", "aarch64"}
+        else ""
+    )
+    if not arch or (
+        system == "Linux" and "musl" in str(os_info.get("platform", "")).casefold()
+    ):
+        return {}
+    metadata_value = metadata.get("uv_bootstrap", {})
+    asset = metadata_value.get("assets", {}).get(f"{system}-{arch}")
+    if not isinstance(asset, Mapping):
+        return {}
+    install_dir = runtime_root / "prerequisites" / "uv"
+    executable = install_dir / ("uv.exe" if system == "Windows" else "uv")
+    return {
+        "tool": "uv",
+        "state": "BOOTSTRAP_REQUIRED",
+        "version": str(metadata_value["version"]),
+        "strategy": str(metadata_value["strategy"]),
+        "url": str(asset["url"]),
+        "sha256": str(asset["sha256"]),
+        "size": int(asset["size"]),
+        "filename": str(asset["filename"]),
+        "install_dir": str(install_dir),
+        "executable": str(executable),
+        "requires_consent": True,
+        "modifies_path": False,
+        "modifies_shell_profile": False,
+        "requires_admin": False,
+    }

@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 import psutil
 
+from .bootstrap import UvBootstrapper
 from .cache import ModelCacheManager, _is_link_or_junction
 from .consent import DeploymentConsent
 from .errors import DeploymentFailure, ErrorCode, classify_exception, make_error
@@ -342,6 +343,31 @@ class SetupOrchestrator:
         _atomic_json(snapshot_dir / "plan.json", self.plan.to_dict())
         _atomic_json(snapshot_dir / "consent.json", self.consent.to_dict())
         return {"snapshot_dir": str(snapshot_dir)}
+
+    def _stage_uv_bootstrap(self) -> dict[str, Any]:
+        if self.plan.environment_manager != "managed_uv":
+            return {"required": False, "reason": "A compatible environment manager is already available."}
+        try:
+            result = UvBootstrapper(
+                self.plan.bootstrap,
+                runtime_root=self.runtime_root,
+            ).install(check_cancel=self._check_stop)
+            verification = self.command_runner(
+                [str(self.plan.bootstrap["executable"]), "--version"],
+                self.plan.environment,
+                30,
+                self.cancellation,
+            )
+            if int(verification.get("returncode", 1)) != 0:
+                raise RuntimeError("The installed uv executable failed its version smoke test.")
+            result["version_output"] = str(verification.get("stdout", "")).strip()
+            return result
+        except _StopRequested:
+            raise
+        except Exception as exc:
+            raise DeploymentFailure(
+                classify_exception(exc, default=ErrorCode.UV_BOOTSTRAP_FAILED)
+            ) from exc
 
     def _stage_create_isolated_env(self) -> dict[str, Any]:
         python = _runtime_python(
@@ -1045,6 +1071,7 @@ def _stage_message(stage: InstallStage) -> str:
         InstallStage.COMPATIBILITY_ANALYSIS: "Confirming the compatibility decision.",
         InstallStage.USER_CONSENT: "Validating plan-bound user consent.",
         InstallStage.SNAPSHOT_CURRENT_STATE: "Recording the reversible pre-install state.",
+        InstallStage.UV_BOOTSTRAP: "Installing a verified APP-managed uv prerequisite when needed.",
         InstallStage.CREATE_ISOLATED_ENV: "Creating the private Python environment.",
         InstallStage.INSTALL_DEPENDENCIES: "Installing pinned private dependencies.",
         InstallStage.DOWNLOAD_MODEL: "Downloading the pinned model snapshot.",
@@ -1061,6 +1088,7 @@ def _stage_message(stage: InstallStage) -> str:
 def _retry_policy(stage: InstallStage) -> dict[str, Any]:
     maximum = {
         InstallStage.CREATE_ISOLATED_ENV: 2,
+        InstallStage.UV_BOOTSTRAP: 3,
         InstallStage.INSTALL_DEPENDENCIES: 2,
         InstallStage.DOWNLOAD_MODEL: 3,
     }.get(stage, 1)
@@ -1074,6 +1102,8 @@ def _retry_policy(stage: InstallStage) -> dict[str, Any]:
 def _recovery_strategy(stage: InstallStage) -> str:
     if stage == InstallStage.DOWNLOAD_MODEL:
         return "Reuse the partial Hugging Face cache and resume the pinned revision."
+    if stage == InstallStage.UV_BOOTSTRAP:
+        return "Retry the pinned download; remove only the incomplete managed prerequisite files."
     if stage in {InstallStage.CREATE_ISOLATED_ENV, InstallStage.INSTALL_DEPENDENCIES}:
         return "Retry inside the same private environment; never modify global packages."
     if stage == InstallStage.REGISTER_WITH_APP:

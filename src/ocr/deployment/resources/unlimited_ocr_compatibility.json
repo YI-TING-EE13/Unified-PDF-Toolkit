@@ -12,6 +12,19 @@
     "pytorch_versions": "https://pytorch.org/get-started/previous-versions/",
     "nvidia_compatibility": "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html"
   },
+  "uv_bootstrap": {
+    "version": "0.11.28",
+    "source": "https://github.com/astral-sh/uv/releases/tag/0.11.28",
+    "strategy": "verified_app_managed_archive",
+    "assets": {
+      "Windows-x86_64": {"filename": "uv-x86_64-pc-windows-msvc.zip", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-pc-windows-msvc.zip", "sha256": "0a23463216d09c6a72ff80ef5dc5a795f07dc1575cb84d24596c2f124a441b7b", "size": 25568726},
+      "Windows-arm64": {"filename": "uv-aarch64-pc-windows-msvc.zip", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-aarch64-pc-windows-msvc.zip", "sha256": "3248109afad3ec59baad299d324ff53de17e2d9a3b3e21580ffd26744b11e036", "size": 23878916},
+      "Linux-x86_64": {"filename": "uv-x86_64-unknown-linux-gnu.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-unknown-linux-gnu.tar.gz", "sha256": "e490a6464492183c5d4534a5527fb4440f7f2bb2f228162ad7e4afe076dc0224", "size": 26411870},
+      "Linux-arm64": {"filename": "uv-aarch64-unknown-linux-gnu.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-aarch64-unknown-linux-gnu.tar.gz", "sha256": "03e9fe0a81b0718d0bc84625de3885df6cc3f89a8b6af6121d6b9f6113fb6533", "size": 24689886},
+      "Darwin-x86_64": {"filename": "uv-x86_64-apple-darwin.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-apple-darwin.tar.gz", "sha256": "2ad79983127ffca7d77b77ce6a24278d7e4f7b817a1acf72fea5f8124b4aac5e", "size": 24355900},
+      "Darwin-arm64": {"filename": "uv-aarch64-apple-darwin.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-aarch64-apple-darwin.tar.gz", "sha256": "33540eb7c883ab857eff79bd5ac2aa31fe27b595abecb4a9c003a2c998447232", "size": 22568053}
+    }
+  },
   "model_artifacts": {
     "reported_total_bytes": 6778368088,
     "required_download_bytes": 6683156996,

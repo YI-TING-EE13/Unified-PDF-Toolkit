@@ -19,6 +19,7 @@ class ErrorCode(str, Enum):
     CUDA_RUNTIME_MISMATCH = "CUDA_RUNTIME_MISMATCH"
     PYTORCH_CUDA_MISMATCH = "PYTORCH_CUDA_MISMATCH"
     PYTHON_VERSION_UNSUPPORTED = "PYTHON_VERSION_UNSUPPORTED"
+    UV_BOOTSTRAP_FAILED = "UV_BOOTSTRAP_FAILED"
     DEPENDENCY_CONFLICT = "DEPENDENCY_CONFLICT"
     MODEL_DOWNLOAD_FAILED = "MODEL_DOWNLOAD_FAILED"
     MODEL_INTEGRITY_FAILED = "MODEL_INTEGRITY_FAILED"
@@ -46,6 +47,7 @@ _MESSAGES: dict[ErrorCode, tuple[str, str, bool, bool, bool]] = {
     ErrorCode.CUDA_RUNTIME_MISMATCH: ("CUDA runtime mismatch", "The private runtime and Driver could not initialize a compatible CUDA path.", True, False, True),
     ErrorCode.PYTORCH_CUDA_MISMATCH: ("PyTorch CUDA mismatch", "PyTorch was installed but cannot use the detected GPU.", True, False, True),
     ErrorCode.PYTHON_VERSION_UNSUPPORTED: ("Unsupported Python", "A private supported Python version could not be created.", True, False, True),
+    ErrorCode.UV_BOOTSTRAP_FAILED: ("uv bootstrap failed", "The verified private uv prerequisite could not be installed.", True, False, True),
     ErrorCode.DEPENDENCY_CONFLICT: ("Dependency conflict", "The pinned private runtime dependencies could not be resolved together.", True, False, True),
     ErrorCode.MODEL_DOWNLOAD_FAILED: ("Model download failed", "The model download did not complete. Partial verified cache data is kept for resume.", True, False, True),
     ErrorCode.MODEL_INTEGRITY_FAILED: ("Model verification failed", "Downloaded model files do not match the pinned metadata.", True, False, True),

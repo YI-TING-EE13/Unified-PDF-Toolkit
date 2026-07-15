@@ -340,7 +340,11 @@ class UnlimitedOCRProvider(OCRProvider):
         self._environment = replace(
             inspected, recommendation=self._compatibility.to_dict()
         )
-        self._plan = self.resolver.resolve(self._compatibility, data_root=self.data_root)
+        self._plan = self.resolver.resolve(
+            self._compatibility,
+            data_root=self.data_root,
+            environment=self._environment,
+        )
         return self._plan
 
     def _reject_linked_data_root(self) -> None:

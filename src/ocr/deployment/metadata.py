@@ -106,6 +106,26 @@ def validate_compatibility_metadata(data: Mapping[str, Any]) -> None:
         if not re.fullmatch(r"cu\d+", str(name)) or not isinstance(profile, Mapping):
             raise CompatibilityMetadataError("Invalid PyTorch CUDA profile metadata.")
         _validate_trusted_url(str(profile.get("index_url", "")), label=f"profile {name}")
+    uv_bootstrap = data.get("uv_bootstrap", {})
+    if not isinstance(uv_bootstrap, Mapping) or not re.fullmatch(
+        r"\d+\.\d+\.\d+", str(uv_bootstrap.get("version", ""))
+    ):
+        raise CompatibilityMetadataError("Pinned uv bootstrap metadata is required.")
+    _validate_trusted_url(str(uv_bootstrap.get("source", "")), label="uv bootstrap source")
+    assets = uv_bootstrap.get("assets", {})
+    if not isinstance(assets, Mapping) or not assets:
+        raise CompatibilityMetadataError("Pinned uv bootstrap assets are required.")
+    for platform_key, asset in assets.items():
+        if not re.fullmatch(r"(Windows|Linux|Darwin)-(x86_64|arm64)", str(platform_key)):
+            raise CompatibilityMetadataError("Invalid uv bootstrap platform key.")
+        if not isinstance(asset, Mapping):
+            raise CompatibilityMetadataError("Invalid uv bootstrap asset metadata.")
+        _validate_trusted_url(str(asset.get("url", "")), label=f"uv asset {platform_key}")
+        digest = str(asset.get("sha256", ""))
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            raise CompatibilityMetadataError("Invalid uv bootstrap SHA-256.")
+        if int(asset.get("size", 0)) <= 0:
+            raise CompatibilityMetadataError("Invalid uv bootstrap asset size.")
 
 
 def _validate_trusted_url(value: str, *, label: str) -> None:
