@@ -92,7 +92,11 @@ class UvBootstrapper:
         maximum_size = expected_size + 1024 * 1024
         digest = hashlib.sha256()
         total = 0
-        with urllib.request.urlopen(request, timeout=30) as response, destination.open("wb") as out:
+        # The request URL is HTTPS/GitHub-only above; the final redirect host is
+        # allowlisted again before any response bytes are accepted.
+        with urllib.request.urlopen(  # nosec B310
+            request, timeout=30
+        ) as response, destination.open("wb") as out:
             final_host = urlparse(response.geturl()).hostname
             if final_host not in _TRUSTED_DOWNLOAD_HOSTS:
                 raise ValueError("uv bootstrap redirect left the trusted GitHub release hosts.")

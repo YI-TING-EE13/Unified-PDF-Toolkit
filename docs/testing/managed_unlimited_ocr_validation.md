@@ -38,6 +38,82 @@ Estimated costs before consent:
 - reserved free-disk gate: 25 GiB;
 - recommended VRAM: 12 GiB.
 
+## Physical Ubuntu second-device validation
+
+This was a real SSH validation on a separate Acer Nitro laptop, not a fixture or
+mock. The isolated checkout used branch `codex/unlimited-ocr-deployment` under a
+user-writable `<home>/projects/` directory. Machine-specific JSON stayed in an
+ignored validation-results directory and was not committed.
+
+| Item | Windows development computer | Ubuntu second device |
+| --- | --- | --- |
+| OS | Windows 11 build 26200 | Ubuntu 20.04.6 LTS, kernel 5.15 |
+| CPU | Intel Core i5-13600K | Intel Core i7-8750H |
+| RAM | 63.8 GiB | 7.6 GiB |
+| GPU | RTX 3060 | GTX 1060 |
+| VRAM | 12 GiB | 6 GiB |
+| Driver / Driver CUDA API | 610.47 / 13.3 | 570.133.07 / 12.8 |
+| CUDA Toolkit | 12.2 | 10.1 |
+| Compute capability | 8.6 | 6.1 |
+| Project Python | 3.12.12 | Miniforge CPython 3.12.11 |
+| APP PyTorch | intentionally absent | absent |
+| Basic OCR | Tesseract available | Tesseract executable absent |
+| Advanced compatibility | `SUPPORTED_WITH_CHANGES` | `UNSUPPORTED` |
+| Confidence / risk | 0.90 / `MEDIUM` | 0.90 / `BLOCKED` |
+| Recommended backend | Transformers | none |
+| Setup allowed | yes after consent | no |
+
+The Ubuntu system Python was 3.8.10 and therefore unsuitable for the project's
+`>=3.10` requirement. A bounded probe found both Miniforge Python 3.12.11 and
+Conda outside PATH. It also found an existing user-local uv 0.9.25 at the normal
+`~/.local/bin` location; no new uv installation was necessary. The final source
+setup followed the repository workflow exactly:
+
+```bash
+<home>/.local/bin/uv sync --dev --python <home>/miniforge3/bin/python3.12
+<home>/.local/bin/uv run --no-sync pdf-toolkit --version
+<home>/.local/bin/uv run --no-sync python verify_install.py
+<home>/.local/bin/uv run --no-sync pytest -q
+<home>/.local/bin/uv run --no-sync ruff check .
+```
+
+The sync created only the ignored project `.venv` and uv cache content. It did
+not change PATH or shell profiles, modify Miniforge base packages, use sudo, or
+touch system Python, Driver, CUDA Toolkit, or global site-packages. The ordinary
+APP dependencies and every tool class loaded; CLI/version/compile checks passed.
+Tkinter was importable, but source GUI construction was not claimed because the
+SSH session had no display. Tesseract was not installed, so the report correctly
+recommended installing Tesseract for Basic OCR while confirming non-OCR APP/CLI
+features remained usable.
+
+The first real inspection exposed five cross-device defects: Linux CPU model
+was reported as architecture; Miniforge/uv outside a non-login PATH were missed;
+a blocked plan still offered install; an unresolved manager emitted unusable uv
+argv; and a blocked reason contradicted the detected cu128-compatible Driver.
+Review also found first-GPU display selection and headless/Tesseract messaging
+assumptions. Production fixes now use `/proc/cpuinfo` fallback, bounded common
+locations, absolute tool argv, explicit `BLOCKED_INFORMATIONAL` plans, consistent
+wheel decisions, highest-VRAM NVIDIA display selection, and layered APP/GUI,
+Basic OCR, and Unlimited-OCR status.
+
+Final Ubuntu compatibility was `UNSUPPORTED`, confidence `0.90`, risk
+`BLOCKED`. Requirements met included eligible 64-bit Linux, 40.9 GiB free disk,
+Driver 570.133.07 support for the cu128 wheel family, active Python 3.12.11, and
+the absolute user-local uv. Missing requirements were exactly 6 GiB VRAM versus
+the 10 GiB minimum, compute capability 6.1 versus the BF16 Ampere-class gate,
+and 7.6 GiB RAM versus the 16 GiB minimum. The plan was informational,
+`executable: false`, recommended backend `none`, and exposed only technical
+details / not-now actions. `ocr plan` returned the documented exit code 3.
+
+Before and after structured reports proved that no managed runtime, model
+snapshot, journal, benchmark, or provider registration existed. Final status
+was provider `NOT_INSTALLED`, model `exists: false`, journal absent, and the
+isolated managed root remained absent. No torch, Transformers, AI runtime, model,
+Driver, CUDA, PATH, profile, global Python, or administrator change occurred.
+Ubuntu real-machine tests passed 243 tests plus 40 subtests before the final
+minimum-uv-version regression was added; final branch CI and local gates cover
+that additional case. No Unlimited-OCR inference success is claimed on Linux.
+
 ## Official metadata audit
 
 - Unlimited-OCR source revision:
@@ -53,8 +129,11 @@ Estimated costs before consent:
 
 ## Automated results
 
-- Full suite: 229 unittest tests passed; the equivalent pytest run passed 229
-  tests and 40 subtests. New regressions cover
+- Full suite: 244 pytest tests and 40 subtests passed. New regressions cover
+  Linux CPU/architecture separation, alternate Python discovery, user-local
+  uv/Conda/pyenv detection, uv version gating and managed bootstrap, blocked
+  action/argv consistency, multi-GPU display selection, headless GUI state,
+  Basic OCR availability, plus the earlier
   artifact traversal, real Windows junction substitution, cleanup escape,
   corrupt/incomplete journal recovery, actual OS setup locking, stale lock-file
   recovery, environment/model reuse, transient atomic-write sharing violations,

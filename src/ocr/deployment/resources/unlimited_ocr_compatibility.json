@@ -14,6 +14,7 @@
   },
   "uv_bootstrap": {
     "version": "0.11.28",
+    "minimum_compatible_version": "0.9.0",
     "source": "https://github.com/astral-sh/uv/releases/tag/0.11.28",
     "strategy": "verified_app_managed_archive",
     "assets": {

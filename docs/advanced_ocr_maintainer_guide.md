@@ -19,6 +19,13 @@ device-specific evidence, not broad platform support. See
 `docs/runtime/managed_unlimited_ocr.md` and
 `docs/testing/managed_unlimited_ocr_validation.md`.
 
+A second physical Ubuntu 20.04 laptop now validates the source bootstrap and
+blocked-device path: user-local uv outside PATH and a Miniforge Python 3.12 were
+discovered without scanning the disk, the repository synced through its normal
+uv workflow, and GTX 1060 / 7.6 GiB RAM produced a consistent `UNSUPPORTED`
+informational plan without AI downloads or system changes. This is real SSH
+hardware evidence, not a mock and not a Linux inference-success claim.
+
 Advanced OCR support is architecture-first and local-first. The production OCR
 behavior remains unchanged: PDF to Word -> OCR Text still uses Tesseract by
 default.
@@ -558,8 +565,12 @@ uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
   --reload-cycles 2 --stress-iterations 50 --output <report.json>
 ```
 
-In this local checkout, if `uv` or the requested `..venv` path is unavailable,
-use the repo-local venv equivalent:
+For a final source-checkout gate, bootstrap uv from its official instructions
+and run the repository's documented `uv sync --dev --python <compatible-python>`
+workflow. A temporary `python -m venv` may be used only for diagnosis and must
+not be described as the repository's final installation result. If an already
+synced repo-local environment must be used for offline diagnosis, the equivalent
+commands are:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v

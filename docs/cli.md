@@ -55,6 +55,13 @@ cost, system-change boundary, and consent summary. A plan may be blocked or
 marked experimental; detecting an NVIDIA GPU does not make it automatically
 supported.
 
+The result separates normal APP compatibility, Basic OCR/Tesseract
+availability, Unlimited-OCR compatibility, and the recommended provider. A
+blocked result uses `plan_kind: BLOCKED_INFORMATIONAL`,
+`commands_executable: false`, and `setup_allowed: false`; its action list does
+not contain `install_and_enable`. If an environment manager was found outside
+`PATH`, planned argv uses its absolute executable path.
+
 Setup requires the current plan ID and six separate acknowledgements. There is
 no general `--yes` bypass:
 

@@ -128,7 +128,18 @@ class CompatibilityEngine:
 
         python = env.get("python", {})
         tools = python.get("tools", {})
-        uv_available = bool(tools.get("uv", {}).get("available"))
+        uv_details = tools.get("uv", {})
+        uv_detected = bool(uv_details.get("available"))
+        minimum_uv = _version_tuple(
+            self.metadata.get("uv_bootstrap", {}).get("minimum_compatible_version")
+        )
+        detected_uv = _tool_version_tuple(uv_details.get("version_output"))
+        uv_available = bool(
+            uv_detected
+            and detected_uv
+            and minimum_uv
+            and detected_uv >= minimum_uv
+        )
         uv_bootstrap_available = bool(tools.get("uv", {}).get("bootstrap_available")) and bool(
             _uv_bootstrap_asset(self.metadata, env)
         )
@@ -152,7 +163,6 @@ class CompatibilityEngine:
             )
             status = _degrade(status, CompatibilityStatus.UNKNOWN)
         if uv_available:
-            uv_details = tools.get("uv", {})
             suffix = (
                 f" at {uv_details.get('path')} (outside PATH; the absolute executable will be used)"
                 if uv_details.get("state") == "DETECTED_OUTSIDE_PATH"
@@ -161,6 +171,10 @@ class CompatibilityEngine:
             met.append(f"uv is available{suffix} for isolated, reproducible environment creation.")
             environment_manager = "uv"
         elif conda_available:
+            if uv_detected:
+                changes.append(
+                    f"Detected uv is older than the supported minimum {self.metadata['uv_bootstrap']['minimum_compatible_version']}; use Conda instead."
+                )
             met.append("Conda is available for isolated prefix creation.")
             environment_manager = "conda"
         elif uv_bootstrap_available:
@@ -333,6 +347,15 @@ def _version_tuple(value: Any) -> tuple[int, ...] | None:
         return tuple(int(part) for part in str(value).split("."))
     except (TypeError, ValueError):
         return None
+
+
+def _tool_version_tuple(value: Any) -> tuple[int, ...] | None:
+    text = str(value)
+    for token in text.split():
+        parsed = _version_tuple(token)
+        if parsed:
+            return parsed
+    return None
 
 
 def _as_int(value: Any) -> int | None:

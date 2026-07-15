@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Added bounded cross-platform discovery for real Linux CPU model names,
+  alternate compatible Python interpreters, uv/Conda/pyenv installations outside
+  PATH, headless GUI/display state, and actual Tesseract availability. Managed
+  plans now use absolute provisioner paths and separate APP, Basic OCR, and
+  Unlimited-OCR compatibility plus provider recommendation.
+- Added a consent-gated `UV_BOOTSTRAP` prerequisite for otherwise eligible
+  devices with no compatible manager. It pins official uv 0.11.28 archives,
+  platform-specific sizes and SHA-256 values, installs only under the managed
+  runtime, and includes retry, cancellation, smoke verification, and cleanup
+  without sudo, PATH, profile, system Python, Driver, or CUDA changes.
+- Fixed blocked plans that exposed an install action, emitted unavailable uv
+  commands, selected the first NVIDIA GPU for display, or contradicted a valid
+  PyTorch cu128 Driver match. Blocked plans are now explicitly informational.
+- Completed a real second-device Ubuntu 20.04 validation on GTX 1060 6 GiB with
+  low RAM, old system Python, newer Miniforge Python, user-local uv outside PATH,
+  CUDA Toolkit 10.1, and a newer Driver. The normal APP/CLI installation and
+  Linux suite passed; Unlimited-OCR remained safely blocked and no AI runtime or
+  model was installed.
+
 - Hardened the managed Unlimited-OCR final audit with OS-held single-installer
   locking, corrupt-journal quarantine and recovery, existing environment/model
   reuse, atomic state-write retries, junction/symlink escape prevention, bounded

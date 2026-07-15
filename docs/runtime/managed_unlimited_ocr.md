@@ -14,7 +14,9 @@ item.
 The Environment Inspector records OS and architecture, CPU and core count,
 total/available RAM, all detected GPUs and VRAM, NVIDIA Driver and Driver API
 CUDA version, system CUDA Toolkit, Python and package tools, PyTorch CUDA state,
-free disk, APP runtime, Docker, and WSL2. It uses Python/OS APIs and NVML first,
+bounded common-location Python/uv/Conda/pyenv discovery, Basic OCR availability,
+free disk, APP runtime, GUI/display state, Docker, and WSL2. It uses Python/OS
+APIs and NVML first,
 then bounded argv-only command probes when an API is unavailable.
 
 The Compatibility Engine returns one of:
@@ -67,8 +69,18 @@ the candidate is reviewed.
 
 ## Installation design
 
-The resolver currently prefers an APP-private uv environment and can use a
-private Conda prefix when uv is unavailable. The generated plan uses argv
+The resolver reuses a compatible uv executable first, including one found in a
+bounded user-local location outside `PATH`, and passes its absolute path. It can
+reuse a private Conda prefix when uv is unavailable. If neither exists on an
+otherwise eligible device, it can plan a pinned APP-managed uv prerequisite.
+The bundled bootstrap metadata currently pins uv 0.11.28, requires an existing
+uv to be at least 0.9.0, selects an OS/architecture-specific official release
+archive, and records its exact size and SHA-256. The bootstrap occurs only after
+plan-bound consent, extracts only `uv`/`uvx` into the managed runtime, verifies
+the executable, retries safely, and cleans incomplete files. It does not invoke
+an internet-fetched shell script, edit a shell profile, or change `PATH`.
+
+The generated plan uses argv
 arrays, never a shell string. It installs a compatible official PyTorch wheel
 inside the private runtime and normally does not require the system CUDA
 Toolkit. It never removes another CUDA installation or overwrites an existing
@@ -89,7 +101,7 @@ The resumable pipeline is:
 
 ```text
 PRECHECK -> COMPATIBILITY_ANALYSIS -> USER_CONSENT
--> SNAPSHOT_CURRENT_STATE -> CREATE_ISOLATED_ENV
+-> SNAPSHOT_CURRENT_STATE -> UV_BOOTSTRAP -> CREATE_ISOLATED_ENV
 -> INSTALL_DEPENDENCIES -> DOWNLOAD_MODEL
 -> VERIFY_CHECKSUM_OR_FILES -> LOAD_MODEL -> RUN_SMOKE_TEST
 -> RUN_OCR_TEST -> BENCHMARK -> REGISTER_WITH_APP -> COMPLETE
@@ -116,11 +128,14 @@ stage still verifies the complete required-file inventory and weight hash.
 ## GUI workflow
 
 Open `Settings / Recent`, then choose the managed Unlimited-OCR device analysis
-and setup action. The dialog offers:
+and setup action. On an executable plan the dialog offers:
 
 - install and enable;
 - technical details;
 - not now.
+
+An unsupported or unknown plan is informational only: install is disabled and
+the serialized action list contains only technical details and not now.
 
 All consent boxes start unchecked. The user must acknowledge the large
 download, private environment/cache, pinned custom model code, resource use,

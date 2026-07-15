@@ -111,6 +111,10 @@ def validate_compatibility_metadata(data: Mapping[str, Any]) -> None:
         r"\d+\.\d+\.\d+", str(uv_bootstrap.get("version", ""))
     ):
         raise CompatibilityMetadataError("Pinned uv bootstrap metadata is required.")
+    if not re.fullmatch(
+        r"\d+\.\d+\.\d+", str(uv_bootstrap.get("minimum_compatible_version", ""))
+    ):
+        raise CompatibilityMetadataError("Minimum compatible uv version is required.")
     _validate_trusted_url(str(uv_bootstrap.get("source", "")), label="uv bootstrap source")
     assets = uv_bootstrap.get("assets", {})
     if not isinstance(assets, Mapping) or not assets:

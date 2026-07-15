@@ -139,6 +139,16 @@ Default dependencies must not include torch, transformers, SGLang, CUDA, model
 files, or server runtimes unless a later release decision explicitly changes
 this policy.
 
+The managed uv prerequisite is also a supply-chain boundary. Existing
+compatible uv/Conda installations are reused before downloading anything. A
+missing-manager plan pins an official `astral-sh/uv` release asset per supported
+OS/architecture, expected byte size, and SHA-256 in reviewed metadata. Download
+redirects stay on allowlisted GitHub release hosts; extraction accepts only the
+`uv` and `uvx` executables under the APP-managed runtime. The stage runs only
+after consent, uses no shell installer, sudo, PATH edit, profile edit, or global
+site-packages, and removes partial archive/staging files on failure or
+cancellation.
+
 ## Custom Code and `trust_remote_code` Risks
 
 Any backend requiring `trust_remote_code=True` or equivalent custom model code

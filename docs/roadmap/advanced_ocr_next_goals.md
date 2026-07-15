@@ -17,13 +17,19 @@ an advanced/developer loopback option, not the main product path.
   RTX 3060 passed real model load, five-layout OCR, cancellation/recovery, two
   unload/reload cycles, benchmark, and a 50-request resource-stability run.
 - Delivered: Environment Inspector, metadata-driven Compatibility Engine,
-  private uv/Conda resolver, six-item informed consent, resumable staged
+  private uv/Conda resolver, verified managed-uv prerequisite fallback,
+  layered APP/Basic OCR/Unlimited-OCR reporting, six-item informed consent, resumable staged
   installer, model inventory/SHA-256 verification, persistent provider worker,
   Tesseract fallback, GUI/CLI setup and cleanup, synthetic OCR suite, and
   structured diagnostics.
-- Current highest-value next gate: repeat the same managed install and validation
-  on at least one different Windows NVIDIA GPU and one Linux NVIDIA system, then
-  build a versioned quality suite from representative, non-sensitive documents.
+- A physical Ubuntu 20.04 laptop with GTX 1060 6 GiB, 7.6 GiB RAM, system Python
+  3.8, Miniforge Python 3.12, user-local uv outside PATH, CUDA Toolkit 10.1, and
+  Driver CUDA API 12.8 passed the official source setup, full Linux unit suite,
+  environment inspection, and safe unsupported gate. No model/runtime inference
+  was attempted because metadata-driven VRAM, generation, and RAM gates failed.
+- Current highest-value next gate: validate a second supported NVIDIA device on
+  Linux or a different Windows GPU, then build a versioned quality suite from
+  representative, non-sensitive documents.
 - Do not claim AMD, Apple Silicon, CPU-only, SGLang, Docker/vLLM, or broad
   production support until each path has official evidence and real acceptance
   results.

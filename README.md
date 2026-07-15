@@ -155,6 +155,14 @@ updates NVIDIA Driver, replaces system CUDA, edits PATH, or changes global
 Python. Pages and OCR output remain local; full OCR text is excluded from normal
 setup logs. Tesseract remains the default and fallback provider.
 
+Device analysis reports APP/CLI readiness, current GUI/display readiness,
+Tesseract availability, and Unlimited-OCR compatibility separately. An
+unsupported advanced provider does not make the normal PDF/CLI tools
+unsupported. If neither a compatible uv nor Conda installation is available,
+an otherwise eligible advanced-OCR plan can disclose a consent-gated,
+SHA-256-verified APP-managed uv prerequisite; it never edits PATH or shell
+profiles.
+
 See the [managed setup and security guide](docs/runtime/managed_unlimited_ocr.md),
 [current validation record](docs/testing/managed_unlimited_ocr_validation.md),
 and [custom model-code policy](docs/security/unlimited_ocr_trust_remote_code_policy.md).
@@ -201,6 +209,22 @@ cd Unified-PDF-Toolkit
 uv sync
 uv run --no-sync python src/app.py
 ```
+
+If `uv` is not on `PATH`, first check the normal user locations
+`~/.local/bin/uv` and `~/.cargo/bin/uv`. Install it from the
+[official uv instructions](https://docs.astral.sh/uv/getting-started/installation/)
+only when it is genuinely absent. To keep shell profiles unchanged on Linux or
+macOS, use the official installer with `UV_NO_MODIFY_PATH=1`, then invoke the
+result by absolute path. If the system Python is older than this project's
+`>=3.10` requirement, select a compatible existing interpreter explicitly:
+
+```bash
+~/.local/bin/uv sync --python /path/to/python3.12
+~/.local/bin/uv run --no-sync python src/app.py
+```
+
+The source-checkout bootstrap is separate from optional Unlimited-OCR setup.
+Normal APP dependencies never include torch, Transformers, or a model.
 
 On macOS, prefer a Tk-enabled Python runtime:
 

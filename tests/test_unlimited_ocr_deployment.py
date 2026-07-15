@@ -112,7 +112,11 @@ def _environment(**overrides):
         "cuda": {"driver_api_version": "13.3", "toolkit_installed": True, "toolkit_version": "12.2"},
         "python": {
             "version": "3.12.12",
-            "tools": {"uv": {"available": True}, "pip": {"available": True}, "conda": {"available": False}},
+            "tools": {
+                "uv": {"available": True, "version_output": "uv 0.11.28"},
+                "pip": {"available": True},
+                "conda": {"available": False},
+            },
         },
         "pytorch": {"installed": False, "cuda_available": False, "devices": []},
         "storage": {"free_bytes": 128 * 1024**3, "writable_parent": True, "data_root": "test"},
@@ -406,6 +410,7 @@ class CompatibilityTests(unittest.TestCase):
                 "available": True,
                 "path": "/home/user/.local/bin/uv",
                 "state": "DETECTED_OUTSIDE_PATH",
+                "version_output": "uv 0.9.25",
             }
         )
         result = self.evaluate(env)
@@ -419,6 +424,17 @@ class CompatibilityTests(unittest.TestCase):
         self.assertFalse(
             any("No official PyTorch CUDA wheel" in reason for reason in plan.blocked_reasons)
         )
+
+    def test_outdated_uv_is_not_reused_when_conda_is_available(self):
+        env = _environment().to_dict()
+        env["python"] = copy.deepcopy(env["python"])
+        env["python"]["tools"]["uv"].update(
+            {"available": True, "version_output": "uv 0.8.0"}
+        )
+        env["python"]["tools"]["conda"] = {"available": True}
+        result = self.evaluate(env)
+        self.assertIn("private conda", result.recommended_runtime)
+        self.assertTrue(any("older than the supported minimum" in item for item in result.required_changes))
 
     def test_no_nvidia_gpu_is_unsupported(self):
         env = _environment(
