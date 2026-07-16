@@ -921,7 +921,8 @@ class OrchestratorTests(unittest.TestCase):
             )
             with self.assertRaises(DeploymentFailure) as caught:
                 orchestrator.run(until=InstallStage.PRECHECK)
-        self.assertEqual(caught.exception.error.error_code, "NO_SUPPORTED_GPU")
+            self.assertEqual(caught.exception.error.error_code, "NO_SUPPORTED_GPU")
+            self.assertFalse((root / "state").exists())
 
     def test_journal_resumes_completed_stages(self):
         with tempfile.TemporaryDirectory() as temporary:

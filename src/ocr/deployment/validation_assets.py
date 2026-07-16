@@ -131,7 +131,7 @@ def _complex_layout(root: Path, dpi: int) -> ValidationCase:
     left_text = (
         "LEFT COLUMN\n"
         "Project: Aurora\n"
-        "Owner: LAB-606\n"
+        "Owner: Validation Team\n"
         "Priority: High\n\n"
         "Milestone A\nMilestone B\nMilestone C"
     )

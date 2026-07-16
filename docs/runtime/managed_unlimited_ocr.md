@@ -135,7 +135,9 @@ and setup action. On an executable plan the dialog offers:
 - not now.
 
 An unsupported or unknown plan is informational only: install is disabled and
-the serialized action list contains only technical details and not now.
+the serialized action list contains only technical details and not now. Both
+the CLI boundary and the setup orchestrator independently reject that plan
+before creating a journal, lock, validation asset, or managed runtime state.
 
 All consent boxes start unchecked. The user must acknowledge the large
 download, private environment/cache, pinned custom model code, resource use,

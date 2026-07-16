@@ -71,7 +71,7 @@ claim of broad production support for Unlimited-OCR.
 - The provider abstraction keeps Tesseract available as fallback and runs the
   managed provider in a persistent private worker with bounded protocol and
   output handling.
-- The current suite passes 249 tests plus 40 subtests with a 53% branch coverage
+- The current suite passes 250 tests plus 40 subtests with a 53% branch coverage
   result against a 45% gate. CI validates quality/security plus Windows, Ubuntu,
   and macOS source builds; Windows also performs PyInstaller build and packaged
   application smoke testing.

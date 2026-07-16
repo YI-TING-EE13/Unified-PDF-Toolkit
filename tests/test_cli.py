@@ -91,6 +91,56 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(payload["error"]["error_code"], "INVALID_REQUEST")
         self.assertEqual(stderr.getvalue(), "")
 
+    def test_blocked_ocr_setup_is_rejected_before_provider_or_state_write(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            provider = mock.Mock()
+            provider.analyze.return_value = (
+                mock.Mock(),
+                mock.Mock(),
+                mock.Mock(
+                    plan_id="blocked-plan",
+                    blocked_reasons=("Compatibility status is UNSUPPORTED.",),
+                ),
+            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                mock.patch(
+                    "src.ocr.deployment.providers.UnlimitedOCRProvider",
+                    return_value=provider,
+                ),
+                mock.patch(
+                    "src.ocr.deployment.consent.build_consent_summary",
+                    return_value={"setup_allowed": False},
+                ),
+                contextlib.redirect_stdout(stdout),
+                contextlib.redirect_stderr(stderr),
+            ):
+                exit_code = main(
+                    [
+                        "ocr",
+                        "setup",
+                        "--plan-id",
+                        "blocked-plan",
+                        "--ack-large-download",
+                        "--ack-private-environment",
+                        "--ack-custom-code",
+                        "--ack-resource-usage",
+                        "--ack-local-processing-and-temporary-files",
+                        "--ack-no-performance-guarantee",
+                        "--json",
+                    ]
+                )
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(payload["error"]["error_code"], "INVALID_REQUEST")
+            self.assertIn("setup is unavailable", payload["error"]["user_message"])
+            provider.setup.assert_not_called()
+            self.assertEqual(list(root.iterdir()), [])
+            self.assertEqual(stderr.getvalue(), "")
+
     def test_manifest_resolves_relative_paths_and_generates_json_result(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)

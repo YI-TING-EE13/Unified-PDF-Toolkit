@@ -12,6 +12,9 @@ hardware and quality gates below.
 
 - Six consent acknowledgements are unchecked by default and bound to the exact
   plan and metadata revision.
+- A blocked informational plan cannot be forced through setup by supplying all
+  acknowledgement flags: CLI and orchestrator guards reject it before any
+  journal, lock, validation asset, or managed runtime state is written.
 - Large downloads, runtime creation, and custom-code execution occur only after
   valid consent; Driver and system CUDA changes are never in the plan.
 - The resolver uses argv-only private uv/Conda commands with `shell=False`, no

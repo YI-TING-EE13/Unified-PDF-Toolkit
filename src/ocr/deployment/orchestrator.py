@@ -110,6 +110,11 @@ class SetupOrchestrator:
     def run(self, *, until: InstallStage | None = None) -> dict[str, Any]:
         self._validate_consent()
         self._validate_managed_paths()
+        if not self.plan.executable:
+            # Block informational plans before creating journals, locks, or any
+            # managed runtime state. The precheck preserves the most specific
+            # structured compatibility error available for the detected device.
+            self._stage_precheck()
         self.state_root.mkdir(parents=True, exist_ok=True)
         self._acquire_lock()
         try:

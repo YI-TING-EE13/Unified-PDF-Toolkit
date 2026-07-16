@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Closed a blocked-plan setup gap found during the final merge review. CLI and
+  direct orchestrator setup now reject informational plans before creating
+  validation assets, journals, locks, or managed runtime state; regression
+  coverage also verifies the no-write boundary on unsupported hardware.
 - Completed a consented managed install and real inference validation on an
   Ubuntu 22.04 dual-RTX 4090 host. The pinned model passed integrity, load,
   five-layout OCR, benchmark, cancellation/recovery, idempotent setup, and 50

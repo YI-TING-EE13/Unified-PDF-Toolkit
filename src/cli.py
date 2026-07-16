@@ -336,6 +336,18 @@ def _run_managed_ocr_command(args: argparse.Namespace) -> int:
             raise RuntimeError("Managed OCR analysis returned no result.")
         summary = build_consent_summary(compatibility, plan)
 
+        if args.ocr_command == "setup":
+            if args.plan_id != plan.plan_id:
+                raise ValueError(
+                    "plan-id does not match the current hardware/metadata plan. "
+                    "Run 'ocr plan' again."
+                )
+            if not summary.get("setup_allowed", False):
+                reasons = "; ".join(plan.blocked_reasons) or "Compatibility is blocked."
+                raise ValueError(
+                    "setup is unavailable for this informational plan: " + reasons
+                )
+
         if args.ocr_command == "inspect":
             payload = environment.to_dict()
             payload["recommendation"] = compatibility.to_dict()
@@ -395,10 +407,6 @@ def _run_managed_ocr_command(args: argparse.Namespace) -> int:
                     print(f"- {key}: {value}")
             return 0
 
-        if args.plan_id != plan.plan_id:
-            raise ValueError(
-                "plan-id does not match the current hardware/metadata plan. Run 'ocr plan' again."
-            )
         acknowledgements = {
             "large_download": args.ack_large_download,
             "private_environment": args.ack_private_environment,

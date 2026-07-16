@@ -250,7 +250,11 @@ registration. Commit `e79818e` made those cases inject an explicitly disabled
 runtime config. Windows, Acer Nitro, and AI1 then each passed all 249 tests, and
 AI1 also passed Ruff, Bandit, pip-audit, 53% branch coverage, compileall,
 install verification, and wheel/source-distribution build while the installed
-provider remained `READY` with a complete model and complete journal.
+provider remained `READY` with a complete model and complete journal. Final
+merge review added one CLI regression and strengthened the existing direct
+orchestrator regression: a blocked informational plan is rejected even when all
+six acknowledgements are supplied, and its managed state directory remains
+absent. The resulting suite contains 250 tests plus 40 subtests.
 
 ## Official metadata audit
 
@@ -267,10 +271,11 @@ provider remained `READY` with a complete model and complete journal.
 
 ## Automated results
 
-- Full suite: 249 pytest tests and 40 subtests passed. New regressions cover
+- Full suite: 250 pytest tests and 40 subtests passed. New regressions cover
   Linux CPU/architecture separation, alternate Python discovery, user-local
   uv/Conda/pyenv detection, uv version gating and managed bootstrap, blocked
-  action/argv consistency, multi-GPU display selection, headless GUI state,
+  action/argv consistency, blocked-setup no-write enforcement, multi-GPU
+  display selection, headless GUI state,
   Basic OCR availability, plus the earlier
   artifact traversal, real Windows junction substitution, cleanup escape,
   corrupt/incomplete journal recovery, actual OS setup locking, stale lock-file
