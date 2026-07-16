@@ -162,6 +162,15 @@ equal VRAM, consent disclosure, worker environment isolation, and plan-ID
 invalidation. This is single-GPU selection on a multi-GPU host, not sharded or
 distributed inference.
 
+The post-fix rerun used commit
+`fc4c8bef5e4fa73e97cc4aa5e5d6ee917a1987e7`. It selected GPU index 0 under the
+equal-VRAM tie policy, used the selected device's UUID as the private-worker
+binding, and produced plan `a9638f35740915cf`. Inspect, plan, status, and consent
+reported the same selected device and compatibility state. The Linux checkout
+then passed 246 tests plus 40 subtests, Ruff, Bandit, pip-audit, compileall,
+install verification, 53% branch coverage, and wheel/source-distribution build.
+The no-display GUI warning remained informational.
+
 This validation intentionally stopped before consent. It did not install the
 managed PyTorch/Transformers runtime, download the model, execute remote custom
 code, load the model, run OCR, benchmark, register a provider, or modify any
