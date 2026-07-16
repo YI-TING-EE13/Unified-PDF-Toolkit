@@ -3,6 +3,11 @@
 This checklist verifies packaging boundaries before any controlled beta build.
 It does not create a GitHub Release or git tag.
 
+> Historical note: the measurements below record the beta.1-beta.3 packaging
+> work. Current beta.4 readiness is maintained in
+> `docs/releases/beta_tag_readiness_review.md`; published beta.4 hashes are
+> generated as `SHA256SUMS.txt` by the release workflow.
+
 ## Scope
 
 The release workflow remains tag-triggered and uses:

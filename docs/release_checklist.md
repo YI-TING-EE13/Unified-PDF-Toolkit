@@ -15,6 +15,7 @@ uv run --no-sync python -m unittest discover -s tests -v
 uv run --no-sync python verify_install.py
 uv run --no-sync python scripts/gui_smoke.py
 uv run --no-sync python -m compileall -q src tests verify_install.py scripts
+uv run --no-sync python scripts/verify_beta_release.py --tag v<version>
 uv build
 powershell -ExecutionPolicy Bypass -File .\scripts\run_pyinstaller.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\smoke_packaged_app.ps1
@@ -36,15 +37,19 @@ If Inno Setup 6 is installed:
 1. Update `CHANGELOG.md`, `README.md`, `pyproject.toml`, and
    `installer/UnifiedPDFToolkit.iss`.
 2. Commit all release changes.
-3. Create and push a version tag:
+3. Create an annotated version tag, verify its peeled target, and push only
+   that tag:
 
 ```powershell
-git tag v<version>
+git tag -a v<version> <verified-main-sha> -m "<release summary>"
+git rev-parse v<version>^{}
 git push origin v<version>
 ```
 
 The `Release` workflow builds package artifacts, a Windows ZIP bundle, installs
 Inno Setup on the Windows runner, builds a current-user Windows installer, and
-publishes the installer artifact. Confirm the CI and Release workflows are green
-before marking a release as latest. Alpha, beta, and release-candidate tags must
-remain GitHub prereleases.
+publishes the release artifacts and `SHA256SUMS.txt`. A tag must have a matching
+`docs/releases/<tag>.md` release-note file. Confirm both the tag-triggered CI and
+Release workflows are green, download every published asset into an isolated
+directory, verify the checksum manifest and packaged startup/shutdown, and keep
+alpha, beta, and release-candidate tags as GitHub prereleases.

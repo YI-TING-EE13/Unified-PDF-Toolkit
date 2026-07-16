@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from pathlib import Path
+from importlib import metadata as importlib_metadata
 
 from PyInstaller.utils.hooks import collect_data_files
 
@@ -8,6 +9,15 @@ from PyInstaller.utils.hooks import collect_data_files
 block_cipher = None
 
 tkinterdnd2_datas = collect_data_files("tkinterdnd2")
+distribution = importlib_metadata.distribution("pdf-toolkit")
+metadata_files = [
+    distribution.locate_file(item)
+    for item in (distribution.files or [])
+    if str(item).replace("\\", "/").endswith(".dist-info/METADATA")
+]
+if len(metadata_files) != 1:
+    raise RuntimeError("Expected exactly one pdf-toolkit METADATA file.")
+project_metadata = [(str(metadata_files[0]), metadata_files[0].parent.name)]
 ocr_deployment_root = Path(SPECPATH) / "src" / "ocr" / "deployment"
 ocr_deployment_datas = [
     (
@@ -22,7 +32,7 @@ a = Analysis(
     ["src/app.py"],
     pathex=[],
     binaries=[],
-    datas=tkinterdnd2_datas + ocr_deployment_datas,
+    datas=tkinterdnd2_datas + project_metadata + ocr_deployment_datas,
     hiddenimports=[
         "tkinterdnd2",
         "pytesseract",

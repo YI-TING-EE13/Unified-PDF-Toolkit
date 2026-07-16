@@ -4,7 +4,47 @@ This document records the current readiness review for a human-approved beta
 tag. It does not create a tag, publish a GitHub Release, or approve production
 Unlimited-OCR support.
 
-## Current Repository State
+## Current Beta 4 Readiness (2026-07-16)
+
+Release candidate metadata:
+
+- Python package version: `0.6.0b4`.
+- User-facing and installer version: `0.6.0-beta.4`.
+- Intended annotated tag: `v0.6.0-beta.4`.
+- Starting `main` commit: `e208bdf3008952488330fd3cc3f9f5d787e273c9`.
+- Canonical release notes: `docs/releases/v0.6.0-beta.4.md`.
+
+The candidate packages the already-merged managed Unlimited-OCR deployment.
+It does not add an OCR feature or broaden platform support. Release-only
+hardening adds deterministic version checks for source metadata, installed
+metadata, wheel, source distribution, PyInstaller bundle, Windows ZIP, and
+installer; embeds package metadata in the PyInstaller bundle; publishes a
+SHA-256 manifest; and supplies non-empty GitHub release notes.
+
+Pre-tag local gates completed for this candidate:
+
+- `254` tests and `40` subtests passed.
+- Branch coverage was `53%`, above the `45%` CI gate.
+- Ruff, Bandit medium/high, pip-audit, compileall, installation verification,
+  import checks, CLI help, and CLI version checks passed.
+- Wheel and source-distribution clean-environment installation smokes passed.
+- PyInstaller build and packaged GUI startup/shutdown passed.
+- Release metadata aligned at every locally built artifact boundary.
+- Artifact inspection found no managed AI runtime, model weights, Hugging Face
+  cache, validation results, private paths, SSH material, or CUDA/PyTorch
+  package trees in the default release artifacts.
+- The first metadata-enabled bundle exposed the editable checkout path through
+  `direct_url.json`. That candidate was rejected, packaging was narrowed to the
+  required `METADATA` file, and regression checks now reject this file in both
+  the bundle and ZIP. A new serialized rebuild and 1,409-file scan passed.
+
+The local serialized build gate is complete. The final tag remains conditional
+on `main` CI, Windows and AI1 real-device health/OCR gates, the Acer
+unsupported-device gate, and successful tag-triggered CI and Release workflows.
+Exact published hashes belong in the generated `SHA256SUMS.txt`, avoiding
+circular documentation changes after the candidate artifacts are built.
+
+## Historical Beta 2 Repository State
 
 - Review date: 2026-07-01.
 - Branch reviewed: `main`.
@@ -14,7 +54,7 @@ Unlimited-OCR support.
 - Current beta work is in `Unreleased`.
 - `README (1).md` is untracked and out of scope.
 
-## Recommended Beta Tag
+## Historical Recommended Beta Tag (2026-07-01)
 
 Recommended tag: `v0.6.0-beta.2`.
 

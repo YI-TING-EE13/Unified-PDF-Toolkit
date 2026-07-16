@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0-beta.4 - 2026-07-16
+
 - Closed a blocked-plan setup gap found during the final merge review. CLI and
   direct orchestrator setup now reject informational plans before creating
   validation assets, journals, locks, or managed runtime state; regression
