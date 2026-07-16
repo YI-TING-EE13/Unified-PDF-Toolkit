@@ -243,6 +243,15 @@ system Python, Conda, NVIDIA Driver 560.35.05, CUDA Driver API 12.6, CUDA Toolki
 Machine-specific JSON, full OCR output for manual review, GPU samples, and local
 paths remain in the ignored remote evidence directory and are not committed.
 
+The first post-install AI1 full-suite run exposed two tests that assumed no
+persisted provider registration. Production behavior was correct; the tests
+cleared only the environment gate and accidentally read AI1's real successful
+registration. Commit `e79818e` made those cases inject an explicitly disabled
+runtime config. Windows, Acer Nitro, and AI1 then each passed all 249 tests, and
+AI1 also passed Ruff, Bandit, pip-audit, 53% branch coverage, compileall,
+install verification, and wheel/source-distribution build while the installed
+provider remained `READY` with a complete model and complete journal.
+
 ## Official metadata audit
 
 - Unlimited-OCR source revision:
@@ -258,7 +267,7 @@ paths remain in the ignored remote evidence directory and are not committed.
 
 ## Automated results
 
-- Full suite: 246 pytest tests and 40 subtests passed. New regressions cover
+- Full suite: 249 pytest tests and 40 subtests passed. New regressions cover
   Linux CPU/architecture separation, alternate Python discovery, user-local
   uv/Conda/pyenv detection, uv version gating and managed bootstrap, blocked
   action/argv consistency, multi-GPU display selection, headless GUI state,

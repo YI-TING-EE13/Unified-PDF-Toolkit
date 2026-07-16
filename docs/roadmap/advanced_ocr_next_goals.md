@@ -459,6 +459,8 @@ Keep this section concise; detailed chronology belongs in
   uv bootstrap, headless GUI, Basic OCR, and blocked-plan corrections.
 - `bb12049` — physical Acer Nitro Linux safe-rejection validation and final
   cross-platform CI confirmation.
+- `6b99faf` / `e79818e` — expanded real-resource instrumentation, consented AI1
+  Linux inference evidence, and post-registration test isolation.
 
 For exact measurements, test counts, commands, and GitHub Actions links, use the
 [managed validation record](../testing/managed_unlimited_ocr_validation.md).
