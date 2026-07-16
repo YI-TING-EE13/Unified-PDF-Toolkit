@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Completed a consented managed install and real inference validation on an
+  Ubuntu 22.04 dual-RTX 4090 host. The pinned model passed integrity, load,
+  five-layout OCR, benchmark, cancellation/recovery, idempotent setup, and 50
+  persistent-worker requests while the second GPU remained unused and system
+  Driver, CUDA Toolkit, Python, PATH, and shell profiles remained unchanged.
+- Expanded the real-device validation harness with cold-load, per-request
+  output consistency, median/p95 latency, RSS, allocated VRAM, Linux file
+  descriptor, thread, and open-file measurements. Added unit coverage for the
+  new report contract.
+- Isolated Document OCR gate tests from a user's persisted managed-provider
+  registration, so the suite remains deterministic after a successful install.
 - Completed a real Ubuntu 22.04 pre-consent deployment and compatibility check
   on a dual-RTX 4090 device without installing an AI runtime or model. Fixed the
   resulting multi-GPU gap by reporting the selected device, deterministically

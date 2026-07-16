@@ -43,9 +43,10 @@ claim of broad production support for Unlimited-OCR.
   rejection. No AI runtime or model was installed and no inference was attempted.
 - **Ubuntu 22.04 / dual RTX 4090 24 GiB:** a second physical Linux device passed
   SSH deployment, repository-standard uv/Python 3.12 setup, APP/CLI imports,
-  inspection, and the pre-consent Compatibility Engine gate. It is
-  `SUPPORTED_WITH_CHANGES`; no AI runtime, model, custom code, or inference was
-  started. The run also supplied real multi-GPU selection evidence.
+  inspection, plan-bound consent, private cu128 runtime/model installation,
+  pinned integrity, five-layout real inference, benchmark, cancellation and
+  recovery, idempotent setup, and 50-request stability. The worker was bound to
+  one selected GPU by UUID and the unselected GPU remained unused.
 - The Windows source GUI opened the managed setup dialog and exercised consent
   gating. Both the local and CI Windows PyInstaller bundles passed startup and
   graceful-shutdown smoke tests.
@@ -70,7 +71,7 @@ claim of broad production support for Unlimited-OCR.
 - The provider abstraction keeps Tesseract available as fallback and runs the
   managed provider in a persistent private worker with bounded protocol and
   output handling.
-- The current suite passes 246 tests plus 40 subtests with a 53% branch coverage
+- The current suite passes 249 tests plus 40 subtests with a 53% branch coverage
   result against a 45% gate. CI validates quality/security plus Windows, Ubuntu,
   and macOS source builds; Windows also performs PyInstaller build and packaged
   application smoke testing.
@@ -80,29 +81,20 @@ Detailed evidence and device measurements belong in the
 
 ## 2. Next Highest-Value Work
 
-### P1 — Second Supported NVIDIA Machine Validation
+### P1 — Broaden Supported NVIDIA Evidence
 
-The installation-free half of this target is complete on an eligible Ubuntu
-dual-RTX 4090 device. The next consent-bound run must finish managed runtime,
-model, real inference, resource, lifecycle, and uninstall validation on that
-same plan or on a freshly reviewed successor plan. This increases generalization
-evidence rather than treating hardware detection alone as support.
+The second supported NVIDIA machine target is complete on the Ubuntu dual-RTX
+4090 host for the fixed Transformers/model revision. The next P1 is to avoid
+mistaking two successful machines for broad support:
 
-The run must cover:
-
-- real environment inspection and compatibility decision;
-- compatible Python selection and existing uv reuse or actual managed bootstrap;
-- isolated runtime creation and dependency installation;
-- model download interruption/resume, cache reuse, inventory, and checksum;
-- model load and all five real OCR categories;
-- benchmark, RAM/VRAM measurement, and controlled OOM behavior;
-- cancellation, recovery, APP restart/resume, and repeated inference;
-- a 50–100 request resource-stability run;
-- provider fallback, cleanup/uninstall, and proof that system Python, Driver,
-  CUDA Toolkit, PATH, and unrelated AI environments remain unchanged.
-
-If the device is Linux, this closes the highest-value platform evidence gap. If
-it is Windows, Linux supported-GPU inference remains the next P1 target.
+- validate another eligible NVIDIA family and Driver/wheel profile, preferably
+  a clean user account that also exercises managed uv bootstrap;
+- repeat a longer mixed-document soak and APP shutdown/restart lifecycle from a
+  packaged application rather than only the source harness;
+- exercise a real interrupted model transfer when it occurs safely, while
+  retaining the current deterministic fault-injection coverage;
+- preserve device-specific benchmark and quality reporting rather than creating
+  a generic Linux/NVIDIA performance promise.
 
 ### P2 — Versioned OCR Quality Evaluation
 
@@ -138,11 +130,11 @@ different from `UNSUPPORTED`; annotations identify CI- or unit-only evidence.
 | --- | --- | --- | --- | --- | --- | --- |
 | Windows 11, RTX 3060 12 GiB | VERIFIED | VERIFIED | VERIFIED | `transformers_cuda` / SUPPORTED_WITH_CHANGES | VERIFIED | VERIFIED on this device |
 | Ubuntu 20.04, GTX 1060 6 GiB | VERIFIED | NOT_TESTED (SSH had no display) | NOT_TESTED (executable absent) | `transformers_cuda` / UNSUPPORTED on device | NOT_TESTED | VERIFIED safe rejection |
-| Ubuntu 22.04, dual RTX 4090 24 GiB | VERIFIED | NOT_TESTED_NO_DISPLAY | NOT_TESTED (executable absent) | `transformers_cuda` / SUPPORTED_WITH_CHANGES | NOT_TESTED (consent required) | VERIFIED pre-consent only |
-| Linux, supported NVIDIA GPU | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | `transformers_cuda` / NOT_TESTED | NOT_TESTED | FUTURE — P1 |
+| Ubuntu 22.04, dual RTX 4090 24 GiB | VERIFIED | NOT_TESTED_NO_DISPLAY | UNAVAILABLE (executable absent) | `transformers_cuda` / SUPPORTED_WITH_CHANGES | VERIFIED | VERIFIED on this device and revision |
+| Linux, supported NVIDIA GPU | SUPPORTED (CI/source; one real eligible host) | NOT_TESTED | NOT_TESTED | `transformers_cuda` / PARTIAL DEVICE EVIDENCE | PARTIAL DEVICE EVIDENCE | P1 broader matrix |
 | Windows, second NVIDIA GPU | SUPPORTED (CI/source) | NOT_TESTED | NOT_TESTED | `transformers_cuda` / NOT_TESTED | NOT_TESTED | FUTURE — P1 |
 | WSL2 with NVIDIA GPU | EXPERIMENTAL | NOT_TESTED | NOT_TESTED | `transformers_cuda` / EXPERIMENTAL | NOT_TESTED | EXPERIMENTAL |
-| Physical multi-GPU | VERIFIED (AI1 source/CLI) | NOT_TESTED_NO_DISPLAY | NOT_TESTED | `transformers_cuda` / pre-consent VERIFIED | NOT_TESTED | Inspector and deterministic single-GPU binding verified; inference pending |
+| Physical multi-GPU | VERIFIED (AI1 source/CLI) | NOT_TESTED_NO_DISPLAY | UNAVAILABLE on AI1 | `transformers_cuda` / VERIFIED single-device binding | VERIFIED on selected GPU | No sharding or automatic failover claim |
 | AMD GPU | SUPPORTED (normal APP) | NOT_TESTED | NOT_TESTED | none in current integration | NOT_TESTED | FUTURE research |
 | Apple Silicon Mac mini M1 | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
 | Apple Silicon Mac mini M2 | NOT_TESTED | NOT_TESTED | NOT_TESTED | `transformers_mps` candidate | NOT_TESTED | NOT_TESTED |
@@ -335,9 +327,10 @@ before any device-specific support claim:
   3060 runtime and one pinned model/dependency combination.
 - The Acer Nitro proves safe rejection, ordinary Linux APP/CLI setup, and honest
   headless reporting; it does not prove supported-GPU Linux inference.
-- The dual-RTX 4090 Linux device proves eligible pre-consent analysis and
-  deterministic single-GPU plan binding; it does not yet prove model load,
-  OCR, performance, cancellation, or multi-GPU inference distribution.
+- The dual-RTX 4090 Linux device proves fixed-revision model load, OCR,
+  benchmark, cancellation/recovery, and deterministic single-GPU binding. It
+  does not prove sharded inference, automatic failover, every Linux/NVIDIA
+  combination, or production-document accuracy.
 - The actual managed-uv download/extract path is automated-test evidence only
   because all three real validation devices already had a compatible uv
   installation.

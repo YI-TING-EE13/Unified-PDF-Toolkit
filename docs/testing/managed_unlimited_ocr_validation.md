@@ -171,11 +171,77 @@ then passed 246 tests plus 40 subtests, Ruff, Bandit, pip-audit, compileall,
 install verification, 53% branch coverage, and wheel/source-distribution build.
 The no-display GUI warning remained informational.
 
-This validation intentionally stopped before consent. It did not install the
-managed PyTorch/Transformers runtime, download the model, execute remote custom
-code, load the model, run OCR, benchmark, register a provider, or modify any
-system-level AI component. Real Linux model inference remains unclaimed until a
-new device- and plan-specific consent is accepted.
+The pre-consent phase intentionally stopped without installing an AI runtime or
+model. The later device- and plan-specific consent retained the same plan ID,
+model revision, selected GPU UUID, runtime path, and dependencies; its results
+are recorded below.
+
+## AI1 consented installation and Linux real inference
+
+Plan `a9638f35740915cf` was revalidated immediately before setup. The selected
+GPU was idle apart from desktop graphics work, and the second RTX 4090 was not
+substituted. The repository orchestrator then completed all 15 stages from
+`PRECHECK` through `COMPLETE`, each with status `SUCCEEDED` and one attempt.
+Initial setup took 292 seconds; dependency installation took about 59 seconds
+and the model-download task took 74.448 seconds.
+
+- The verified snapshot contained 13 selected files and 6,683,158,546 bytes.
+  The weight SHA-256 was
+  `2bc48a7a110061ea58fff65d3169367eebe3aee371ca6968dc2219c1b2855fc6`.
+  The private runtime used 7,532,310,308 bytes and the managed model/cache root
+  used 6,683,813,434 bytes.
+- The private worker used CPython 3.12.12, torch 2.10.0+cu128, torchvision
+  0.25.0+cu128, transformers 4.57.1, Pillow 12.1.1, PyMuPDF 1.27.2.2, bundled
+  CUDA 12.8, and cuDNN 9.10. The APP `.venv` still contained neither torch nor
+  Transformers.
+- The worker saw exactly one logical RTX 4090 with compute capability 8.9, and
+  its NVIDIA UUID matched the selected physical GPU. External sampling recorded
+  a 10,193 MiB maximum on that GPU and 0% compute utilization on the unselected
+  GPU. The system CUDA Toolkit 11.5 was neither used nor modified.
+- Cold worker/model load was 7.305 seconds. Plain text, table, mixed Chinese and
+  English, complex two-column, and rotation cases completed in 4.054, 2.831,
+  3.105, 9.203, and 2.171 seconds. Expected-token hits were 3/3, 4/4, 4/4,
+  4/4, and 1/2. The rotated content was recognized, but the synthetic
+  `ROTATE-0090` identifier was missed; this is a recorded quality limitation,
+  not a 100% accuracy claim. Peak recorded worker RAM was 2,023,325,696 bytes;
+  rotation reached 8,085,965,824 allocated VRAM bytes, while the other cases
+  used 7,565,848,064 bytes.
+- The final benchmark classified this fixed synthetic case as
+  `REAL_TIME_SUITABLE`: 3.062 seconds inference, 2,059,022,336 peak RSS bytes,
+  and 7,565,848,064 peak allocated VRAM bytes. This classification is not a
+  latency or quality promise for arbitrary documents.
+- Fifty consecutive persistent-worker requests succeeded with one PID and one
+  output hash. Mean/median/p95/max latency was 3.083/3.085/3.124/3.142 seconds.
+  RSS rose 36,569,088 bytes during allocator warm-up and then remained exactly
+  constant for requests 27 through 50. Allocated VRAM, Linux file descriptors,
+  threads, and open files had zero start-to-finish growth (6,779,908,096 bytes,
+  43, 63, and 1 respectively). Final unload reaped the worker and left no child
+  process or managed session directory.
+- A real inference cancellation returned structured `CANCELLED`, terminated and
+  reaped the old worker, left provider state `READY`, and did not use Basic OCR.
+  The next request created a new PID, retained the selected-GPU binding,
+  recognized all three plain-text terms, and reported `HEALTHY` before final
+  unload. No stale response or child/session residue was observed.
+- Rerunning the exact setup completed in one second. Its JSON was byte-for-byte
+  identical to the first result, every stage remained at one attempt, and the
+  model-inventory-state hash was unchanged. No dependency, download, provider,
+  runtime, cache, or worker duplicate was created.
+- Bounded fault-injection tests passed for CUDA/RAM OOM classification,
+  cancellation journal recovery, completed-stage resume, complete-snapshot
+  network bypass, corrupt-cache rejection, and managed-root cleanup. A real GPU
+  exhaustion test was intentionally not applicable on the shared host. The
+  first real download had no network interruption, so a physical partial-transfer
+  resume is not claimed; the resume contract is covered by the isolated tests.
+- Destructive uninstall/cleanup tests used temporary managed roots only. The
+  final AI1 runtime, verified snapshot, registration, journal, and benchmark
+  remained installed. Tesseract was not present, so this host had no working
+  Basic OCR fallback even though the provider fallback architecture remained.
+
+Before/after hashes and probes showed no change to `.bashrc`, `.profile`, PATH,
+system Python, Conda, NVIDIA Driver 560.35.05, CUDA Driver API 12.6, CUDA Toolkit
+11.5, or `/usr/local/cuda`. No sudo or global package installation was used.
+Machine-specific JSON, full OCR output for manual review, GPU samples, and local
+paths remain in the ignored remote evidence directory and are not committed.
 
 ## Official metadata audit
 

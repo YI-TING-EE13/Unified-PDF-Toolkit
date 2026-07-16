@@ -266,6 +266,23 @@ as broadly production-ready until all applicable gates pass:
 - README and release notes accurately state what is and is not supported.
 - Rollback plan is documented and tested.
 
+### Consented multi-GPU Linux evidence
+
+The 2026-07-16 Ubuntu dual-RTX 4090 run bound the private worker to the
+plan-selected NVIDIA UUID. The worker exposed one logical CUDA device matching
+that UUID; external sampling showed zero compute utilization on the unselected
+GPU. Cancellation terminated and reaped the active worker, and the next request
+created a new bound worker without consuming a stale response. Fifty requests
+kept one PID and one output hash with zero allocated-VRAM, file-descriptor,
+thread, and open-file growth. RSS warmed from 2,022,453,248 to 2,059,022,336
+bytes, then remained constant for the final 24 requests.
+
+The run did not use sudo or modify Driver, system CUDA Toolkit, system Python,
+Conda, PATH, `.bashrc`, or `.profile`. OOM handling was exercised through
+bounded fault injection; intentionally exhausting a shared 24 GiB GPU was not
+performed. These are device- and revision-specific security observations, not
+broad production certification.
+
 ## Rollback Requirements
 
 Future real backend work must provide a rollback path:

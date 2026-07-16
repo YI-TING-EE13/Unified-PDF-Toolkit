@@ -205,8 +205,10 @@ uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
   --reload-cycles 2 --stress-iterations 50 --output <report.json>
 ```
 
-The report records timing, hashes/lengths, expected-term matches, RAM/VRAM,
-worker PID/handles, cleanup, and dependency versions, but not full OCR text.
+The report records cold-load and per-request timing, mean/median/p95/max
+latency, hashes/lengths, output consistency, expected-term matches,
+RSS/allocated VRAM, Windows handles or Linux file descriptors, thread/open-file
+counts, worker PIDs, cleanup, and dependency versions, but not full OCR text.
 
 ## Security and privacy boundaries
 
@@ -258,3 +260,8 @@ later request performs an idempotent model reload in a new worker.
   compatibility and consent reports disclose that device, the plan ID binds its
   stable UUID or index, and the private worker receives `CUDA_VISIBLE_DEVICES`.
   One inference is not split across GPUs.
+- A consented Ubuntu dual-RTX 4090 run verified real single-GPU UUID binding,
+  model load, OCR, cancellation/recovery, benchmark, and 50-request stability;
+  the unselected GPU remained at zero compute utilization during the sampled
+  run. This is evidence for that fixed model revision and host, not a general
+  Linux/NVIDIA performance guarantee.

@@ -107,6 +107,11 @@ uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
   --reload-cycles 2 --stress-iterations 50 --output <report.json>
 ```
 
+The report records cold load, per-request timing, mean/median/p95/max latency,
+hashes/lengths, output consistency, expected-term matches, RSS/allocated VRAM,
+Windows handles or Linux file descriptors, threads, open files, worker PIDs,
+cleanup, and dependency versions, but not full OCR text.
+
 ## JSON manifest
 
 Edit the included example so `source` points to an existing PDF, then run it:

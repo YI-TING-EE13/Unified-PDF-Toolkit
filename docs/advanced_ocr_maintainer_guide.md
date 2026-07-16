@@ -16,7 +16,7 @@ track. No MPS/CPU provider is implemented or supported by this guide.
 
 ## Current Status Summary
 
-Update for 2026-07-15: the preferred path is now the consent-gated managed
+Update for 2026-07-16: the preferred path is now the consent-gated managed
 deployment framework in `src/ocr/deployment/`. It implements environment
 inspection, official-metadata compatibility analysis, exact private uv/Conda
 plans, resumable model/runtime setup, integrity validation, a persistent worker,
@@ -34,6 +34,15 @@ discovered without scanning the disk, the repository synced through its normal
 uv workflow, and GTX 1060 / 7.6 GiB RAM produced a consistent `UNSUPPORTED`
 informational plan without AI downloads or system changes. This is real SSH
 hardware evidence, not a mock and not a Linux inference-success claim.
+
+A separate Ubuntu 22.04 dual-RTX 4090 host completed a plan-bound, consented
+private installation and real inference run. It verified the pinned snapshot,
+PyTorch cu128 isolation, GPU UUID binding, five synthetic OCR layouts, real
+benchmark, cancellation/recovery, idempotent setup, and 50 persistent-worker
+requests. The report showed stable allocated VRAM, file descriptors, threads,
+open files, output hash, and worker PID; RSS increased during warm-up and then
+plateaued for the final 24 requests. Tesseract was absent on that host, so no
+working Basic OCR fallback is claimed there.
 
 Advanced OCR support is architecture-first and local-first. The production OCR
 behavior remains unchanged: PDF to Word -> OCR Text still uses Tesseract by

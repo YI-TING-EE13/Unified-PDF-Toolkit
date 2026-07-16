@@ -140,7 +140,9 @@ The APP now includes a managed, metadata-driven deployment framework for
 device, reports a conservative compatibility status, shows exact download,
 disk, VRAM, custom-code, privacy, and system-change boundaries, and requires six
 explicit acknowledgements before setup can begin. It does not treat every
-NVIDIA GPU as supported.
+NVIDIA GPU as supported. On multi-GPU hosts, the reviewed plan discloses and
+binds one selected GPU; it does not silently switch devices or split inference
+across GPUs.
 
 Approved setup creates an APP-private uv environment or private Conda prefix,
 installs a compatible official PyTorch CUDA wheel, downloads a pinned model
