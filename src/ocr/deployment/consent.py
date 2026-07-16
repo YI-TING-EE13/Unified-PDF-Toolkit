@@ -136,6 +136,7 @@ def build_consent_summary(
         "prerequisite_download_bytes": int(plan.bootstrap.get("size", 0)),
         "estimated_disk_usage_bytes": compatibility.estimated_disk_usage,
         "estimated_vram_bytes": compatibility.estimated_vram_requirement,
+        "selected_gpu": dict(compatibility.selected_gpu),
         "minimum_ram_bytes": int(estimates["minimum_ram_bytes"]),
         "recommended_ram_bytes": int(estimates["recommended_ram_bytes"]),
         "estimated_ram_note": (

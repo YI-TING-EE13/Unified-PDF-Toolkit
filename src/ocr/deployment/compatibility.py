@@ -263,6 +263,7 @@ class CompatibilityEngine:
                 if bool(env.get("basic_ocr", {}).get("executable_available"))
                 else "tesseract_after_install"
             ),
+            selected_gpu=_selected_gpu_summary(gpu),
         )
 
     def _select_pytorch_profile(self, driver_major: int | None) -> tuple[str | None, str | None]:
@@ -278,7 +279,32 @@ class CompatibilityEngine:
 
 def _best_nvidia_gpu(items: Any) -> Mapping[str, Any] | None:
     candidates = [item for item in items or [] if str(item.get("vendor", "")).upper() == "NVIDIA"]
-    return max(candidates, key=lambda item: _as_int(item.get("vram_total_bytes")) or 0) if candidates else None
+    if not candidates:
+        return None
+    return max(
+        enumerate(candidates),
+        key=lambda pair: (
+            _as_int(pair[1].get("vram_total_bytes")) or 0,
+            -(
+                _as_int(pair[1].get("index"))
+                if _as_int(pair[1].get("index")) is not None
+                else pair[0]
+            ),
+        ),
+    )[1]
+
+
+def _selected_gpu_summary(gpu: Mapping[str, Any] | None) -> dict[str, Any]:
+    if gpu is None:
+        return {}
+    return {
+        "index": gpu.get("index"),
+        "uuid": gpu.get("uuid"),
+        "name": gpu.get("name"),
+        "vram_total_bytes": _as_int(gpu.get("vram_total_bytes")),
+        "compute_capability": gpu.get("compute_capability"),
+        "selection_policy": "highest_vram_then_lowest_index",
+    }
 
 
 def _uv_bootstrap_asset(

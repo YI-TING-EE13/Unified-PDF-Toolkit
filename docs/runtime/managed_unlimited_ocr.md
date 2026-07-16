@@ -254,4 +254,7 @@ later request performs an idempotent model reload in a new worker.
 - Docker/vLLM and SGLang metadata are retained for future resolvers but are not
   automatically installed while upstream compatibility is ambiguous.
 - Multi-GPU inspection is supported; the current plan selects the eligible GPU
-  with the most VRAM rather than splitting one inference across GPUs.
+  with the most VRAM, breaking equal-VRAM ties by the lowest device index. The
+  compatibility and consent reports disclose that device, the plan ID binds its
+  stable UUID or index, and the private worker receives `CUDA_VISIBLE_DEVICES`.
+  One inference is not split across GPUs.

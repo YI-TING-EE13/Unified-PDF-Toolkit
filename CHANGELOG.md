@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Completed a real Ubuntu 22.04 pre-consent deployment and compatibility check
+  on a dual-RTX 4090 device without installing an AI runtime or model. Fixed the
+  resulting multi-GPU gap by reporting the selected device, deterministically
+  breaking equal-VRAM ties, binding consent/plan identity to that device, and
+  restricting the future private worker through `CUDA_VISIBLE_DEVICES`.
 - Added a primary-source-backed Apple Silicon/macOS MPS feasibility track to the
   canonical Advanced OCR roadmap, including separate Apple/Intel Mac evidence
   rows, CUDA-hardcoding findings, phased research, real-device acceptance gates,

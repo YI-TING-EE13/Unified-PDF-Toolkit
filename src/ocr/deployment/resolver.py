@@ -145,11 +145,15 @@ class EnvironmentResolver:
             "DO_NOT_TRACK": "1",
             "PYTHONNOUSERSITE": "1",
         }
+        selected_cuda_device = _selected_cuda_device(compatibility.selected_gpu)
+        if selected_cuda_device is not None:
+            environment["CUDA_VISIBLE_DEVICES"] = selected_cuda_device
         plan_material = "\n".join(
             [
                 model_revision,
                 str(runtime_root),
                 str(bootstrap),
+                f"selected_cuda_device={selected_cuda_device or ''}",
                 *(" ".join(command) for command in commands),
             ]
         )
@@ -159,6 +163,11 @@ class EnvironmentResolver:
             "The existing system CUDA Toolkit is not removed, upgraded, or added to PATH.",
             "Driver changes are never part of this plan and require separate explicit user action.",
         ]
+        if selected_cuda_device is not None:
+            warnings.append(
+                "The private worker is restricted to the selected NVIDIA GPU through "
+                "CUDA_VISIBLE_DEVICES."
+            )
         warnings.extend(compatibility.conflicts)
         return RuntimePlan(
             plan_id=plan_id,
@@ -222,6 +231,14 @@ def _manager_executable(
         return str(bootstrap.get("executable", "uv"))
     tool = env.get("python", {}).get("tools", {}).get(manager or "", {})
     return str(tool.get("path") or manager or "uv")
+
+
+def _selected_cuda_device(selected_gpu: Mapping[str, Any]) -> str | None:
+    uuid = str(selected_gpu.get("uuid") or "").strip()
+    if uuid:
+        return uuid
+    index = selected_gpu.get("index")
+    return str(index) if isinstance(index, int) and index >= 0 else None
 
 
 def _bootstrap_plan(

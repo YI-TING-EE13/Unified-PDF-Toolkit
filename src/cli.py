@@ -521,6 +521,7 @@ def _human_environment(payload: dict[str, Any]) -> str:
         f"NVIDIA Driver: {payload.get('nvidia_driver', {}).get('driver_version')}",
         f"CUDA Driver API: {payload.get('cuda', {}).get('driver_api_version')}",
         f"Installed CUDA Toolkit: {payload.get('cuda', {}).get('toolkit_version') or 'not found'}",
+        _human_selected_gpu(recommendation),
         f"Free disk: {_human_bytes(payload.get('storage', {}).get('free_bytes'))}",
         f"Compatibility: {recommendation.get('status')}",
         f"Risk: {recommendation.get('risk_level')}",
@@ -548,6 +549,7 @@ def _human_plan(payload: dict[str, Any]) -> str:
         f"Recommended backend: {compatibility['recommended_backend']}",
         f"Recommended runtime: {compatibility['recommended_runtime'] or 'none'}",
         f"Recommended provider: {compatibility.get('recommended_provider', 'tesseract')}",
+        _human_selected_gpu(compatibility),
         f"APP compatibility: {compatibility.get('app_compatibility', {}).get('status', 'unknown')}",
         f"Basic OCR: {compatibility.get('basic_ocr', {}).get('status', 'unknown')}",
         f"Plan ID: {plan['plan_id']}",
@@ -583,6 +585,7 @@ def _human_status(payload: dict[str, Any]) -> str:
             f"APP compatibility: {compatibility.get('app_compatibility', {}).get('status', 'unknown')}",
             f"Basic OCR: {compatibility.get('basic_ocr', {}).get('status', 'unknown')}",
             f"Recommended provider: {compatibility.get('recommended_provider', 'tesseract')}",
+            _human_selected_gpu(compatibility),
             f"Provider: {provider['status']} (available={provider['available']}, loaded={provider['loaded']})",
             f"Model snapshot: exists={model['exists']}, complete={model['complete']}",
             f"Journal present: {payload['journal'] is not None}",
@@ -601,6 +604,18 @@ def _human_bytes(value: Any) -> str:
             return f"{number:.1f} {unit}"
         number /= 1024
     return "unknown"
+
+
+def _human_selected_gpu(compatibility: dict[str, Any]) -> str:
+    selected = compatibility.get("selected_gpu") or {}
+    if not selected:
+        return "Selected GPU: none"
+    index = selected.get("index")
+    index_text = f"index {index}" if index is not None else "index unknown"
+    return (
+        f"Selected GPU: {selected.get('name') or 'NVIDIA GPU'} "
+        f"({index_text}, {_human_bytes(selected.get('vram_total_bytes'))} VRAM)"
+    )
 
 
 def _tesseract_fallback_message(compatibility: dict[str, Any]) -> str:

@@ -458,10 +458,34 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(self.evaluate(env).status, CompatibilityStatus.EXPERIMENTAL)
 
     def test_largest_nvidia_gpu_is_selected(self):
-        small = dict(_environment().gpu[0], name="small", vram_total_bytes=8 * 1024**3)
-        large = dict(_environment().gpu[0], name="large", vram_total_bytes=24 * 1024**3)
+        small = dict(
+            _environment().gpu[0],
+            index=0,
+            uuid="GPU-small",
+            name="small",
+            vram_total_bytes=8 * 1024**3,
+        )
+        large = dict(
+            _environment().gpu[0],
+            index=1,
+            uuid="GPU-large",
+            name="large",
+            vram_total_bytes=24 * 1024**3,
+        )
         result = self.evaluate(_environment(gpu=(small, large)))
         self.assertTrue(any("large" in item for item in result.requirements_met))
+        self.assertEqual(result.selected_gpu["index"], 1)
+        self.assertEqual(result.selected_gpu["uuid"], "GPU-large")
+        self.assertEqual(
+            result.selected_gpu["selection_policy"], "highest_vram_then_lowest_index"
+        )
+
+    def test_equal_vram_gpu_selection_is_deterministic(self):
+        second = dict(_environment().gpu[0], index=1, uuid="GPU-second")
+        first = dict(_environment().gpu[0], index=0, uuid="GPU-first")
+        result = self.evaluate(_environment(gpu=(second, first)))
+        self.assertEqual(result.selected_gpu["index"], 0)
+        self.assertEqual(result.selected_gpu["uuid"], "GPU-first")
 
     def test_insufficient_vram_is_unsupported(self):
         gpu = dict(_environment().gpu[0], vram_total_bytes=8 * 1024**3)
@@ -533,6 +557,7 @@ class ResolverAndConsentTests(unittest.TestCase):
         self.assertEqual(plan.system_changes, ())
         self.assertTrue(all(command[0] == "uv" for command in plan.commands))
         self.assertNotIn("CUDA_PATH", plan.environment)
+        self.assertEqual(plan.environment["CUDA_VISIBLE_DEVICES"], "0")
 
     def test_consent_requires_every_explicit_acknowledgement(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -582,6 +607,24 @@ class ResolverAndConsentTests(unittest.TestCase):
         self.assertEqual(summary["recommended_ram_bytes"], 32 * 1024**3)
         self.assertTrue(summary["setup_allowed"])
         self.assertIn("install_and_enable", summary["actions"])
+        self.assertEqual(summary["selected_gpu"]["index"], 0)
+
+    def test_resolver_binds_worker_and_plan_id_to_selected_gpu(self):
+        first = dict(_environment().gpu[0], index=0, uuid="GPU-first")
+        second = dict(_environment().gpu[0], index=1, uuid="GPU-second")
+        first_compatibility = CompatibilityEngine(self.metadata).evaluate(
+            _environment(gpu=(first, second))
+        )
+        second_compatibility = CompatibilityEngine(self.metadata).evaluate(
+            _environment(gpu=(second,))
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            resolver = EnvironmentResolver(self.metadata)
+            first_plan = resolver.resolve(first_compatibility, data_root=Path(temporary))
+            second_plan = resolver.resolve(second_compatibility, data_root=Path(temporary))
+        self.assertEqual(first_plan.environment["CUDA_VISIBLE_DEVICES"], "GPU-first")
+        self.assertEqual(second_plan.environment["CUDA_VISIBLE_DEVICES"], "GPU-second")
+        self.assertNotEqual(first_plan.plan_id, second_plan.plan_id)
 
     def test_unsupported_device_never_offers_install_action(self):
         environment = _environment(

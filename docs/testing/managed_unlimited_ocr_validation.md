@@ -114,6 +114,60 @@ The final Ubuntu real-machine run on commit `bb12049` passed 244 tests plus 40
 subtests, including the minimum-uv-version regression. No Unlimited-OCR
 inference success is claimed on Linux.
 
+## Physical Ubuntu dual-RTX 4090 pre-consent validation
+
+On 2026-07-16, a second real Linux device was reached through SSH and the branch
+`codex/unlimited-ocr-deployment` was cloned into an isolated
+`<home>/projects/Unified-PDF-Toolkit` checkout. Machine-specific structured JSON
+remained under the ignored `.remote-validation-results/` directory. No hostname,
+address, username, key path, or absolute home path was committed.
+
+- Ubuntu 22.04, kernel 6.5, native Linux x86_64.
+- AMD Ryzen Threadripper 1920X, 12 physical / 24 logical cores.
+- 110.0 GiB RAM total, 105.2 GiB available during inspection, and 313.0 GiB free
+  project-home disk space.
+- Two NVIDIA GeForce RTX 4090 devices, each with 24,564 MiB VRAM and compute
+  capability 8.9.
+- NVIDIA Driver 560.35.05 with CUDA Driver API 12.6; the separate system CUDA
+  Toolkit was 11.5 and was detected but not selected or modified.
+- Docker was present; the host was not WSL and the SSH session had no `DISPLAY`.
+- Existing user-local uv 0.9.18 was reused by absolute path. No uv reinstall,
+  `PATH`, shell-profile, Conda, system Python, sudo, Driver, or CUDA change was
+  made.
+
+The first candidate `/usr/bin/python3` was CPython 3.10.12 and satisfied the
+package's broad `>=3.10` metadata, but it lacked Tkinter and conflicted with the
+repository's `.python-version` 3.12 workflow. The final project `.venv` therefore
+used uv-managed CPython 3.12.12 with Tk 8.6. Two consecutive `uv sync --dev`
+runs were idempotent. APP/CLI imports, every tool-class load, CLI version/help,
+managed OCR command help, and compileall passed. GUI construction was correctly
+classified `NOT_TESTED_NO_DISPLAY`; the Tesseract executable was absent, so Basic
+OCR remained an optional dependency rather than an APP failure. The normal APP
+environment contained neither torch nor Transformers.
+
+The real Inspector enumerated both GPUs, and the Compatibility Engine returned
+`SUPPORTED_WITH_CHANGES`, confidence `0.90`, risk `MEDIUM`, with the Transformers
+backend and a private uv CPython 3.12 / torch 2.10.0 cu128 worker plan. It
+estimated 12,051,866,116 download bytes, 20 GiB installed disk, and a 12 GiB VRAM
+target. The provider remained `NOT_INSTALLED`; model snapshot, journal, and
+managed runtime were absent.
+
+The first physical multi-GPU report exposed a cross-device defect: compatibility
+used the highest-VRAM device internally but did not serialize the selected GPU,
+bind the plan ID to it, or restrict the future worker. The generic fix now uses
+highest total VRAM and lowest index as a deterministic tie-break, reports the
+selected device, prefers its stable NVIDIA UUID for `CUDA_VISIBLE_DEVICES`, and
+binds that value into the consent plan ID. Unit regressions cover unequal and
+equal VRAM, consent disclosure, worker environment isolation, and plan-ID
+invalidation. This is single-GPU selection on a multi-GPU host, not sharded or
+distributed inference.
+
+This validation intentionally stopped before consent. It did not install the
+managed PyTorch/Transformers runtime, download the model, execute remote custom
+code, load the model, run OCR, benchmark, register a provider, or modify any
+system-level AI component. Real Linux model inference remains unclaimed until a
+new device- and plan-specific consent is accepted.
+
 ## Official metadata audit
 
 - Unlimited-OCR source revision:
@@ -129,7 +183,7 @@ inference success is claimed on Linux.
 
 ## Automated results
 
-- Full suite: 244 pytest tests and 40 subtests passed. New regressions cover
+- Full suite: 246 pytest tests and 40 subtests passed. New regressions cover
   Linux CPU/architecture separation, alternate Python discovery, user-local
   uv/Conda/pyenv detection, uv version gating and managed bootstrap, blocked
   action/argv consistency, multi-GPU display selection, headless GUI state,
