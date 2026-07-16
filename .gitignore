@@ -11,6 +11,7 @@ __pycache__/
 # Virtual Environments
 venv/
 .venv/
+.venv-validation/
 .venv-ocr-runtime/
 env/
 .env
@@ -48,6 +49,8 @@ coverage.xml
 *.swo
 
 # Project Specific (Temporary outputs if any)
+tmp/
+.remote-validation-results/
 # Numbered README copies created by browsers or file managers
 README ([0-9]*).md
 

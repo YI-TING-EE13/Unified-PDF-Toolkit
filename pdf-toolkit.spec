@@ -1,17 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files
 
 
 block_cipher = None
 
 tkinterdnd2_datas = collect_data_files("tkinterdnd2")
+ocr_deployment_root = Path(SPECPATH) / "src" / "ocr" / "deployment"
+ocr_deployment_datas = [
+    (
+        str(ocr_deployment_root / "resources" / "unlimited_ocr_compatibility.json"),
+        "src/ocr/deployment/resources",
+    ),
+    (str(ocr_deployment_root / "runtime_tasks.py"), "src/ocr/deployment"),
+    (str(ocr_deployment_root / "provider_worker.py"), "src/ocr/deployment"),
+]
 
 a = Analysis(
     ["src/app.py"],
     pathex=[],
     binaries=[],
-    datas=tkinterdnd2_datas,
+    datas=tkinterdnd2_datas + ocr_deployment_datas,
     hiddenimports=[
         "tkinterdnd2",
         "pytesseract",

@@ -957,6 +957,34 @@ class LocalModelBackendTests(unittest.TestCase):
         self.assertEqual(kwargs["timeout_seconds"], 3.0)
         self.assertIs(kwargs["cancellation_check"], cancellation_check)
 
+    def test_managed_worker_routes_before_stale_path_validation_for_fallback(self):
+        request = OcrRequest(
+            engine=OcrEngine.LOCAL_MODEL,
+            images=[Image.new("RGB", (10, 10), "white")],
+            page_numbers=[1],
+        )
+        expected = OcrResult(
+            engine=OcrEngine.TESSERACT,
+            pages=[OcrPageResult(page_number=1, text="fallback")],
+        )
+        backend = LocalModelOcrBackend(
+            consent=self._valid_consent(),
+            config=LocalModelRuntimeConfig(
+                enabled=True,
+                mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+                model_path="missing-managed-model",
+                python_executable="missing-managed-python",
+                options={"managed_plan_id": "reviewed-plan"},
+            ),
+        )
+        with mock.patch(
+            "src.ocr.deployment.providers.OCRProviderRouter.recognize",
+            return_value=expected,
+        ) as recognize:
+            result = backend.recognize(request)
+        self.assertIs(result, expected)
+        recognize.assert_called_once()
+
     def test_local_unlimited_ocr_requires_model_path_and_optional_dependencies(self):
         request = OcrRequest(
             engine=OcrEngine.LOCAL_MODEL,

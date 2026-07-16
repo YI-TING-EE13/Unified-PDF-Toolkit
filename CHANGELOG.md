@@ -2,6 +2,88 @@
 
 ## Unreleased
 
+- Closed a blocked-plan setup gap found during the final merge review. CLI and
+  direct orchestrator setup now reject informational plans before creating
+  validation assets, journals, locks, or managed runtime state; regression
+  coverage also verifies the no-write boundary on unsupported hardware.
+- Completed a consented managed install and real inference validation on an
+  Ubuntu 22.04 dual-RTX 4090 host. The pinned model passed integrity, load,
+  five-layout OCR, benchmark, cancellation/recovery, idempotent setup, and 50
+  persistent-worker requests while the second GPU remained unused and system
+  Driver, CUDA Toolkit, Python, PATH, and shell profiles remained unchanged.
+- Expanded the real-device validation harness with cold-load, per-request
+  output consistency, median/p95 latency, RSS, allocated VRAM, Linux file
+  descriptor, thread, and open-file measurements. Added unit coverage for the
+  new report contract.
+- Isolated Document OCR gate tests from a user's persisted managed-provider
+  registration, so the suite remains deterministic after a successful install.
+- Completed a real Ubuntu 22.04 pre-consent deployment and compatibility check
+  on a dual-RTX 4090 device without installing an AI runtime or model. Fixed the
+  resulting multi-GPU gap by reporting the selected device, deterministically
+  breaking equal-VRAM ties, binding consent/plan identity to that device, and
+  restricting the future private worker through `CUDA_VISIBLE_DEVICES`.
+- Added a primary-source-backed Apple Silicon/macOS MPS feasibility track to the
+  canonical Advanced OCR roadmap, including separate Apple/Intel Mac evidence
+  rows, CUDA-hardcoding findings, phased research, real-device acceptance gates,
+  and explicit treatment of unmerged upstream patches as non-authoritative.
+- Reworked the existing Advanced OCR roadmap into the canonical source for the
+  verified hardware matrix, next validation priorities, known limitations,
+  optional enhancements, research directions, rejected approaches, maintenance
+  triggers, and evidence required before expanding support claims.
+- Added bounded cross-platform discovery for real Linux CPU model names,
+  alternate compatible Python interpreters, uv/Conda/pyenv installations outside
+  PATH, headless GUI/display state, and actual Tesseract availability. Managed
+  plans now use absolute provisioner paths and separate APP, Basic OCR, and
+  Unlimited-OCR compatibility plus provider recommendation.
+- Added a consent-gated `UV_BOOTSTRAP` prerequisite for otherwise eligible
+  devices with no compatible manager. It pins official uv 0.11.28 archives,
+  platform-specific sizes and SHA-256 values, installs only under the managed
+  runtime, and includes retry, cancellation, smoke verification, and cleanup
+  without sudo, PATH, profile, system Python, Driver, or CUDA changes.
+- Fixed blocked plans that exposed an install action, emitted unavailable uv
+  commands, selected the first NVIDIA GPU for display, or contradicted a valid
+  PyTorch cu128 Driver match. Blocked plans are now explicitly informational.
+- Completed a real second-device Ubuntu 20.04 validation on GTX 1060 6 GiB with
+  low RAM, old system Python, newer Miniforge Python, user-local uv outside PATH,
+  CUDA Toolkit 10.1, and a newer Driver. The normal APP/CLI installation and
+  Linux suite passed; Unlimited-OCR remained safely blocked and no AI runtime or
+  model was installed.
+
+- Hardened the managed Unlimited-OCR final audit with OS-held single-installer
+  locking, corrupt-journal quarantine and recovery, existing environment/model
+  reuse, atomic state-write retries, junction/symlink escape prevention, bounded
+  worker output, cancellation-safe worker restart, subprocess reaping, and
+  structured CLI errors. Explicit full cleanup now removes every managed model
+  revision and isolated Hugging Face/Transformers cache.
+- Fixed managed-path hardening to distinguish an actual managed-directory
+  symlink/junction from benign OS ancestor aliases such as macOS `/tmp` and CI
+  runner path normalization, preserving cross-platform setup and tests.
+- Added an opt-in real-device validation harness covering five OCR layouts,
+  repeated unload/reload, cancellation recovery, 50-request resource stability,
+  worker/session cleanup, and benchmark capture without logging OCR contents.
+- Repaired the local editable project environment by making pytest an explicit
+  development dependency, and made Windows CLI output resilient to Unicode,
+  spaces, emoji, long paths, and legacy console encodings.
+- Added a consent-gated managed Unlimited-OCR deployment framework with
+  cross-platform hardware/software inspection, metadata-driven compatibility
+  decisions, exact private uv/Conda runtime plans, resumable staged setup,
+  pinned model inventory/SHA-256 verification, progress, retry, pause,
+  cancellation, recovery, uninstall, and cache cleanup.
+- Added a persistent advanced OCR provider with Tesseract fallback, GUI device
+  analysis and informed-consent setup, headless `pdf-toolkit ocr` inspection,
+  plan, status, setup, and cleanup commands, and APP shutdown handling for
+  installer/worker subprocesses.
+- Added deterministic plain-text, table, Chinese/English, complex-layout, and
+  rotated OCR acceptance assets plus compatibility, security, failure,
+  recovery, cache-integrity, provider, and cross-platform tests.
+- Added an allowlisted official-source metadata auditor and documented the
+  current pinned Unlimited-OCR/model revisions, PyTorch/CUDA resolver policy,
+  upstream conflicts, security boundaries, and consented real-device benchmark.
+- Fixed managed benchmark journals that omitted classification and dependency
+  versions, added targeted legacy-record refresh, corrected Basic OCR benchmark
+  metadata access, and hardened persistent-worker restart/unload queue, thread,
+  pipe, log, and temporary-session cleanup. PyInstaller now also bundles the two
+  standalone private-runtime entrypoint scripts required after installation.
 - Added a headless `pdf-toolkit` CLI for direct compression, PDF-to-image, and
   PDF-to-Word jobs plus reusable JSON batch manifests, explicit conflict
   policies, machine-readable summaries, deterministic exit codes, Ctrl+C

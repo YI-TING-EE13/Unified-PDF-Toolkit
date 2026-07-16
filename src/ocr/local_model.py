@@ -199,6 +199,19 @@ class LocalModelOcrBackend:
             self._validate_local_unlimited_ocr_config()
             return run_unlimited_ocr_local(request_data, config=self.config)
         if self.config.mode == LOCAL_MODEL_MODE_WORKER_PROCESS:
+            if (self.config.options or {}).get("managed_plan_id"):
+                from .deployment.providers import (
+                    OCRProviderRouter,
+                    get_managed_unlimited_ocr_provider,
+                )
+
+                return OCRProviderRouter(
+                    advanced=get_managed_unlimited_ocr_provider()
+                ).recognize(
+                    request_data,
+                    prefer_advanced=True,
+                    allow_fallback=True,
+                )
             self._validate_worker_process_config()
             return run_unlimited_ocr_worker_process(
                 request_data,

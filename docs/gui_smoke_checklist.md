@@ -63,6 +63,17 @@ Run this checklist before publishing a desktop build.
   missing `chi_tra`/`chi_sim` pack produces an actionable warning.
 - Confirm OCR DPI changes are accepted and persisted.
 - Confirm OCR cleanup options are selectable and persisted.
+- Open Settings / Recent and start the managed Unlimited-OCR analyzer. Confirm
+  inspection does not create the runtime/model data root and all consent boxes
+  start unchecked.
+- Confirm compatibility, confidence, risk, download/disk/VRAM estimates,
+  private paths, backend, Driver/CUDA boundaries, custom-code risk, and the
+  `Install and Enable`, technical details, and `Not Now` choices are visible.
+- Without accepting every acknowledgement, confirm installation remains
+  disabled and no model/runtime download starts.
+- On an approved GPU test device, validate pause, cancel, close-window resume,
+  checksum, five synthetic OCR cases, benchmark, registration, worker unload,
+  Tesseract fallback, runtime-only uninstall, and full model/cache cleanup.
 
 ## Cancellation
 

@@ -1,10 +1,54 @@
 # Advanced OCR Privacy and Security Review
 
 This review defines the security, privacy, and release requirements for any
-future real advanced local AI OCR or Unlimited-OCR-compatible backend. The app
-now includes an experimental local Unlimited-OCR backend path, but the default
-app does not download models, start OCR servers, call a real OCR endpoint, add
-GPU/runtime dependencies, or expose production-ready Unlimited-OCR support.
+advanced local AI OCR or Unlimited-OCR-compatible backend. The APP now includes
+a managed local deployment framework, but it performs only read-only analysis
+until the user accepts an exact plan. The default package still does not bundle
+models, torch, Transformers, or CUDA runtimes. A consented managed provider has
+real device-specific evidence, but broad production support still requires the
+hardware and quality gates below.
+
+## Managed deployment controls (2026-07-15)
+
+- Six consent acknowledgements are unchecked by default and bound to the exact
+  plan and metadata revision.
+- A blocked informational plan cannot be forced through setup by supplying all
+  acknowledgement flags: CLI and orchestrator guards reject it before any
+  journal, lock, validation asset, or managed runtime state is written.
+- Large downloads, runtime creation, and custom-code execution occur only after
+  valid consent; Driver and system CUDA changes are never in the plan.
+- The resolver uses argv-only private uv/Conda commands with `shell=False`, no
+  PATH edit, no admin requirement, and no global Python modification.
+- Metadata refresh accepts only allowlisted HTTPS hosts, limits response size,
+  is read-only by default, and pins full source/model Git revisions.
+- The model snapshot is restricted to a reviewed file inventory; the 6.67 GB
+  safetensors weight is size-checked and SHA-256 verified before loading.
+- `trust_remote_code` loads only from that verified local snapshot in the
+  private worker, with the pinned revision supplied to tokenizer and model.
+- Worker input/output paths must be regular files under APP-managed session
+  roots; model paths must remain under the managed snapshot root.
+- Setup and provider logs omit full OCR text, images, and source paths by
+  default. Hugging Face telemetry is disabled.
+- Cancellation terminates subprocess trees. Cleanup requires explicit
+  confirmation and refuses paths outside the managed data root.
+- An OS-held lock serializes setup without trusting a stale lock-file timestamp;
+  corrupt/incomplete journals are quarantined and rebuilt with recovery details.
+- Managed cache/runtime/session paths and every worker output are resolved before
+  access. Symlink/junction substitution, including an intermediate directory,
+  is rejected; recursive size and cleanup scans never follow links.
+- Link checks inspect the managed directory's own symlink/junction/reparse
+  metadata. Benign operating-system aliases above that boundary are
+  canonicalized rather than misclassified as a managed-root substitution.
+- Worker prompts, options, timeouts, and aggregate output are bounded. A stale,
+  malformed, or mismatched protocol response invalidates and restarts the worker.
+- Cancellation terminates the active worker and is not silently retried through
+  Tesseract. A later explicit request reloads the model in a clean worker.
+- An unhealthy or missing managed provider falls back to Tesseract and cannot
+  prevent the APP from starting.
+
+Remaining risk: pinned third-party custom Python code is still executable code.
+Revision pinning, file verification, isolation, consent, and local-only worker
+boundaries reduce but do not eliminate that supply-chain risk.
 
 ## Scope
 
@@ -15,6 +59,7 @@ backend. Covered backend types include:
 - A user-managed local OCR endpoint.
 - An in-process local model runtime.
 - The gated experimental local Unlimited-OCR worker runtime.
+- The managed Unlimited-OCR private worker and installer.
 
 This review does not approve production-ready AI OCR. Any expansion beyond the
 current gated experimental worker path must satisfy the release gates below
@@ -97,6 +142,16 @@ Future real backend work must document and review:
 Default dependencies must not include torch, transformers, SGLang, CUDA, model
 files, or server runtimes unless a later release decision explicitly changes
 this policy.
+
+The managed uv prerequisite is also a supply-chain boundary. Existing
+compatible uv/Conda installations are reused before downloading anything. A
+missing-manager plan pins an official `astral-sh/uv` release asset per supported
+OS/architecture, expected byte size, and SHA-256 in reviewed metadata. Download
+redirects stay on allowlisted GitHub release hosts; extraction accepts only the
+`uv` and `uvx` executables under the APP-managed runtime. The stage runs only
+after consent, uses no shell installer, sudo, PATH edit, profile edit, or global
+site-packages, and removes partial archive/staging files on failure or
+cancellation.
 
 ## Custom Code and `trust_remote_code` Risks
 
@@ -195,9 +250,10 @@ Diagnostics must remain safe when optional dependencies are absent:
 - Optional runtime failures must not break Tesseract OCR or non-OCR PDF tools.
 - Heavy imports must occur only after explicit backend selection and consent.
 
-## Release Gates Before Real Model Integration
+## Release Gates Before Broad Production Support
 
-Real advanced OCR integration cannot ship until all gates pass:
+The managed real-model path is opt-in and device-gated. It must not be promoted
+as broadly production-ready until all applicable gates pass:
 
 - Security/privacy checklist passes.
 - GPU acceptance plan has been executed on approved local samples.
@@ -212,6 +268,23 @@ Real advanced OCR integration cannot ship until all gates pass:
 - Default dependencies remain free of heavy AI runtime packages.
 - README and release notes accurately state what is and is not supported.
 - Rollback plan is documented and tested.
+
+### Consented multi-GPU Linux evidence
+
+The 2026-07-16 Ubuntu dual-RTX 4090 run bound the private worker to the
+plan-selected NVIDIA UUID. The worker exposed one logical CUDA device matching
+that UUID; external sampling showed zero compute utilization on the unselected
+GPU. Cancellation terminated and reaped the active worker, and the next request
+created a new bound worker without consuming a stale response. Fifty requests
+kept one PID and one output hash with zero allocated-VRAM, file-descriptor,
+thread, and open-file growth. RSS warmed from 2,022,453,248 to 2,059,022,336
+bytes, then remained constant for the final 24 requests.
+
+The run did not use sudo or modify Driver, system CUDA Toolkit, system Python,
+Conda, PATH, `.bashrc`, or `.profile`. OOM handling was exercised through
+bounded fault injection; intentionally exhausting a shared 24 GiB GPU was not
+performed. These are device- and revision-specific security observations, not
+broad production certification.
 
 ## Rollback Requirements
 

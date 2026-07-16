@@ -5,13 +5,57 @@ advanced local OCR work. It summarizes what is implemented, what is scaffolded,
 what is fake/developer-only, what is documentation-only, and what must not be
 claimed yet.
 
+Forward priorities, the validation matrix, known limitations, and research
+directions are maintained only in
+`docs/roadmap/advanced_ocr_next_goals.md`. Do not create or maintain a second
+future-work queue in this guide.
+
+The roadmap's `Apple Silicon / macOS MPS Support` section is the canonical
+feasibility plan for M1 and later Apple Silicon plus the separate Intel Mac
+track. No MPS/CPU provider is implemented or supported by this guide.
+
 ## Current Status Summary
+
+Update for 2026-07-16: the preferred path is now the consent-gated managed
+deployment framework in `src/ocr/deployment/`. It implements environment
+inspection, official-metadata compatibility analysis, exact private uv/Conda
+plans, resumable model/runtime setup, integrity validation, a persistent worker,
+real OCR/benchmark gates, cleanup, GUI/CLI control, and Tesseract fallback. The
+framework is implemented and adversarially validated. The development computer
+completed the consented private install, five-layout real OCR suite, unload/load
+cycles, cancellation recovery, 50-request resource run, and benchmark. This is
+device-specific evidence, not broad platform support. See
+`docs/runtime/managed_unlimited_ocr.md` and
+`docs/testing/managed_unlimited_ocr_validation.md`.
+
+A second physical Ubuntu 20.04 laptop now validates the source bootstrap and
+blocked-device path: user-local uv outside PATH and a Miniforge Python 3.12 were
+discovered without scanning the disk, the repository synced through its normal
+uv workflow, and GTX 1060 / 7.6 GiB RAM produced a consistent `UNSUPPORTED`
+informational plan without AI downloads or system changes. This is real SSH
+hardware evidence, not a mock and not a Linux inference-success claim.
+
+A separate Ubuntu 22.04 dual-RTX 4090 host completed a plan-bound, consented
+private installation and real inference run. It verified the pinned snapshot,
+PyTorch cu128 isolation, GPU UUID binding, five synthetic OCR layouts, real
+benchmark, cancellation/recovery, idempotent setup, and 50 persistent-worker
+requests. The report showed stable allocated VRAM, file descriptors, threads,
+open files, output hash, and worker PID; RSS increased during warm-up and then
+plateaued for the final 24 requests. Tesseract was absent on that host, so no
+working Basic OCR fallback is claimed there.
 
 Advanced OCR support is architecture-first and local-first. The production OCR
 behavior remains unchanged: PDF to Word -> OCR Text still uses Tesseract by
 default.
 
 Implemented today:
+
+- Managed Unlimited-OCR Environment Inspector, Compatibility Engine,
+  Environment Resolver, consent model, Setup Orchestrator, cache manager,
+  provider abstraction, persistent private worker, GUI setup, and headless CLI.
+- Official-source metadata auditor with pinned source/model revisions, complete
+  selected file inventory, weight SHA-256, PyTorch wheel profiles, NVIDIA Driver
+  families, stale-metadata blocking, and recorded upstream conflicts.
 
 - OCR backend abstraction and result/request models.
 - Tesseract backend wrapper used by the existing PDF to Word OCR Text path.
@@ -44,11 +88,12 @@ Implemented today:
   revision pin status, local metadata presence, and `trust_remote_code` consent
   readiness.
 
-Not implemented today:
+Not completed or not supported today:
 
-- Production-ready Baidu Unlimited-OCR inference.
+- Broad production-ready Baidu Unlimited-OCR support across a hardware matrix.
+- Consent-gated real install/OCR/benchmark evidence for every target device.
 - Bundled GPU OCR runtime.
-- Automatic model download.
+- Unattended or consent-free model download.
 - Production local OCR server.
 - In-process Transformers runtime.
 - Hosted OCR service or project-operated OCR server.
@@ -95,6 +140,22 @@ Not implemented today:
   `trust_remote_code` / model revision policy documentation.
 
 ## Key Files and Responsibilities
+
+- `src/ocr/deployment/environment.py`: read-only cross-platform hardware,
+  Driver, CUDA, Python, PyTorch, storage, Docker, and WSL inspection.
+- `src/ocr/deployment/compatibility.py`: conservative metadata-driven support
+  decision; unknown evidence never becomes supported.
+- `src/ocr/deployment/resolver.py`: exact argv-only private uv/Conda plan; no
+  Driver, system CUDA, PATH, admin, or global Python change.
+- `src/ocr/deployment/orchestrator.py`: journaled staged install, retry,
+  progress, cancellation, resume, registration, and path-bound cleanup.
+- `src/ocr/deployment/providers.py`: provider abstraction, persistent worker,
+  health/benchmark lifecycle, and Tesseract fallback.
+- `scripts/refresh_unlimited_ocr_metadata.py`: allowlisted read-only upstream
+  audit and explicitly reviewed metadata refresh.
+- `scripts/validate_managed_unlimited_ocr.py`: opt-in installed-runtime OCR,
+  reload, benchmark, and resource-stability validation. It never installs or
+  downloads and does not write raw OCR text to its report.
 
 - `src/ocr/models.py`: OCR engine enum and typed request/result models.
 - `src/ocr/base.py`: backend protocol.
@@ -182,12 +243,13 @@ Not implemented today:
 | Category | Current state |
 | --- | --- |
 | Production behavior | Tesseract-backed PDF to Word OCR Text and Document OCR remain the stable real OCR paths. |
+| Managed advanced local | Consent-gated installer/provider framework implemented; each device still requires successful real OCR and benchmark acceptance. |
 | Scaffold | OCR backend abstraction, consent model, diagnostics, local model backend/settings, local endpoint client. |
 | Fake/dev-only | Fake Unlimited-OCR backend and hidden Document OCR shell. |
 | Fake worker/dev-only | Local model `fake_worker` subprocess path for IPC lifecycle tests. |
 | Experimental real local | `local_unlimited_ocr` direct mode and gated `worker_process` one-shot subprocess mode for user-managed local model/runtime environments. |
 | Documentation-only | GPU acceptance, security review, optional runtime guide, endpoint contract, production UI review, fake-backend smoke plan. |
-| Not supported | Production Unlimited-OCR support, bundled GPU OCR runtime, automatic model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
+| Not supported | Broad production Unlimited-OCR support, bundled GPU OCR runtime, unattended or consent-free model download, hosted OCR service, production endpoint OCR, screen OCR, Batch Queue AI OCR. |
 
 ## Tesseract Remains the Default
 
@@ -517,10 +579,16 @@ uv sync --dev
 uv run --no-sync python -m unittest discover -s tests -v
 uv run --no-sync python verify_install.py
 uv run --no-sync python -m compileall -q src tests verify_install.py scripts
+uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
+  --reload-cycles 2 --stress-iterations 50 --output <report.json>
 ```
 
-In this local checkout, if `uv` or the requested `..venv` path is unavailable,
-use the repo-local venv equivalent:
+For a final source-checkout gate, bootstrap uv from its official instructions
+and run the repository's documented `uv sync --dev --python <compatible-python>`
+workflow. A temporary `python -m venv` may be used only for diagnosis and must
+not be described as the repository's final installation result. If an already
+synced repo-local environment must be used for offline diagnosis, the equivalent
+commands are:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
@@ -544,8 +612,8 @@ changes that instruction.
 
 Do not claim:
 
-- Real Unlimited-OCR inference is production-ready.
-- GPU OCR is supported.
+- Real Unlimited-OCR inference is broadly production-ready.
+- GPU OCR is supported beyond the specifically validated device/runtime matrix.
 - The app bundles AI models or a GPU runtime.
 - Endpoint OCR is production-ready.
 - A production local OCR server is included.
@@ -557,21 +625,8 @@ Do not claim:
 - Saving consent enables real AI OCR in the current app.
 - Saving local runtime settings makes AI OCR the default engine.
 
-## Future Work Decision Table
+## Canonical Future Work
 
-| Future item | Prerequisites | Main risks | Recommended order |
-| --- | --- | --- | --- |
-| Mock-only Document OCR UI shell | Existing workflow helpers, fake backend, mocked local endpoint transport, consent tests | User confusion if exposed as production, output/report leakage | 1 |
-| Local model fake worker UI smoke path | Fake worker prototype, workflow helpers, consent tests, fake smoke template | User confusion if mistaken for real OCR, output/report leakage | 2 |
-| Experimental local Unlimited-OCR manual validation | Local model backend, optional runtime docs, manual script, local model files, GPU/runtime access | GPU/runtime mismatch, custom-code execution risk, model output drift | 3 |
-| Worker-process production hardening | Experimental worker process, runtime settings, worker contract, security checklist, manual acceptance plan | Process lifecycle bugs, payload leakage, dependency bloat, model download risk, custom-code execution risk | 4 |
-| Promote Document OCR AI option | Stable backend selection, consent gate, output writer tests, fake/backend real workflow smoke, runtime readiness UX | User confusion, OCR text in reports, partial output handling | 5 |
-| Local endpoint productionization | Security checklist, endpoint contract, fake UI tests, short-timeout error handling | Data leakage to non-loopback hosts, payload logging, server compatibility drift | 5 |
-| Batch Queue integration | Interactive workflow stable, cancellation/report-redaction tests, consent reuse | Background-like expectations, report leakage, large-job cancellation | 6 |
-| In-process Transformers prototype | Security approval, pinned model review, optional runtime docs, manual GPU acceptance | `trust_remote_code`, dependency bloat, GPU instability, startup imports | 7 |
-| User-facing docs/examples | Real backend implemented and reviewed, privacy checks passed, rollback documented | Overclaiming support, unclear hardware/runtime expectations | 8 |
-
-Recommended next milestone: run manual real-model validation on a machine with
-the optional torch/transformers/CUDA runtime and a local Unlimited-OCR model
-directory, then record GPU/runtime/model compatibility and any output-shape
-fixes needed before UI exposure.
+Use `docs/roadmap/advanced_ocr_next_goals.md` for the ordered backlog, hardware
+matrix, optional product ideas, research directions, rejected approaches, and
+support-evidence gate. This guide intentionally does not duplicate that queue.

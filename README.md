@@ -116,11 +116,13 @@ fidelity matters more than editability.
 
 - Select PDF or image files and write local TXT or Markdown OCR outputs.
 - Uses Tesseract OCR by default.
-- An Experimental Local Unlimited-OCR backend can be shown only by setting
-  `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
-- The experimental backend requires saved advanced OCR consent plus an explicit
-  `worker_process` local runtime configuration in Settings / Recent.
-- It is local-only, user-managed, disabled by default, and not production-ready.
+- Settings / Recent includes a read-only device analyzer and consent-gated
+  managed setup for the optional Unlimited-OCR advanced local provider.
+- A successful managed install registers its isolated worker automatically;
+  developers can still expose a manually configured controlled-beta runtime
+  with `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1`.
+- Unlimited-OCR is local-only, optional, disabled until setup succeeds, and
+  automatically falls back to Tesseract when unavailable.
 - Beginner walkthrough:
   [docs/tutorials/getting_started_document_ocr.md](docs/tutorials/getting_started_document_ocr.md).
 
@@ -131,36 +133,43 @@ fidelity matters more than editability.
 - Review recent inputs, outputs, and reports.
 - Configure output conflict behavior.
 
-### Experimental Advanced Local AI OCR Architecture
+### Advanced Local Unlimited-OCR
 
-The codebase includes experimental architecture for optional advanced local AI
-OCR inspired by Baidu Unlimited-OCR. The model runtime is intended to run on the
-user's own computer, not as a hosted OCR service or cloud upload feature. A real
-experimental local Unlimited-OCR backend path exists for manually configured
-local model/runtime environments, but it is disabled by default and not
-production-ready. The default app does not download models, does not import
-Transformers or torch at startup, and does not add GPU/CUDA dependencies to the
-default install.
+The APP now includes a managed, metadata-driven deployment framework for
+[Baidu Unlimited-OCR](https://github.com/baidu/Unlimited-OCR). It inspects the
+device, reports a conservative compatibility status, shows exact download,
+disk, VRAM, custom-code, privacy, and system-change boundaries, and requires six
+explicit acknowledgements before setup can begin. It does not treat every
+NVIDIA GPU as supported. On multi-GPU hosts, the reviewed plan discloses and
+binds one selected GPU; it does not silently switch devices or split inference
+across GPUs.
 
-Tesseract remains the default OCR Text engine for PDF to Word and the default
-backend for the Document OCR tool. The experimental Local Unlimited-OCR option
-is hidden unless `PDF_TOOLKIT_ENABLE_EXPERIMENTAL_LOCAL_OCR=1` is set, requires
-saved consent, and requires an explicit `worker_process` runtime with user-owned
-model files. Advanced OCR must stay local-first, run on user-owned local runtime
-paths, require explicit consent, document model download and custom-code risks,
-and avoid uploading user files, rendered pages, or OCR text. Saving consent or
-runtime paths does not make AI OCR the default engine.
+Approved setup creates an APP-private uv environment or private Conda prefix,
+installs a compatible official PyTorch CUDA wheel, downloads a pinned model
+revision with resumable cache, verifies the complete selected file inventory
+and model SHA-256, then runs import, CUDA, model-load, five-case OCR, and resource
+benchmark gates. The staged journal supports retry, pause, cancellation, resume,
+diagnostics, uninstall, and cache cleanup.
 
-Controlled beta setup is documented in
-[docs/runtime/local_unlimited_ocr_beta_setup.md](docs/runtime/local_unlimited_ocr_beta_setup.md)
-and the manual beta smoke checklist is in
-[docs/testing/document_ocr_beta_smoke_checklist.md](docs/testing/document_ocr_beta_smoke_checklist.md).
-Beginner-oriented experimental setup is available in
-[docs/tutorials/experimental_local_unlimited_ocr_beginner_guide.md](docs/tutorials/experimental_local_unlimited_ocr_beginner_guide.md).
-Beta release-candidate notes and the custom model-code policy are available in
-[docs/releases/experimental_local_unlimited_ocr_beta_notes.md](docs/releases/experimental_local_unlimited_ocr_beta_notes.md)
-and
-[docs/security/unlimited_ocr_trust_remote_code_policy.md](docs/security/unlimited_ocr_trust_remote_code_policy.md).
+The default APP still does not bundle torch, Transformers, CUDA runtimes, or the
+model, and does not import the AI runtime at startup. The managed plan never
+updates NVIDIA Driver, replaces system CUDA, edits PATH, or changes global
+Python. Pages and OCR output remain local; full OCR text is excluded from normal
+setup logs. Tesseract remains the default and fallback provider.
+
+Device analysis reports APP/CLI readiness, current GUI/display readiness,
+Tesseract availability, and Unlimited-OCR compatibility separately. An
+unsupported advanced provider does not make the normal PDF/CLI tools
+unsupported. If neither a compatible uv nor Conda installation is available,
+an otherwise eligible advanced-OCR plan can disclose a consent-gated,
+SHA-256-verified APP-managed uv prerequisite; it never edits PATH or shell
+profiles.
+
+See the [managed setup and security guide](docs/runtime/managed_unlimited_ocr.md),
+[current validation record](docs/testing/managed_unlimited_ocr_validation.md),
+and [custom model-code policy](docs/security/unlimited_ocr_trust_remote_code_policy.md).
+The older manual controlled-beta guide remains available for developer-managed
+runtimes.
 
 For development and UI-flow testing only, setting
 `PDF_TOOLKIT_ENABLE_DEV_TOOLS=1` exposes the hidden `[Dev] Document OCR Shell`.
@@ -202,6 +211,22 @@ cd Unified-PDF-Toolkit
 uv sync
 uv run --no-sync python src/app.py
 ```
+
+If `uv` is not on `PATH`, first check the normal user locations
+`~/.local/bin/uv` and `~/.cargo/bin/uv`. Install it from the
+[official uv instructions](https://docs.astral.sh/uv/getting-started/installation/)
+only when it is genuinely absent. To keep shell profiles unchanged on Linux or
+macOS, use the official installer with `UV_NO_MODIFY_PATH=1`, then invoke the
+result by absolute path. If the system Python is older than this project's
+`>=3.10` requirement, select a compatible existing interpreter explicitly:
+
+```bash
+~/.local/bin/uv sync --python /path/to/python3.12
+~/.local/bin/uv run --no-sync python src/app.py
+```
+
+The source-checkout bootstrap is separate from optional Unlimited-OCR setup.
+Normal APP dependencies never include torch, Transformers, or a model.
 
 On macOS, prefer a Tk-enabled Python runtime:
 
@@ -357,9 +382,13 @@ Tagged releases are handled by `.github/workflows/release.yml`.
 
 ## Roadmap
 
-Useful next improvements include searchable PDF OCR output, watermark/page
-number tools, metadata privacy cleanup, and direct CLI coverage for merge,
-split, image-to-PDF, and page-editing workflows.
+The canonical [Advanced OCR Roadmap](docs/roadmap/advanced_ocr_next_goals.md)
+tracks the verified hardware matrix, next validation priorities, known limits,
+research directions, and evidence required before expanding support claims.
+
+Broader product ideas include searchable PDF OCR output, watermark/page number
+tools, metadata privacy cleanup, and direct CLI coverage for merge, split,
+image-to-PDF, and page-editing workflows.
 
 PDF to Word planning notes and known conversion limits are documented in
 [docs/pdf_to_word_plan.md](docs/pdf_to_word_plan.md).

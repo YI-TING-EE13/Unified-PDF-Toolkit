@@ -38,6 +38,82 @@ All direct commands accept:
 - `--json` for a machine-readable final summary
 - `--quiet` to suppress progress messages
 
+## Managed Unlimited-OCR commands
+
+The advanced local OCR deployment commands are separate from normal batch jobs.
+Inspection, planning, and status are read-only:
+
+```powershell
+pdf-toolkit ocr inspect --json
+pdf-toolkit ocr plan --json
+pdf-toolkit ocr status --json
+```
+
+`ocr plan` prints the current compatibility decision, exact argv-only private
+environment plan, pinned source/model revisions, estimated download and disk
+cost, system-change boundary, and consent summary. A plan may be blocked or
+marked experimental; detecting an NVIDIA GPU does not make it automatically
+supported.
+
+The result separates normal APP compatibility, Basic OCR/Tesseract
+availability, Unlimited-OCR compatibility, and the recommended provider. A
+blocked result uses `plan_kind: BLOCKED_INFORMATIONAL`,
+`commands_executable: false`, and `setup_allowed: false`; its action list does
+not contain `install_and_enable`. Calling `ocr setup` manually with that plan
+ID and all acknowledgement flags is also rejected before any managed state or
+validation asset is created. If an environment manager was found outside
+`PATH`, planned argv uses its absolute executable path.
+
+Setup requires the current plan ID and six separate acknowledgements. There is
+no general `--yes` bypass:
+
+```powershell
+pdf-toolkit ocr setup `
+  --plan-id <reviewed-plan-id> `
+  --ack-large-download `
+  --ack-private-environment `
+  --ack-custom-code `
+  --ack-resource-usage `
+  --ack-local-processing-and-temporary-files `
+  --ack-no-performance-guarantee
+```
+
+Ctrl+C requests safe cancellation of the current private subprocess. Running
+the same reviewed plan again resumes its journal and reusable model cache.
+
+With `--json`, managed OCR failures are emitted as a structured object with
+`success: false` and the deployment `error` payload. The CLI also configures a
+replacement-safe console encoding so a successful Unicode/space/emoji/long-path
+operation cannot be converted into an error by a legacy Windows code page.
+
+Cleanup is restricted to APP-managed paths and requires the exact current plan
+ID:
+
+```powershell
+pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id>
+pdf-toolkit ocr uninstall --confirm-plan-id <reviewed-plan-id> --remove-model --clear-download-cache
+```
+
+With both optional flags, cleanup removes all APP-managed pinned model revisions
+and the isolated Hugging Face/Transformers caches. Without them, only the private
+runtime is removed so verified model data can be reused.
+
+Full behavior, privacy boundaries, and recovery rules are documented in
+[Managed Unlimited-OCR Setup](runtime/managed_unlimited_ocr.md).
+
+For an already installed and consented runtime, maintainers can perform real
+OCR/reload/resource validation without setup or model download:
+
+```powershell
+uv run --no-sync python scripts/validate_managed_unlimited_ocr.py `
+  --reload-cycles 2 --stress-iterations 50 --output <report.json>
+```
+
+The report records cold load, per-request timing, mean/median/p95/max latency,
+hashes/lengths, output consistency, expected-term matches, RSS/allocated VRAM,
+Windows handles or Linux file descriptors, threads, open files, worker PIDs,
+cleanup, and dependency versions, but not full OCR text.
+
 ## JSON manifest
 
 Edit the included example so `source` points to an existing PDF, then run it:
@@ -97,6 +173,8 @@ final JSON summary contains `success`, `failed`, `skipped`, `cancelled`, and
 | `0` | Run completed without failed jobs. Skipped outputs are not failures. |
 | `1` | One or more jobs failed. |
 | `2` | Command or manifest validation failed. |
+| `3` | Managed OCR compatibility is `UNSUPPORTED` or `UNKNOWN`. |
+| `4` | Managed OCR setup failed with a structured deployment error. |
 | `130` | Ctrl+C cancellation was requested. |
 
 Cancellation is cooperative: the current file finishes or fails, then the

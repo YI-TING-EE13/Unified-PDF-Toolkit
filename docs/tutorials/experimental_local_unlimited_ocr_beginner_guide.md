@@ -1,5 +1,11 @@
 # Experimental Local Unlimited-OCR Beginner Guide
 
+> This guide describes the older manually configured controlled-beta workflow.
+> Normal users should use `Settings / Recent` and the managed device analysis
+> described in
+> [Managed Unlimited-OCR Setup](../runtime/managed_unlimited_ocr.md). The APP
+> still requires explicit consent before any large download or runtime change.
+
 This guide is for controlled beta users who want to try the optional local
 Unlimited-OCR backend in the Document OCR tool.
 

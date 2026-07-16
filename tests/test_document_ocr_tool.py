@@ -99,7 +99,13 @@ class DocumentOcrToolTests(unittest.TestCase):
         self.assertNotIn("[Dev] Document OCR Shell", tool_names)
 
     def test_experimental_local_ocr_backend_gate_controls_label(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "src.tools.document_ocr.tool.load_local_model_runtime_config",
+                return_value=LocalModelRuntimeConfig(),
+            ),
+        ):
             self.assertFalse(experimental_local_ocr_enabled())
             self.assertEqual(
                 available_document_ocr_backend_labels(),
@@ -107,6 +113,24 @@ class DocumentOcrToolTests(unittest.TestCase):
             )
 
         with mock.patch.dict(os.environ, {EXPERIMENTAL_LOCAL_OCR_ENV: "1"}):
+            self.assertTrue(experimental_local_ocr_enabled())
+            self.assertEqual(
+                available_document_ocr_backend_labels(),
+                [TESSERACT_BACKEND_LABEL, LOCAL_UNLIMITED_BACKEND_LABEL],
+            )
+
+        managed = LocalModelRuntimeConfig(
+            enabled=True,
+            mode=LOCAL_MODEL_MODE_WORKER_PROCESS,
+            options={"managed_plan_id": "reviewed-plan"},
+        )
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "src.tools.document_ocr.tool.load_local_model_runtime_config",
+                return_value=managed,
+            ),
+        ):
             self.assertTrue(experimental_local_ocr_enabled())
             self.assertEqual(
                 available_document_ocr_backend_labels(),
@@ -128,7 +152,13 @@ class DocumentOcrToolTests(unittest.TestCase):
         tool.backend_var = _FakeVar(LOCAL_UNLIMITED_BACKEND_LABEL)
         tool.language_var = _FakeVar("eng")
 
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch(
+                "src.tools.document_ocr.tool.load_local_model_runtime_config",
+                return_value=LocalModelRuntimeConfig(),
+            ),
+        ):
             with self.assertRaisesRegex(Exception, "not enabled"):
                 tool._backend_config()
 

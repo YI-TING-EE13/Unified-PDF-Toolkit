@@ -2,6 +2,11 @@
 
 Date: 2026-06-30
 
+> Historical evidence record. Its remaining-blocker and next-milestone sections
+> describe the 2026-06-30 beta state and are not the current backlog. Use the
+> [canonical Advanced OCR Roadmap](../roadmap/advanced_ocr_next_goals.md) for
+> current priorities and support claims.
+
 ## Scope
 
 This report records the autonomous validation and hardening pass for the

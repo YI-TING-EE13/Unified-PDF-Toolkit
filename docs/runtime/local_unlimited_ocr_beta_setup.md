@@ -1,5 +1,10 @@
 # Experimental Local Unlimited-OCR Beta Setup
 
+> Historical manual controlled-beta path. New installations should use the
+> consent-gated managed workflow in
+> [Managed Unlimited-OCR Setup](managed_unlimited_ocr.md). This guide remains for
+> maintainers testing manually supplied runtimes and model folders.
+
 This guide is for controlled beta validation of Experimental Local
 Unlimited-OCR in Unified PDF Toolkit. It keeps the default app lightweight:
 Tesseract remains the default OCR backend, and no torch, transformers, CUDA

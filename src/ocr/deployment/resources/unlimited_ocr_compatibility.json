@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "model": "baidu/Unlimited-OCR",
+  "checked_at": "2026-07-14T13:59:31.474861Z",
+  "source_revision": "528fca4e2161e23231d05666a6d35155dcb1957e",
+  "model_revision": "ee63731b6461c8afcdcc7b15352e7d2ffecc2ead",
+  "license": "MIT",
+  "sources": {
+    "repository": "https://github.com/baidu/Unlimited-OCR",
+    "repository_readme": "https://github.com/baidu/Unlimited-OCR/blob/528fca4e2161e23231d05666a6d35155dcb1957e/README.md",
+    "model": "https://huggingface.co/baidu/Unlimited-OCR/tree/ee63731b6461c8afcdcc7b15352e7d2ffecc2ead",
+    "pytorch_versions": "https://pytorch.org/get-started/previous-versions/",
+    "nvidia_compatibility": "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html"
+  },
+  "uv_bootstrap": {
+    "version": "0.11.28",
+    "minimum_compatible_version": "0.9.0",
+    "source": "https://github.com/astral-sh/uv/releases/tag/0.11.28",
+    "strategy": "verified_app_managed_archive",
+    "assets": {
+      "Windows-x86_64": {"filename": "uv-x86_64-pc-windows-msvc.zip", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-pc-windows-msvc.zip", "sha256": "0a23463216d09c6a72ff80ef5dc5a795f07dc1575cb84d24596c2f124a441b7b", "size": 25568726},
+      "Windows-arm64": {"filename": "uv-aarch64-pc-windows-msvc.zip", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-aarch64-pc-windows-msvc.zip", "sha256": "3248109afad3ec59baad299d324ff53de17e2d9a3b3e21580ffd26744b11e036", "size": 23878916},
+      "Linux-x86_64": {"filename": "uv-x86_64-unknown-linux-gnu.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-unknown-linux-gnu.tar.gz", "sha256": "e490a6464492183c5d4534a5527fb4440f7f2bb2f228162ad7e4afe076dc0224", "size": 26411870},
+      "Linux-arm64": {"filename": "uv-aarch64-unknown-linux-gnu.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-aarch64-unknown-linux-gnu.tar.gz", "sha256": "03e9fe0a81b0718d0bc84625de3885df6cc3f89a8b6af6121d6b9f6113fb6533", "size": 24689886},
+      "Darwin-x86_64": {"filename": "uv-x86_64-apple-darwin.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-apple-darwin.tar.gz", "sha256": "2ad79983127ffca7d77b77ce6a24278d7e4f7b817a1acf72fea5f8124b4aac5e", "size": 24355900},
+      "Darwin-arm64": {"filename": "uv-aarch64-apple-darwin.tar.gz", "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-aarch64-apple-darwin.tar.gz", "sha256": "33540eb7c883ab857eff79bd5ac2aa31fe27b595abecb4a9c003a2c998447232", "size": 22568053}
+    }
+  },
+  "model_artifacts": {
+    "reported_total_bytes": 6778368088,
+    "required_download_bytes": 6683156996,
+    "required_files": [
+      "LICENSE",
+      "config.json",
+      "configuration_deepseek_v2.py",
+      "conversation.py",
+      "deepencoder.py",
+      "model-00001-of-000001.safetensors",
+      "model.safetensors.index.json",
+      "modeling_deepseekv2.py",
+      "modeling_unlimitedocr.py",
+      "processor_config.json",
+      "special_tokens_map.json",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "weight_file": "model-00001-of-000001.safetensors",
+    "weight_bytes": 6672547120,
+    "weight_blob_sha": "2e629fa069397ca38770f289f36f80af207401ba",
+    "weight_sha256": "2bc48a7a110061ea58fff65d3169367eebe3aee371ca6968dc2219c1b2855fc6",
+    "custom_code": true,
+    "safetensors": true,
+    "allow_patterns": [
+      "*.json",
+      "*.py",
+      "*.safetensors",
+      "LICENSE"
+    ]
+  },
+  "resource_estimates": {
+    "basis": "Conservative project estimate derived from BF16 weight size and runtime overhead; not an upstream guarantee.",
+    "minimum_ram_bytes": 17179869184,
+    "recommended_ram_bytes": 34359738368,
+    "minimum_vram_bytes": 10737418240,
+    "recommended_vram_bytes": 12884901888,
+    "estimated_runtime_download_bytes": 5368709120,
+    "estimated_installed_bytes": 21474836480,
+    "minimum_free_disk_bytes": 26843545600,
+    "minimum_compute_capability": "8.0"
+  },
+  "backends": {
+    "transformers": {
+      "upstream_status": "documented",
+      "supported_os_candidates": [
+        "Windows",
+        "Linux"
+      ],
+      "gpu_vendor": "NVIDIA",
+      "tested_python": "3.12.3",
+      "python_major_minor": "3.12",
+      "tested_cuda": "12.9",
+      "dtype": "bfloat16",
+      "packages": {
+        "torch": "2.10.0",
+        "torchvision": "0.25.0",
+        "transformers": "4.57.1",
+        "Pillow": "12.1.1",
+        "matplotlib": "3.10.8",
+        "einops": "0.8.2",
+        "addict": "2.4.0",
+        "easydict": "1.13",
+        "pymupdf": "1.27.2.2",
+        "psutil": "7.2.2"
+      },
+      "pytorch_profiles": {
+        "cu126": {
+          "minimum_driver_major": 525,
+          "index_url": "https://download.pytorch.org/whl/cu126"
+        },
+        "cu128": {
+          "minimum_driver_major": 525,
+          "index_url": "https://download.pytorch.org/whl/cu128"
+        },
+        "cu130": {
+          "minimum_driver_major": 580,
+          "index_url": "https://download.pytorch.org/whl/cu130"
+        }
+      }
+    },
+    "sglang": {
+      "upstream_status": "documented_with_conflict",
+      "preferred_os": "Linux",
+      "conflicts": [
+        "The README prose says kernels==0.9.0 while its command installs kernels==0.11.7. Automatic SGLang setup is blocked until upstream resolves the conflict."
+      ]
+    },
+    "vllm_container": {
+      "upstream_status": "documented",
+      "preferred_os": "Linux",
+      "images": {
+        "default": "vllm/vllm-openai:unlimited-ocr",
+        "hopper_cu129": "vllm/vllm-openai:unlimited-ocr-cu129"
+      }
+    }
+  },
+  "driver_families": {
+    "cuda_12": {
+      "minimum_driver_major": 525,
+      "maximum_exclusive": 580
+    },
+    "cuda_13": {
+      "minimum_driver_major": 580,
+      "maximum_exclusive": null
+    }
+  },
+  "known_conflicts": [
+    "Unlimited-OCR reports testing with CUDA 12.9, but official PyTorch wheels are cu126, cu128, cu130; no cu129 wheel is published.",
+    "Unlimited-OCR SGLang instructions contain conflicting kernels pins: 0.11.7, 0.9.0."
+  ]
+}
