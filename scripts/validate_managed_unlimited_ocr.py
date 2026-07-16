@@ -9,6 +9,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import statistics
 import sys
 import tempfile
 import time
@@ -91,10 +93,39 @@ def _worker_sample(provider: UnlimitedOCRProvider) -> dict[str, Any]:
     if isinstance(pid, int) and psutil.pid_exists(pid):
         process = psutil.Process(pid)
         sample["rss_bytes"] = process.memory_info().rss
+        sample["thread_count"] = process.num_threads()
         if hasattr(process, "num_handles"):
             sample["handles"] = process.num_handles()
+        if hasattr(process, "num_fds"):
+            sample["file_descriptors"] = process.num_fds()
+        try:
+            sample["open_files"] = len(process.open_files())
+        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+            sample["open_files"] = None
         sample["child_processes"] = len(process.children(recursive=True))
     return sample
+
+
+def _nearest_rank_percentile(values: Sequence[float], percentile: float) -> float:
+    if not values:
+        raise ValueError("At least one value is required.")
+    ordered = sorted(values)
+    index = max(0, math.ceil(percentile * len(ordered)) - 1)
+    return ordered[index]
+
+
+def _resource_metrics(
+    samples: Sequence[dict[str, Any]], key: str, label: str
+) -> dict[str, int]:
+    values = [int(item[key]) for item in samples if isinstance(item.get(key), int)]
+    if not values:
+        return {}
+    return {
+        f"{label}_first": values[0],
+        f"{label}_last": values[-1],
+        f"{label}_growth": values[-1] - values[0],
+        f"{label}_peak": max(values),
+    }
 
 
 def _wait_for_exit(pid: Any, timeout: float = 10.0) -> bool:
@@ -120,6 +151,10 @@ def run(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         report.update({"success": False, "error": "Managed provider is not installed."})
         return 2, report
 
+    compatibility = provider.check_compatibility()
+    report["selected_gpu"] = dict(compatibility.selected_gpu)
+    report["cuda_visible_devices"] = provider.plan.environment.get("CUDA_VISIBLE_DEVICES")
+
     session_root = provider.data_root / "sessions"
     before_children = {child.pid for child in psutil.Process().children(recursive=True)}
     started = time.perf_counter()
@@ -127,7 +162,9 @@ def run(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     try:
         with tempfile.TemporaryDirectory(prefix="managed-ocr-validation-") as temporary:
             cases = create_validation_suite(Path(temporary))
+            load_started = time.perf_counter()
             provider.load()
+            report["load_elapsed_seconds"] = round(time.perf_counter() - load_started, 3)
             initial = _worker_sample(provider)
             worker_pid = initial.get("pid")
             report["initial_health"] = initial
@@ -158,26 +195,44 @@ def run(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 stress_latencies.append(item["elapsed_seconds"])
                 sample = _worker_sample(provider)
                 sample["iteration"] = index + 1
+                sample["elapsed_seconds"] = item["elapsed_seconds"]
+                sample["ocr_success"] = item["success"]
+                sample["output_sha256"] = item["output_sha256"]
                 stress_samples.append(sample)
             if stress_samples:
-                rss = [int(item.get("rss_bytes", 0)) for item in stress_samples]
-                handles = [int(item.get("handles", 0)) for item in stress_samples]
+                output_hashes = {
+                    str(item.get("output_sha256")) for item in stress_samples
+                }
                 report["stress"] = {
                     "completed": len(stress_samples),
+                    "success_count": sum(
+                        bool(item.get("ocr_success")) for item in stress_samples
+                    ),
                     "all_healthy": all(item.get("health") == "HEALTHY" for item in stress_samples),
                     "worker_pid_count": len({item.get("pid") for item in stress_samples}),
-                    "rss_first_bytes": rss[0],
-                    "rss_last_bytes": rss[-1],
-                    "rss_growth_bytes": rss[-1] - rss[0],
-                    "rss_peak_bytes": max(rss),
-                    "handles_first": handles[0],
-                    "handles_last": handles[-1],
-                    "handles_growth": handles[-1] - handles[0],
-                    "handles_peak": max(handles),
+                    "output_hash_count": len(output_hashes),
+                    "output_consistent": len(output_hashes) == 1,
                     "latency_average_seconds": round(
                         sum(stress_latencies) / len(stress_latencies), 3
                     ),
+                    "latency_median_seconds": round(
+                        statistics.median(stress_latencies), 3
+                    ),
+                    "latency_p95_seconds": round(
+                        _nearest_rank_percentile(stress_latencies, 0.95), 3
+                    ),
                     "latency_max_seconds": max(stress_latencies),
+                    "iterations": stress_samples,
+                    **_resource_metrics(stress_samples, "rss_bytes", "rss_bytes"),
+                    **_resource_metrics(
+                        stress_samples, "allocated_vram_bytes", "allocated_vram_bytes"
+                    ),
+                    **_resource_metrics(stress_samples, "handles", "handles"),
+                    **_resource_metrics(
+                        stress_samples, "file_descriptors", "file_descriptors"
+                    ),
+                    **_resource_metrics(stress_samples, "thread_count", "thread_count"),
+                    **_resource_metrics(stress_samples, "open_files", "open_files"),
                 }
 
             with Image.open(cases[0].image_path) as source:
@@ -215,8 +270,10 @@ def run(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     )
     stress_ok = not args.stress_iterations or (
         report["stress"].get("completed") == args.stress_iterations
+        and report["stress"].get("success_count") == args.stress_iterations
         and report["stress"].get("all_healthy")
         and report["stress"].get("worker_pid_count") == 1
+        and report["stress"].get("output_consistent")
     )
     report["success"] = bool(
         functional_ok
