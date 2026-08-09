@@ -4,7 +4,71 @@ This document records the current readiness review for a human-approved beta
 tag. It does not create a tag, publish a GitHub Release, or approve production
 Unlimited-OCR support.
 
-## Current Beta 4 Readiness (2026-07-16)
+## Current Beta 5 Candidate (2026-08-10)
+
+Release candidate metadata:
+
+- Python package version: `0.6.0b5`.
+- User-facing and installer version: `0.6.0-beta.5`.
+- Intended annotated tag: `v0.6.0-beta.5`.
+- Starting `main` commit: `99805c93f280c23557d5b7abd2169644879598c8`.
+- Canonical release notes: `docs/releases/v0.6.0-beta.5.md`.
+
+This candidate contains the core PDF workflow performance changes from
+`2b9f2c8` and the responsive desktop UI/motion changes from `99805c9`. It does
+not change the default Tesseract provider, broaden Unlimited-OCR hardware
+support, or bundle an optional AI runtime or model.
+
+Candidate status: **NOT READY FOR TAG**.
+
+Confirmed before candidate metadata preparation:
+
+- `main` and `origin/main` matched at `99805c9` with a clean worktree.
+- GitHub CI for `99805c9` completed successfully on 2026-08-09.
+- The included performance and UI changes had local unit, coverage, lint,
+  security, headed GUI, Tesseract OCR, wheel/sdist, PyInstaller, packaged-app,
+  installer-build, and version-alignment evidence.
+
+Exact-candidate local evidence completed on 2026-08-10:
+
+- 263 unit tests passed twice; measured coverage was 52% against a 45% minimum;
+- Ruff, Bandit, compileall, and the online dependency audit passed with no
+  known vulnerability reported for non-editable dependencies;
+- source GUI checks passed for all 11 tools, animated and reduced-motion modes,
+  responsive reflow, rapid switching, consent-dialog transitions, and shutdown;
+- real Tesseract GUI OCR created Markdown and text outputs at 100% progress;
+- the maintained four-workflow benchmark completed seven measured repetitions
+  after two warmups with valid outputs;
+- wheel, source distribution, portable bundle, Windows ZIP, and Inno Setup
+  installer builds completed;
+- two clean PyInstaller builds on the same path each passed packaged-app startup
+  and graceful-shutdown smoke; the experimental OCR feature-flag startup also
+  passed;
+- package, installer, release-note, intended-tag, wheel, source distribution,
+  bundle, and ZIP versions aligned at beta.5; and
+- artifact filename/path and metadata inspection found no editable path,
+  private source path, optional OCR runtime, model/cache, model-weight, or heavy
+  AI/CUDA runtime dependency in the default deliverables.
+
+Release-blocking evidence still required:
+
+- run the checkpointed Windows fresh-install, portable ZIP,
+  beta.4-to-beta.5 upgrade, retained-data, uninstall, reinstall, shutdown, and
+  rollback matrix;
+- confirm the tag-triggered CI and Release workflows only after a human
+  approves the tag.
+
+No recoverable Windows VM was available during candidate preparation. Hyper-V
+management tooling was present, but the Hyper-V Platform/WMI inventory was not
+available; VirtualBox, VMware, QEMU, VM images, and checkpoints were not found.
+Installer lifecycle acceptance therefore remains `DEFERRED`. The primary
+development host must not be used as a substitute.
+
+The existing `v0.6.0-beta.4` tag and published assets remain immutable. A local
+artifact named beta.4 that contains post-tag commits is verification-only and
+must never replace the published beta.4 assets.
+
+## Historical Beta 4 Readiness (2026-07-16)
 
 Release candidate metadata:
 

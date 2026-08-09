@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.6.0-beta.5 - 2026-08-10
+
+- Reworked the desktop shell into a grouped local-first workspace with clearer
+  workflow headings, primary actions, status, empty states, and shared visual
+  tokens across all tools.
+- Added short cancellable entry, exit, navigation, view-switch, empty-list, and
+  output-ready transitions that honor Windows client-animation settings and the
+  `PDF_TOOLKIT_REDUCE_MOTION` override.
+- Added vertical overflow handling and responsive controls/preview layouts for
+  merge, split, PDF-to-Word, Page Manager, and Batch Queue workflows.
+- Expanded headed GUI smoke coverage for all 11 tools, rapid view switching,
+  wide/compact reflow, scrolling, consent-dialog transitions, reduced motion,
+  and application shutdown callback cleanup.
+- Improved measured PDF compression and PDF-to-Word Page Images performance
+  without changing page selection, image pixels, OCR routing, or output
+  contracts; the maintained benchmark records the method and results.
+- Prepared a checkpoint-based Windows installer lifecycle acceptance runbook.
+  Fresh install, beta.4-to-beta.5 upgrade, retained-data, uninstall, reinstall,
+  and rollback acceptance remain blocked until a disposable Windows VM is
+  available; this candidate must not be tagged on static or build evidence
+  alone.
+
 ## 0.6.0-beta.4 - 2026-07-16
 
 - Closed a blocked-plan setup gap found during the final merge review. CLI and
