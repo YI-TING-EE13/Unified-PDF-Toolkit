@@ -94,9 +94,9 @@ class Image2PDFTool(BaseTool):
 
         ttk.Label(
             opts_frame,
-            text="(Controls DPI scaling & JPEG quality at write time)",
-            foreground="gray",
-        ).pack(side="left", padx=10)
+            text="Controls DPI scaling and JPEG quality at write time.",
+            style="Muted.TLabel",
+        ).pack(anchor="w", pady=(8, 0))
 
         # 3. Output
         out_frame = ttk.LabelFrame(parent, text="Output PDF", padding=10)
@@ -111,7 +111,10 @@ class Image2PDFTool(BaseTool):
 
         # 4. Action
         self.btn = ttk.Button(
-            parent, text="Convert to PDF", command=self.execute
+            parent,
+            text="Convert to PDF",
+            command=self.execute,
+            style="Accent.TButton",
         )
         self.btn.pack(pady=(15, 5))
         self.cancel_btn = ttk.Button(

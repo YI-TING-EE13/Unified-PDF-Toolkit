@@ -87,15 +87,17 @@ class CompressorTool(BaseTool):
 
         # Output Directory
         ttk.Label(opts_frame, text="Output Folder:").grid(
-            row=0, column=2, sticky="w", padx=(20, 10)
+            row=1, column=0, sticky="w", padx=(0, 10), pady=(9, 0)
         )
-        self.output_entry = ttk.Entry(opts_frame, width=40)
-        self.output_entry.grid(row=0, column=3, sticky="ew")
+        self.output_entry = ttk.Entry(opts_frame)
+        self.output_entry.grid(
+            row=1, column=1, columnspan=2, sticky="ew", pady=(9, 0)
+        )
         ttk.Button(opts_frame, text="Browse", command=self._browse_output).grid(
-            row=0, column=4, padx=5
+            row=1, column=3, padx=(8, 0), pady=(9, 0)
         )
 
-        opts_frame.columnconfigure(3, weight=1)
+        opts_frame.columnconfigure(1, weight=1)
         self.output_entry.insert(
             0, get_setting("compressor.output_dir", get_default_save_dir("Compressed"))
         )
@@ -160,7 +162,10 @@ class CompressorTool(BaseTool):
 
         # --- 3. Action Buttons ---
         self.start_btn = ttk.Button(
-            parent, text="Start Compression", command=self.execute
+            parent,
+            text="Start Compression",
+            command=self.execute,
+            style="Accent.TButton",
         )
         self.start_btn.pack(pady=(10, 5))
         self.cancel_btn = ttk.Button(

@@ -25,6 +25,7 @@ from ..ocr.deployment.providers import (
 )
 from ..ocr.deployment.validation_assets import create_validation_suite
 from ..ocr.local_model import clear_local_model_runtime_config
+from .motion import WindowMotion
 
 _ACTIVE_LOCK = threading.Lock()
 _ACTIVE_SETUPS: list[tuple[CancellationToken, threading.Event]] = []
@@ -54,6 +55,7 @@ def cancel_active_setups(*, wait_seconds: float = 6.0) -> None:
 class UnlimitedOcrSetupDialog(tk.Toplevel):
     def __init__(self, parent: tk.Misc) -> None:
         super().__init__(parent)
+        self._window_motion = WindowMotion(self)
         self.title("Managed Local Unlimited-OCR Setup")
         self.geometry("920x760")
         self.minsize(780, 620)
@@ -75,6 +77,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             key: tk.BooleanVar(value=False) for key in REQUIRED_INSTALL_ACKNOWLEDGEMENTS
         }
         self._build_ui()
+        self.after_idle(self._window_motion.show)
         self.after(50, self._analyze)
 
     def _build_ui(self) -> None:
@@ -162,6 +165,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             text="Install and Enable",
             command=self._begin_install,
             state="disabled",
+            style="Accent.TButton",
         )
         self.install_button.pack(side="right")
         ttk.Button(actions, text="Not Now", command=self._close).pack(side="right", padx=(0, 8))
@@ -184,6 +188,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             text="Remove Runtime, Model and Cache",
             command=self._remove_all,
             state="disabled",
+            style="Danger.TButton",
         )
         self.remove_all_button.pack(side="left", padx=(8, 0))
 
@@ -367,7 +372,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             self.install_button.configure(text="Resume Installation")
         self._update_install_state()
         if self.close_after_stop:
-            self.destroy()
+            self._finish_close()
 
     def _install_failed(self, error: dict[str, Any]) -> None:
         self.running = False
@@ -388,7 +393,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
                 parent=self,
             )
         else:
-            self.destroy()
+            self._finish_close()
 
     def _pause(self) -> None:
         if self.cancellation:
@@ -413,7 +418,10 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             self.cancellation.cancel()
             self.status_var.set("Stopping setup safely before closing...")
             return
-        self.destroy()
+        self._finish_close()
+
+    def _finish_close(self) -> None:
+        self._window_motion.close()
 
     def _show_technical_details(self) -> None:
         details = {
@@ -425,8 +433,13 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             "last_error": self.last_error,
         }
         window = tk.Toplevel(self)
+        window._window_motion = WindowMotion(window)  # type: ignore[attr-defined]
         window.title("Unlimited-OCR Technical Details")
         window.geometry("900x680")
+        window.protocol(
+            "WM_DELETE_WINDOW",
+            window._window_motion.close,  # type: ignore[attr-defined]
+        )
         text = tk.Text(window, wrap="none")
         y_scroll = ttk.Scrollbar(window, command=text.yview)
         x_scroll = ttk.Scrollbar(window, orient="horizontal", command=text.xview)
@@ -438,6 +451,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
         window.rowconfigure(0, weight=1)
         text.insert("1.0", json.dumps(details, ensure_ascii=False, indent=2))
         text.configure(state="disabled")
+        window.after_idle(window._window_motion.show)  # type: ignore[attr-defined]
 
     def _uninstall_runtime(self) -> None:
         if not self.plan or not messagebox.askyesno(
@@ -507,7 +521,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
         self.cleanup_running = False
         self.status_var.set(message)
         if self.close_after_stop:
-            self.destroy()
+            self._finish_close()
             return
         self._analyze()
 
@@ -522,7 +536,7 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
             parent=self,
         )
         if self.close_after_stop:
-            self.destroy()
+            self._finish_close()
             return
         self._analyze()
 

@@ -110,7 +110,10 @@ class ConverterTool(BaseTool):
 
         # 4. Action
         self.btn = ttk.Button(
-            parent, text="Convert to Images", command=self.execute
+            parent,
+            text="Convert to Images",
+            command=self.execute,
+            style="Accent.TButton",
         )
         self.btn.pack(pady=(20, 5))
         self.cancel_btn = ttk.Button(

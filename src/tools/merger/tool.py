@@ -21,7 +21,7 @@ from PIL import Image, ImageTk
 
 from ...base.tool import BaseTool
 from ...handlers.pdf import PDFCompressor
-from ...ui.components import FileListWidget, OutputActions
+from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
 from ...utils.file_ops import (
     get_default_save_dir,
     get_file_size,
@@ -61,11 +61,13 @@ class MergerTool(BaseTool):
         """
         Renders the Merger UI with ordering controls and merged-output preview.
         """
-        paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
-        paned.pack(fill="both", expand=True, pady=5)
-
-        left_frame = ttk.Frame(paned)
-        paned.add(left_frame, weight=1)
+        split_view = ResponsiveSplit(
+            parent,
+            primary_label="Merge controls",
+            secondary_label="Merged preview",
+        )
+        split_view.pack(fill="both", expand=True, pady=5)
+        left_frame = split_view.primary
 
         self.file_list = FileListWidget(
             left_frame,
@@ -114,7 +116,12 @@ class MergerTool(BaseTool):
             side="right"
         )
 
-        self.merge_btn = ttk.Button(left_frame, text="Merge PDFs", command=self.execute)
+        self.merge_btn = ttk.Button(
+            left_frame,
+            text="Merge PDFs",
+            command=self.execute,
+            style="Accent.TButton",
+        )
         self.merge_btn.pack(fill="x", padx=20, pady=(0, 5))
         self.cancel_btn = ttk.Button(
             left_frame, text="Cancel", command=self._cancel, state="disabled"
@@ -130,8 +137,7 @@ class MergerTool(BaseTool):
         self.output_actions = OutputActions(left_frame)
         self.output_actions.pack(anchor="w", pady=(8, 0))
 
-        right_frame = ttk.LabelFrame(paned, text="Merged Preview", padding=10)
-        paned.add(right_frame, weight=5)
+        right_frame = split_view.secondary
 
         nav_frame = ttk.Frame(right_frame)
         nav_frame.pack(fill="x", pady=(0, 5))

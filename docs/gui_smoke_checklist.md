@@ -13,6 +13,18 @@ Run this checklist before publishing a desktop build.
 ## Core UI
 
 - Confirm every sidebar tool opens without errors.
+- Confirm the sidebar groups Organize, Convert & Extract, and Workspace are
+  visible and the active indicator settles on the selected tool.
+- Switch rapidly across all tools and confirm only the final selected view
+  remains visible.
+- Resize the app below 1040 pixels. Confirm preview-heavy workflows expose
+  `Controls` and `Preview` tabs instead of clipped side-by-side panes.
+- Confirm every visible vertical scrollbar reaches the bottom content and can
+  return to the top.
+- Run `uv run --no-sync python scripts/gui_smoke.py --reduce-motion` and confirm
+  all tools, responsive tabs, scrolling, and the consent dialog still work.
+- Open and close the Advanced Local AI OCR consent dialog; confirm the modal
+  enters and exits without leaving the main window blocked.
 - Drag a PDF onto a PDF file list.
 - Drag an image onto the Image to PDF file list.
 - Drag a folder onto a file list and confirm supported files are added.

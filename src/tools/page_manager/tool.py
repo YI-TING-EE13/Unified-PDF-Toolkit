@@ -20,7 +20,7 @@ from PIL import Image, ImageTk
 from typing import List, Optional, Any, Dict
 
 from ...base.tool import BaseTool
-from ...ui.components import FileListWidget, OutputActions
+from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
 from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import CancellationToken, WorkflowReport, get_conflict_policy
@@ -51,12 +51,15 @@ class PageManagerTool(BaseTool):
         Left: Controls (File list, Actions).
         Right: Preview.
         """
-        paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
-        paned.pack(fill="both", expand=True, pady=5)
+        split_view = ResponsiveSplit(
+            parent,
+            primary_label="Page controls",
+            secondary_label="Page preview",
+        )
+        split_view.pack(fill="both", expand=True, pady=5)
 
         # --- Left Pane: Controls ---
-        left_frame = ttk.Frame(paned)
-        paned.add(left_frame, weight=1)
+        left_frame = split_view.primary
 
         # 1. File List
         self.file_list = FileListWidget(
@@ -163,7 +166,11 @@ class PageManagerTool(BaseTool):
         )
 
         self.save_btn = ttk.Button(
-            left_frame, text="Save Modified PDF", command=self.execute, state="disabled"
+            left_frame,
+            text="Save Modified PDF",
+            command=self.execute,
+            state="disabled",
+            style="Accent.TButton",
         )
         self.save_btn.pack(pady=(10, 5), fill="x")
         self.cancel_btn = ttk.Button(
@@ -181,8 +188,7 @@ class PageManagerTool(BaseTool):
         self.output_actions.pack(anchor="w", pady=(8, 0))
 
         # --- Right Pane: Preview ---
-        right_frame = ttk.LabelFrame(paned, text="Page Preview", padding=10)
-        paned.add(right_frame, weight=3)
+        right_frame = split_view.secondary
 
         # Nav Controls
         nav_frame = ttk.Frame(right_frame)

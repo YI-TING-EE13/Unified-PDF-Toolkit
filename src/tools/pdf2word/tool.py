@@ -26,7 +26,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from ...base.tool import BaseTool
 from ...ocr import OcrDependencyMissingError, OcrEngine, OcrRequest, get_backend
-from ...ui.components import FileListWidget, OutputActions
+from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
 from ...utils.errors import friendly_error_message
 from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
@@ -55,11 +55,14 @@ class PDFToWordTool(BaseTool):
         self.cancel_token = CancellationToken()
 
     def render(self, parent: ttk.Frame) -> None:
-        paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
-        paned.pack(fill="both", expand=True, pady=5)
+        split_view = ResponsiveSplit(
+            parent,
+            primary_label="Conversion controls",
+            secondary_label="PDF preview",
+        )
+        split_view.pack(fill="both", expand=True, pady=5)
 
-        left_frame = ttk.Frame(paned)
-        paned.add(left_frame, weight=1)
+        left_frame = split_view.primary
 
         self.file_list = FileListWidget(
             left_frame,
@@ -159,7 +162,12 @@ class PDFToWordTool(BaseTool):
             side="right"
         )
 
-        self.btn = ttk.Button(left_frame, text="Convert to Word", command=self.execute)
+        self.btn = ttk.Button(
+            left_frame,
+            text="Convert to Word",
+            command=self.execute,
+            style="Accent.TButton",
+        )
         self.btn.pack(pady=(15, 5), fill="x")
         self.cancel_btn = ttk.Button(
             left_frame, text="Cancel", command=self._cancel, state="disabled"
@@ -174,8 +182,7 @@ class PDFToWordTool(BaseTool):
         self.output_actions = OutputActions(left_frame)
         self.output_actions.pack(anchor="w", pady=(8, 0))
 
-        right_frame = ttk.LabelFrame(paned, text="PDF Preview", padding=10)
-        paned.add(right_frame, weight=3)
+        right_frame = split_view.secondary
 
         nav_frame = ttk.Frame(right_frame)
         nav_frame.pack(fill="x", pady=(0, 5))

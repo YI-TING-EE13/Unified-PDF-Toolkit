@@ -28,6 +28,7 @@ from ...ocr.local_model import (
     save_local_model_runtime_config,
 )
 from ...ui.advanced_ocr_consent import request_advanced_ocr_consent
+from ...ui.components import responsive_wraplength
 from ...utils.settings import (
     clear_recent_paths,
     get_recent_paths,
@@ -64,7 +65,12 @@ class SettingsTool(BaseTool):
             state="readonly",
             width=12,
         ).pack(side="left", padx=10)
-        ttk.Button(prefs, text="Save", command=self._save_preferences).pack(side="left")
+        ttk.Button(
+            prefs,
+            text="Save",
+            command=self._save_preferences,
+            style="Accent.TButton",
+        ).pack(side="left")
 
         consent_frame = ttk.LabelFrame(
             parent, text="Experimental Advanced Local AI OCR Consent", padding=10
@@ -80,12 +86,14 @@ class SettingsTool(BaseTool):
                 "trust_remote_code, GPU/VRAM, temporary page images, and the "
                 "no-upload boundary."
             ),
-            wraplength=900,
+            wraplength=responsive_wraplength(parent),
         ).pack(anchor="w", pady=(0, 6))
         self.advanced_ocr_status_var = tk.StringVar()
-        ttk.Label(consent_frame, textvariable=self.advanced_ocr_status_var).pack(
-            anchor="w", pady=(0, 8)
-        )
+        ttk.Label(
+            consent_frame,
+            textvariable=self.advanced_ocr_status_var,
+            wraplength=responsive_wraplength(parent),
+        ).pack(anchor="w", pady=(0, 8))
         consent_actions = ttk.Frame(consent_frame)
         consent_actions.pack(fill="x")
         ttk.Button(
@@ -110,7 +118,7 @@ class SettingsTool(BaseTool):
                 "an isolated runtime, download a pinned model, validate it, benchmark it, and "
                 "register it with the APP. Analysis alone never downloads or modifies the system."
             ),
-            wraplength=900,
+            wraplength=responsive_wraplength(parent),
         ).pack(anchor="w", pady=(0, 8))
         ttk.Button(
             managed_frame,
@@ -132,12 +140,14 @@ class SettingsTool(BaseTool):
                 ".venv-ocr-runtime. There is no model download, cloud upload, "
                 "or server start action here."
             ),
-            wraplength=900,
+            wraplength=responsive_wraplength(parent),
         ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 6))
         self.local_model_status_var = tk.StringVar()
-        ttk.Label(runtime_frame, textvariable=self.local_model_status_var).grid(
-            row=1, column=0, columnspan=4, sticky="w", pady=(0, 8)
-        )
+        ttk.Label(
+            runtime_frame,
+            textvariable=self.local_model_status_var,
+            wraplength=responsive_wraplength(parent),
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(0, 8))
         self.local_model_enabled_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             runtime_frame,

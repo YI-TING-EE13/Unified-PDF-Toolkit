@@ -13,6 +13,7 @@ from ..ocr.consent import (
     AdvancedOcrConsent,
     create_advanced_ocr_consent,
 )
+from .motion import WindowMotion
 
 ACKNOWLEDGEMENT_LABELS = (
     (
@@ -46,6 +47,7 @@ class AdvancedOcrConsentDialog(tk.Toplevel):
         consent_text_version: str = ADVANCED_OCR_CONSENT_TEXT_VERSION,
     ) -> None:
         super().__init__(parent)
+        self._window_motion = WindowMotion(self)
         self.title("Advanced Local AI OCR Consent")
         self.resizable(False, False)
         self.provider = provider
@@ -60,6 +62,7 @@ class AdvancedOcrConsentDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         self._build_ui()
         self.grab_set()
+        self.after_idle(self._window_motion.show)
 
     def _build_ui(self) -> None:
         frame = ttk.Frame(self, padding=16)
@@ -108,6 +111,7 @@ class AdvancedOcrConsentDialog(tk.Toplevel):
             text="Save Consent",
             command=self._accept,
             state="disabled",
+            style="Accent.TButton",
         )
         self.accept_btn.pack(side="right", padx=(0, 8))
 
@@ -125,11 +129,11 @@ class AdvancedOcrConsentDialog(tk.Toplevel):
             consent_text_version=self.consent_text_version,
             acknowledgements=self._acknowledgements(),
         )
-        self.destroy()
+        self._window_motion.close()
 
     def _cancel(self) -> None:
         self.result = None
-        self.destroy()
+        self._window_motion.close()
 
 
 def request_advanced_ocr_consent(

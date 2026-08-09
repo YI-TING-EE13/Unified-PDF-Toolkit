@@ -23,7 +23,7 @@ from ...ocr.workflow import (
     run_advanced_ocr_workflow,
     user_safe_ocr_error_message,
 )
-from ...ui.components import FileListWidget, OutputActions
+from ...ui.components import FileListWidget, OutputActions, responsive_wraplength
 from ...utils.file_ops import get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import CancellationToken, remember_inputs
@@ -82,7 +82,7 @@ class DevDocumentOcrTool(BaseTool):
                 "backend. It performs no real AI OCR, model download, endpoint "
                 "call, GPU runtime, network upload, screen OCR, or background OCR."
             ),
-            wraplength=900,
+            wraplength=responsive_wraplength(parent),
         ).pack(anchor="w")
 
         self.file_list = FileListWidget(
@@ -110,7 +110,7 @@ class DevDocumentOcrTool(BaseTool):
                 "Local endpoint mode is test/mock-only in this milestone and is "
                 "not exposed from this UI."
             ),
-            wraplength=520,
+            wraplength=responsive_wraplength(parent, maximum=520),
         ).pack(side="left", fill="x", expand=True)
 
         options = ttk.LabelFrame(parent, text="Output Options", padding=10)
@@ -138,7 +138,10 @@ class DevDocumentOcrTool(BaseTool):
         actions = ttk.Frame(parent)
         actions.pack(fill="x", pady=(0, 8))
         self.start_btn = ttk.Button(
-            actions, text="Run Dev Document OCR", command=self.execute
+            actions,
+            text="Run Dev Document OCR",
+            command=self.execute,
+            style="Accent.TButton",
         )
         self.start_btn.pack(side="left")
         self.cancel_btn = ttk.Button(

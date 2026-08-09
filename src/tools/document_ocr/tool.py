@@ -24,7 +24,7 @@ from ...ocr.local_model import (
     LOCAL_MODEL_MODE_WORKER_PROCESS,
     load_local_model_runtime_config,
 )
-from ...ui.components import FileListWidget, OutputActions
+from ...ui.components import FileListWidget, OutputActions, responsive_wraplength
 from ...utils.file_ops import get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import CancellationToken, remember_inputs
@@ -120,7 +120,7 @@ class DocumentOcrTool(BaseTool):
                 "execute custom model code, use GPU/VRAM, and is not "
                 "production-ready."
             ),
-            wraplength=900,
+            wraplength=responsive_wraplength(parent),
         ).pack(anchor="w")
 
         self.file_list = FileListWidget(
@@ -148,7 +148,7 @@ class DocumentOcrTool(BaseTool):
         ttk.Label(
             backend_frame,
             textvariable=self.experimental_status_var,
-            wraplength=850,
+            wraplength=responsive_wraplength(parent),
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
         self._refresh_experimental_status()
 
@@ -181,7 +181,12 @@ class DocumentOcrTool(BaseTool):
 
         actions = ttk.Frame(parent)
         actions.pack(fill="x", pady=(0, 8))
-        self.start_btn = ttk.Button(actions, text="Run Document OCR", command=self.execute)
+        self.start_btn = ttk.Button(
+            actions,
+            text="Run Document OCR",
+            command=self.execute,
+            style="Accent.TButton",
+        )
         self.start_btn.pack(side="left")
         self.cancel_btn = ttk.Button(
             actions, text="Cancel", command=self._cancel, state="disabled"

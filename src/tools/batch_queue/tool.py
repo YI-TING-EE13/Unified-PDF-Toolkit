@@ -11,7 +11,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from ...base.tool import BaseTool
 from ...core.batch import BatchJob, HeadlessBatchRunner, SUPPORTED_OPERATIONS
-from ...ui.components import FileListWidget, OutputActions
+from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
 from ...utils.errors import friendly_error_message
 from ...utils.file_ops import get_default_save_dir
 from ...utils.settings import get_setting, set_setting
@@ -36,14 +36,13 @@ class BatchQueueTool(BaseTool):
         self.jobs: List[BatchJob] = []
 
     def render(self, parent: ttk.Frame) -> None:
-        top = ttk.Frame(parent)
-        top.pack(fill="both", expand=True)
-        top.columnconfigure(0, weight=1)
-        top.columnconfigure(1, weight=2)
-        top.rowconfigure(0, weight=1)
-
-        left = ttk.Frame(top)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        split_view = ResponsiveSplit(
+            parent,
+            primary_label="Add jobs",
+            secondary_label="Queue",
+        )
+        split_view.pack(fill="both", expand=True)
+        left = split_view.primary
 
         self.file_list = FileListWidget(
             left,
@@ -102,8 +101,7 @@ class BatchQueueTool(BaseTool):
             row=5, column=0, columnspan=2, sticky="ew", pady=(10, 0)
         )
 
-        right = ttk.Frame(top)
-        right.grid(row=0, column=1, sticky="nsew")
+        right = split_view.secondary
         right.rowconfigure(0, weight=1)
         right.columnconfigure(0, weight=1)
 
@@ -113,15 +111,25 @@ class BatchQueueTool(BaseTool):
         self.tree.heading("operation", text="Operation")
         self.tree.heading("source", text="Source")
         self.tree.heading("status", text="Status")
-        self.tree.column("operation", width=190, stretch=False)
-        self.tree.column("source", width=520)
-        self.tree.column("status", width=100, stretch=False)
+        self.tree.column("operation", width=140)
+        self.tree.column("source", width=240)
+        self.tree.column("status", width=90)
         self.tree.grid(row=0, column=0, sticky="nsew")
 
         queue_buttons = ttk.Frame(right)
         queue_buttons.grid(row=1, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(queue_buttons, text="Remove Selected", command=self._remove_selected).pack(side="left")
-        ttk.Button(queue_buttons, text="Clear Queue", command=self._clear_jobs).pack(side="left", padx=8)
+        ttk.Button(
+            queue_buttons,
+            text="Remove",
+            command=self._remove_selected,
+            style="Quiet.TButton",
+        ).pack(side="left")
+        ttk.Button(
+            queue_buttons,
+            text="Clear",
+            command=self._clear_jobs,
+            style="Quiet.TButton",
+        ).pack(side="left", padx=8)
 
         out_frame = ttk.LabelFrame(parent, text="Output Folder", padding=10)
         out_frame.pack(fill="x", pady=(8, 0))
@@ -132,7 +140,12 @@ class BatchQueueTool(BaseTool):
 
         actions = ttk.Frame(parent)
         actions.pack(fill="x", pady=(10, 0))
-        self.start_btn = ttk.Button(actions, text="Run Queue", command=self.execute)
+        self.start_btn = ttk.Button(
+            actions,
+            text="Run Queue",
+            command=self.execute,
+            style="Accent.TButton",
+        )
         self.start_btn.pack(side="left")
         self.cancel_btn = ttk.Button(actions, text="Cancel", command=self._cancel, state="disabled")
         self.cancel_btn.pack(side="left", padx=8)

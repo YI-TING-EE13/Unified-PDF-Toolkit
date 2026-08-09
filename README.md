@@ -279,6 +279,23 @@ chmod +x run-macos.command
 5. Start the task and monitor the progress area.
 6. Open the output folder or copy the output path when the task completes.
 
+The desktop shell groups tools by purpose and keeps the current workflow name,
+description, status, and primary action visually distinct. On windows narrower
+than 1040 pixels, preview-heavy tools use `Controls` and `Preview` tabs instead
+of compressing both panes side by side. Tool content scrolls vertically when it
+does not fit the available height.
+
+Short, cancellable transitions cover application and dialog entry/exit, tool
+switching, the active navigation indicator, empty file lists, and output-ready
+states. The app follows the Windows client-animation preference. To disable
+motion explicitly for a source run, set the process-local override before
+launching the app:
+
+```powershell
+$env:PDF_TOOLKIT_REDUCE_MOTION = "1"
+uv run --no-sync python src/app.py
+```
+
 ## Command-Line and Headless Batch
 
 Installing the project creates a `pdf-toolkit` console command. It does not open
@@ -310,7 +327,10 @@ src/
   base/
     tool.py           # BaseTool interface
   ui/
-    components.py     # Shared widgets and output actions
+    components.py     # Shared lists, output actions, scrolling, responsive splits
+    motion.py         # Cancellable motion and reduced-motion behavior
+    navigation.py     # Grouped desktop navigation rail
+    theme.py          # Color, typography, and ttk style tokens
   tools/
     compressor/
     merger/
@@ -329,6 +349,8 @@ src/
 Design patterns used throughout the app:
 
 - Shared file-list and output-action widgets for consistent workflows.
+- One presentation system for grouped navigation, responsive layouts, and
+  reduced-motion-aware transitions.
 - Worker threads and queues to keep Tkinter responsive.
 - Visible output paths before execution.
 - Structured reports for long-running or batch workflows.
@@ -353,6 +375,7 @@ uv run --no-sync coverage report
 uv run --no-sync python -m unittest discover -s tests -v
 uv run --no-sync python verify_install.py
 uv run --no-sync python scripts/gui_smoke.py
+uv run --no-sync python scripts/gui_smoke.py --reduce-motion
 uv run --no-sync python -m compileall -q src tests verify_install.py scripts
 uv build
 ```

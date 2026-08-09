@@ -19,7 +19,12 @@ class DiagnosticsTool(BaseTool):
     def render(self, parent: ttk.Frame) -> None:
         actions = ttk.Frame(parent)
         actions.pack(fill="x", pady=(0, 8))
-        ttk.Button(actions, text="Run Checks", command=self.execute).pack(side="left")
+        ttk.Button(
+            actions,
+            text="Run Checks",
+            command=self.execute,
+            style="Accent.TButton",
+        ).pack(side="left")
         ttk.Button(actions, text="Copy Results", command=self._copy_results).pack(
             side="left", padx=8
         )
