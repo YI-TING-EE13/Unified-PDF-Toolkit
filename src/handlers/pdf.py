@@ -1,5 +1,6 @@
 import fitz  # PyMuPDF
 import io
+import zlib
 from PIL import Image
 from typing import Optional
 from ..core.base import BaseCompressor
@@ -121,19 +122,18 @@ class PDFCompressor(BaseCompressor):
 
         for xref in img_xrefs:
             try:
-                # 1. Extract Image Stream
-                stream = doc.extract_image(xref)
-                if not stream: 
-                    continue
-                
-                img_bytes = stream["image"]
-                
-                # Skip small images (< 10KB) to avoid overhead on logos/icons
-                if len(img_bytes) < 10240: 
+                # Decode the PDF image directly into pixels. ``extract_image``
+                # may first re-encode Flate-backed images as PNG, only for
+                # Pillow to decode that temporary PNG again.
+                pil_img, source_size = self._image_from_xref(doc, xref)
+
+                # Skip small streams (< 10KB) to avoid overhead on logos/icons.
+                if source_size < 10240:
+                    pil_img.close()
                     continue
 
                 # 2. Optimize with Pillow
-                with Image.open(io.BytesIO(img_bytes)) as pil_img:
+                with pil_img:
                     w, h = pil_img.size
                     
                     # Safety: Skip optimization for images with transparency (Alpha channel)
@@ -144,16 +144,27 @@ class PDFCompressor(BaseCompressor):
 
                     # 3. Resizing and Conversion
                     buffer = io.BytesIO()
-                    
+
                     # Downsample if image is larger than target bounds
                     if max(w, h) > max_dim:
                          ratio = max_dim / max(w, h)
                          new_size = (int(w * ratio), int(h * ratio))
-                         
+                    else:
+                         new_size = (w, h)
+
+                    if not self._jpeg_candidate_may_shrink(
+                        pil_img,
+                        new_size,
+                        jpg_quality,
+                        source_size,
+                    ):
+                         continue
+
+                    if new_size != (w, h):
                          # Ensure valid mode for scaling/saving
                          if pil_img.mode not in ('RGB', 'L'):
                             pil_img = pil_img.convert('RGB')
-                            
+
                          pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
                     elif pil_img.mode not in ('RGB', 'L'):
                          # Convert simple non-transparent images to RGB for JPEG compatibility
@@ -164,7 +175,7 @@ class PDFCompressor(BaseCompressor):
                     new_bytes = buffer.getvalue()
 
                     # 4. Update Stream (If size reduction achieved)
-                    if len(new_bytes) < len(img_bytes):
+                    if len(new_bytes) < source_size:
                         try:
                             # CRITICAL: We must disable automatic compression (compress=False)
                             # because we are injecting pre-compressed JPEG bytes. 
@@ -190,3 +201,59 @@ class PDFCompressor(BaseCompressor):
                             self.logger.warning(f"Failed to update structure for xref {xref}: {e}")
             except Exception as e:
                 self.logger.debug(f"Skipping image xref {xref}: {e}")
+
+    @staticmethod
+    def _image_from_xref(doc, xref):
+        """Return a Pillow image without an intermediate PNG round trip."""
+        pixmap = fitz.Pixmap(doc, xref)
+        colorspace = pixmap.colorspace
+        if colorspace is None:
+            raise ValueError("Image has no supported color space.")
+
+        components = colorspace.n
+        if components == 1:
+            mode = "LA" if pixmap.alpha else "L"
+        elif components == 3:
+            mode = "RGBA" if pixmap.alpha else "RGB"
+        elif components == 4 and not pixmap.alpha:
+            mode = "CMYK"
+        else:
+            raise ValueError("Image uses an unsupported component layout.")
+
+        samples = pixmap.samples
+        image = Image.frombytes(mode, (pixmap.width, pixmap.height), samples)
+        filter_type, _ = doc.xref_get_key(xref, "Filter")
+        if filter_type == "null":
+            # ``doc.save(..., deflate=True)`` will compress an unfiltered image
+            # even when we leave it untouched. Compare against that future size
+            # so the optimization never replaces it with a larger JPEG.
+            source_size = len(zlib.compress(samples))
+        else:
+            source_size = len(doc.xref_stream_raw(xref))
+        return image, source_size
+
+    @staticmethod
+    def _jpeg_candidate_may_shrink(image, target_size, quality, source_size):
+        """Use a small preview to avoid full JPEG work that cannot pay off."""
+        max_sample_dimension = 400
+        scale = min(1.0, max_sample_dimension / max(target_size))
+        sample_size = (
+            max(1, int(target_size[0] * scale)),
+            max(1, int(target_size[1] * scale)),
+        )
+        sample = image.resize(sample_size, Image.Resampling.BILINEAR)
+        try:
+            if sample.mode not in ("RGB", "L"):
+                converted = sample.convert("RGB")
+                sample.close()
+                sample = converted
+            buffer = io.BytesIO()
+            sample.save(buffer, format="JPEG", quality=quality, optimize=True)
+            sample_pixels = sample_size[0] * sample_size[1]
+            target_pixels = target_size[0] * target_size[1]
+            estimated_size = len(buffer.getbuffer()) * target_pixels / sample_pixels
+            # Only skip when the estimate is decisively larger. Borderline
+            # cases still use the exact full-size comparison below.
+            return estimated_size < source_size * 1.5
+        finally:
+            sample.close()

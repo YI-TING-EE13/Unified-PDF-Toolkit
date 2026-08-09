@@ -357,6 +357,9 @@ uv run --no-sync python -m compileall -q src tests verify_install.py scripts
 uv build
 ```
 
+The maintained [core workflow performance benchmark](docs/performance/core_workflow_benchmark.md)
+records its synthetic fixture design, profiling method, latest A/B results, and rerun commands.
+
 Release-specific checks are documented in
 [docs/release_checklist.md](docs/release_checklist.md). Manual GUI checks are
 documented in [docs/gui_smoke_checklist.md](docs/gui_smoke_checklist.md). The

@@ -515,8 +515,7 @@ class PDFToWordTool(BaseTool):
         the visual-fidelity fallback for formulas, scanned pages, and complex
         PDFs that do not convert cleanly into editable Word content.
         """
-        cls.preflight_pdf(input_path, range_text)
-        page_indices = cls.parse_page_range(range_text, input_path)
+        _, page_indices = cls._inspect_pdf(input_path, range_text)
 
         if mode == "Text Only":
             cls._convert_text_only(input_path, output_path, page_indices)
@@ -620,10 +619,9 @@ class PDFToWordTool(BaseTool):
                 if count:
                     document.add_page_break()
                 pix = doc[page_index].get_pixmap(dpi=150, alpha=False)
-                image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                buffer = BytesIO()
-                image.save(buffer, format="PNG")
-                buffer.seek(0)
+                # PyMuPDF already owns the rendered pixmap. Encoding it directly
+                # avoids a full-frame copy into Pillow and its PNG encoder path.
+                buffer = BytesIO(pix.tobytes("png"))
                 document.add_picture(buffer, width=image_width)
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -687,6 +685,13 @@ class PDFToWordTool(BaseTool):
 
     @classmethod
     def preflight_pdf(cls, input_path: str, range_text: str = "") -> Dict[str, Any]:
+        report, _ = cls._inspect_pdf(input_path, range_text)
+        return report
+
+    @classmethod
+    def _inspect_pdf(
+        cls, input_path: str, range_text: str = ""
+    ) -> tuple[Dict[str, Any], Optional[List[int]]]:
         if not os.path.exists(input_path):
             raise FileNotFoundError(input_path)
 
@@ -695,21 +700,20 @@ class PDFToWordTool(BaseTool):
                 raise ValueError("PDF is encrypted and cannot be converted.")
             if doc.page_count == 0:
                 raise ValueError("PDF has no pages.")
-
-        page_indices = cls.parse_page_range(range_text, input_path)
-        with fitz.open(input_path) as doc:
+            page_indices = cls._parse_page_range_text(range_text, doc.page_count)
             selected = page_indices if page_indices is not None else list(range(doc.page_count))
             text_pages = 0
             for page_index in selected[:10]:
                 if doc[page_index].get_text("text").strip():
                     text_pages += 1
 
-            return {
+            report = {
                 "page_count": doc.page_count,
                 "selected_page_count": len(selected),
                 "text_pages_sampled": text_pages,
                 "image_only": text_pages == 0,
             }
+        return report, page_indices
 
     @staticmethod
     def parse_page_range(range_text: str, input_path: str) -> Optional[List[int]]:
@@ -720,6 +724,13 @@ class PDFToWordTool(BaseTool):
             total_pages = doc.page_count
             if doc.needs_pass:
                 raise ValueError("PDF is encrypted and cannot be read.")
+
+        return PDFToWordTool._parse_page_range_text(range_text, total_pages)
+
+    @staticmethod
+    def _parse_page_range_text(range_text: str, total_pages: int) -> Optional[List[int]]:
+        if not range_text.strip():
+            return None
 
         page_indices: List[int] = []
         for raw_part in range_text.split(","):

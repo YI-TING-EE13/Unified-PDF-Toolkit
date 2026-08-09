@@ -4,6 +4,8 @@ import json
 import queue
 import tempfile
 import unittest
+import zipfile
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -85,6 +87,42 @@ class CompressionWorkflowTests(unittest.TestCase):
 
         self.assertEqual(compressor.max_image_dimension, 1200)
         self.assertEqual(compressor.jpeg_quality, 65)
+
+    def test_pdf_compressor_resizes_flate_image_without_png_round_trip(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "source.png"
+            input_path = root / "source.pdf"
+            output_path = root / "compressed.pdf"
+            Image.effect_noise((600, 400), 80).convert("RGB").save(image_path)
+
+            with fitz.open() as document:
+                page = document.new_page(width=600, height=400)
+                page.insert_image(page.rect, filename=str(image_path))
+                document.save(input_path)
+
+            compressor = PDFCompressor(
+                "Medium", max_image_dimension=200, jpeg_quality=65
+            )
+            self.assertTrue(compressor.compress(str(input_path), str(output_path)))
+
+            with fitz.open(output_path) as document:
+                image_info = document[0].get_images(full=True)[0]
+                self.assertEqual(image_info[2:4], (200, 133))
+                self.assertEqual(image_info[8], "DCTDecode")
+
+    def test_pdf_compressor_skips_decisively_larger_jpeg_candidate(self):
+        image = Image.linear_gradient("L").resize((1600, 2200)).convert("RGB")
+        source_size = len(zlib.compress(image.tobytes()))
+
+        self.assertFalse(
+            PDFCompressor._jpeg_candidate_may_shrink(
+                image,
+                (1454, 2000),
+                quality=70,
+                source_size=source_size,
+            )
+        )
 
     def test_merge_with_auto_compression_creates_final_pdf(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -538,12 +576,25 @@ class PDFToWordWorkflowTests(unittest.TestCase):
             docx_path = root / "page_images.docx"
             self._create_pdf(pdf_path, pages=1)
 
-            PDFToWordTool.convert_pdf_to_docx(
-                str(pdf_path), str(docx_path), mode="Page Images"
-            )
+            with fitz.open(pdf_path) as source:
+                expected = source[0].get_pixmap(dpi=150, alpha=False)
+
+            with mock.patch(
+                "src.tools.pdf2word.tool.Image.frombytes",
+                side_effect=AssertionError("Page Images should use the pixmap PNG encoder."),
+            ):
+                PDFToWordTool.convert_pdf_to_docx(
+                    str(pdf_path), str(docx_path), mode="Page Images"
+                )
 
             self.assertTrue(docx_path.exists())
             self.assertGreater(docx_path.stat().st_size, 0)
+            with zipfile.ZipFile(docx_path) as archive:
+                media_names = [name for name in archive.namelist() if name.startswith("word/media/")]
+                self.assertEqual(len(media_names), 1)
+                with Image.open(io.BytesIO(archive.read(media_names[0]))) as embedded:
+                    self.assertEqual(embedded.size, (expected.width, expected.height))
+                    self.assertEqual(embedded.convert("RGB").tobytes(), expected.samples)
 
     def test_pdf_to_word_ocr_text_creates_docx_with_mocked_tesseract(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -579,11 +630,13 @@ class PDFToWordWorkflowTests(unittest.TestCase):
             pdf_path = Path(temp_dir) / "text.pdf"
             self._create_pdf(pdf_path, pages=2)
 
-            report = PDFToWordTool.preflight_pdf(str(pdf_path), "1")
+            with mock.patch("src.tools.pdf2word.tool.fitz.open", wraps=fitz.open) as open_mock:
+                report = PDFToWordTool.preflight_pdf(str(pdf_path), "1")
 
             self.assertEqual(report["page_count"], 2)
             self.assertEqual(report["selected_page_count"], 1)
             self.assertFalse(report["image_only"])
+            open_mock.assert_called_once_with(str(pdf_path))
 
     def test_pdf_to_word_preflight_warns_image_only_pdf(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
