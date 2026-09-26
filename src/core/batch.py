@@ -108,11 +108,13 @@ class HeadlessBatchRunner:
             "skipped": 0,
             "cancelled": False,
         }
+        cancelled_jobs = 0
         processor = BatchProcessor()
 
         for index, job in enumerate(job_list, start=1):
             if cancellation_check and cancellation_check():
                 result["cancelled"] = True
+                cancelled_jobs += 1
                 report.add(job.source, status="cancelled", message="Cancelled before job.")
                 break
             failed_this_job = False
@@ -144,6 +146,12 @@ class HeadlessBatchRunner:
             if failed_this_job and stop_on_error:
                 break
 
+        report.job_summary = {
+            "success": result["success"],
+            "failed": result["failed"],
+            "skipped": result["skipped"],
+            "cancelled": cancelled_jobs,
+        }
         result["report_path"] = report.write()
         return result
 

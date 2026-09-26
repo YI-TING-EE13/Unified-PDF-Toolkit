@@ -50,6 +50,7 @@ class WorkflowReport:
     options: Dict[str, Any] = field(default_factory=dict)
     records: List[WorkflowRecord] = field(default_factory=list)
     _started_timer: float = field(default_factory=perf_counter)
+    job_summary: Optional[Dict[str, int]] = None
 
     def add(
         self,
@@ -137,6 +138,11 @@ class WorkflowReport:
         return str(txt_path)
 
     def _summary(self) -> Dict[str, int]:
+        if self.job_summary is not None:
+            return {
+                status: int(self.job_summary.get(status, 0))
+                for status in ("success", "failed", "skipped", "cancelled")
+            }
         return {
             "success": len([r for r in self.records if r.status == "success"]),
             "failed": len([r for r in self.records if r.status == "failed"]),
