@@ -38,6 +38,10 @@ All direct commands accept:
 - `--json` for a machine-readable final summary
 - `--quiet` to suppress progress messages
 
+Compression targets include a stable identifier derived from the resolved
+source path. Same-named files from different folders therefore keep separate
+targets, while repeated runs of the same source use the same conflict target.
+
 ## Managed Unlimited-OCR commands
 
 The advanced local OCR deployment commands are separate from normal batch jobs.

@@ -1,3 +1,4 @@
+import hashlib
 import os
 from pathlib import Path
 from typing import Optional
@@ -55,8 +56,9 @@ def normalize_path(path: str) -> str:
 def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_override: Optional[str] = None) -> str:
     """
     Generates the output file path based on standard naming conventions.
-    Format: {filename}_compressed{ext}. Conflict policy is applied later to
-    this stable logical output path.
+    Format: {filename}_compressed_{source_id}{ext}. The stable source ID is
+    derived from the resolved source path so same-named files remain distinct.
+    Conflict policy is applied later to this logical output path.
     
     Args:
         input_path (str): Source file path.
@@ -69,6 +71,12 @@ def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_overr
     """
     input_path = normalize_path(input_path)
     input_p = Path(input_path)
+    try:
+        resolved_input = input_p.resolve()
+    except (OSError, RuntimeError):
+        resolved_input = input_p
+    source_identity = os.path.normcase(str(resolved_input))
+    source_id = hashlib.sha256(source_identity.encode("utf-8")).hexdigest()
     
     # Determine Output Directory
     if output_dir:
@@ -85,10 +93,10 @@ def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_overr
         out_dir.mkdir(parents=True, exist_ok=True)
 
     # Keep the logical output stable so skip/overwrite can find it across runs.
-    stem = input_p.stem
-    extension = ext_override if ext_override else input_p.suffix
+    stem = resolved_input.stem
+    extension = ext_override if ext_override else resolved_input.suffix
 
-    new_filename = f"{stem}_compressed{extension}"
+    new_filename = f"{stem}_compressed_{source_id}{extension}"
     return str(out_dir / new_filename)
 
 def check_permissions(path: str, mode: str = 'r') -> bool:

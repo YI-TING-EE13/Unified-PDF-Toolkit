@@ -16,6 +16,7 @@ import fitz
 from src.cli import _human_plan, main
 from src.core.batch import BatchJob, HeadlessBatchRunner
 from src.utils.diagnostics import _tesseract_language_check
+from src.utils.file_ops import get_output_path
 
 
 def create_pdf(path: Path, pages: int = 1) -> None:
@@ -35,7 +36,9 @@ class CommandLineTests(unittest.TestCase):
             root = Path(temp_dir)
             source = root / "source.txt"
             output_dir = root / "out"
-            expected_output = output_dir / "source_compressed.txt.gz"
+            expected_output = Path(
+                get_output_path(str(source), str(output_dir), ".txt.gz")
+            )
             source.write_text("first version", encoding="utf-8")
             job = BatchJob(str(source), "compress")
 
@@ -71,7 +74,88 @@ class CommandLineTests(unittest.TestCase):
                     [job], str(output_dir), conflict_policy="rename"
                 )
                 self.assertEqual(renamed["success"], 1)
-                self.assertTrue((output_dir / "source_compressed.txt_2.gz").is_file())
+                renamed_output = expected_output.with_name(
+                    f"{expected_output.stem}_2{expected_output.suffix}"
+                )
+                self.assertTrue(renamed_output.is_file())
+
+    def test_compression_conflicts_keep_same_basename_sources_independent(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source_a = root / "dir_a" / "same.txt"
+            source_b = root / "dir_b" / "same.txt"
+            output_dir = root / "out"
+            source_a.parent.mkdir()
+            source_b.parent.mkdir()
+            source_a.write_text("A initial", encoding="utf-8")
+            source_b.write_text("B initial", encoding="utf-8")
+            target_a = Path(
+                get_output_path(str(source_a), str(output_dir), ".txt.gz")
+            )
+            target_b = Path(
+                get_output_path(str(source_b), str(output_dir), ".txt.gz")
+            )
+            self.assertNotEqual(target_a, target_b)
+            self.assertEqual(
+                Path(get_output_path(str(source_a), str(output_dir), ".txt.gz")),
+                target_a,
+            )
+            jobs_a = [BatchJob(str(source_a), "compress")]
+            jobs_b = [BatchJob(str(source_b), "compress")]
+
+            def read_compressed(path: Path) -> str:
+                with gzip.open(path, "rt", encoding="utf-8") as compressed:
+                    return compressed.read()
+
+            with mock.patch("src.utils.workflow.add_recent_path"):
+                first_a = HeadlessBatchRunner.run_jobs(
+                    jobs_a, str(output_dir), conflict_policy="skip"
+                )
+                time.sleep(1.05)
+                first_b = HeadlessBatchRunner.run_jobs(
+                    jobs_b, str(output_dir), conflict_policy="skip"
+                )
+                time.sleep(1.05)
+                skipped_a = HeadlessBatchRunner.run_jobs(
+                    jobs_a, str(output_dir), conflict_policy="skip"
+                )
+                skipped_b = HeadlessBatchRunner.run_jobs(
+                    jobs_b, str(output_dir), conflict_policy="skip"
+                )
+
+                self.assertEqual(first_a["success"], 1)
+                self.assertEqual(first_b["success"], 1)
+                self.assertEqual(skipped_a["skipped"], 1)
+                self.assertEqual(skipped_b["skipped"], 1)
+                self.assertEqual(read_compressed(target_a), "A initial")
+                self.assertEqual(read_compressed(target_b), "B initial")
+
+                source_b.write_text("B updated", encoding="utf-8")
+                overwrite_b = HeadlessBatchRunner.run_jobs(
+                    jobs_b, str(output_dir), conflict_policy="overwrite"
+                )
+                self.assertEqual(overwrite_b["success"], 1)
+                self.assertEqual(read_compressed(target_a), "A initial")
+                self.assertEqual(read_compressed(target_b), "B updated")
+
+                source_a.write_text("A updated", encoding="utf-8")
+                overwrite_a = HeadlessBatchRunner.run_jobs(
+                    jobs_a, str(output_dir), conflict_policy="overwrite"
+                )
+                self.assertEqual(overwrite_a["success"], 1)
+                self.assertEqual(read_compressed(target_a), "A updated")
+                self.assertEqual(read_compressed(target_b), "B updated")
+
+                renamed = HeadlessBatchRunner.run_jobs(
+                    jobs_a, str(output_dir), conflict_policy="rename"
+                )
+                renamed_target = target_a.with_name(
+                    f"{target_a.stem}_2{target_a.suffix}"
+                )
+                self.assertEqual(renamed["success"], 1)
+                self.assertTrue(renamed_target.is_file())
+                self.assertEqual(read_compressed(renamed_target), "A updated")
+                self.assertEqual(read_compressed(target_b), "B updated")
 
     def test_blocked_ocr_plan_is_actionable_and_does_not_offer_setup(self):
         payload = {
