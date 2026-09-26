@@ -24,7 +24,7 @@ from .workflow import (
     normalise_output_formats,
     user_safe_ocr_error_message,
 )
-from ..utils.file_ops import resolve_output_path
+from ..utils.file_ops import create_staged_output
 from ..utils.workflow import get_conflict_policy
 
 DOCUMENT_OCR_BACKEND_TESSERACT = "tesseract"
@@ -160,15 +160,21 @@ def write_document_ocr_outputs(
         requested = output_dir / (
             f"{source_name.rsplit('.', 1)[0]}_{filename_suffix}.{output_format}"
         )
-        output_path = resolve_output_path(str(requested), get_conflict_policy())
-        if output_path is None:
+        transaction = create_staged_output(str(requested), get_conflict_policy())
+        if transaction is None:
             continue
         content = (
             document_markdown_output(source_name, result, backend_label=backend_label)
             if output_format == "md"
             else document_text_output(source_name, result, backend_label=backend_label)
         )
-        Path(output_path).write_text(content, encoding="utf-8")
+        try:
+            transaction.staging_path.write_text(content, encoding="utf-8")
+            output_path = transaction.commit()
+        finally:
+            transaction.cleanup()
+        if output_path is None:
+            continue
         outputs.append(
             AdvancedOcrOutput(source=source_name, path=output_path, format=output_format)
         )

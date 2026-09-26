@@ -5,7 +5,7 @@ from ..utils.file_ops import (
     get_output_path,
     check_permissions,
     get_file_size,
-    resolve_compression_output_path,
+    create_staged_compression_output,
 )
 from ..utils.logger import setup_logger
 from .base import BaseCompressor
@@ -151,13 +151,13 @@ class BatchProcessor:
                 # 2. Output Path Preparation
                 # Text files receive a special extension override (.gz)
                 ext_override = '.txt.gz' if ext == '.txt' else None
-                resolved_output_path = resolve_compression_output_path(
+                transaction = create_staged_compression_output(
                     input_path,
                     output_dir,
                     ext_override=ext_override,
                     conflict_policy=conflict_policy,
                 )
-                if resolved_output_path is None:
+                if transaction is None:
                     output_path = get_output_path(
                         input_path, output_dir, ext_override=ext_override
                     )
@@ -171,58 +171,78 @@ class BatchProcessor:
                         }
                     )
                     continue
-                output_path = resolved_output_path
+                output_path = str(transaction.initial_path)
+                try:
+                    # 3. Permission Check
+                    if not check_permissions(os.path.dirname(output_path), 'w'):
+                        msg = f"Permission denied for output directory: {output_path}"
+                        self.logger.error(msg)
+                        results['failed'] += 1
+                        results['errors'].append(msg)
+                        results['records'].append(
+                            {
+                                'source': input_path,
+                                'output': output_path,
+                                'status': 'failed',
+                                'message': msg,
+                            }
+                        )
+                        continue
 
-                # 3. Permission Check
-                if not check_permissions(os.path.dirname(output_path), 'w'):
-                    msg = f"Permission denied for output directory: {output_path}"
-                    self.logger.error(msg)
-                    results['failed'] += 1
-                    results['errors'].append(msg)
-                    results['records'].append(
-                        {
-                            'source': input_path,
-                            'output': output_path,
-                            'status': 'failed',
-                            'message': msg,
-                        }
-                    )
-                    continue
+                    # 4. Execution
+                    if progress_callback:
+                        progress_callback(i, total, f"Processing {os.path.basename(input_path)}")
 
-                # 4. Execution
-                if progress_callback:
-                    progress_callback(i, total, f"Processing {os.path.basename(input_path)}")
-                
-                original_size = get_file_size(input_path)
-                success = handler.compress(input_path, output_path)
-                
-                if success:
-                    compressed_size = get_file_size(output_path)
+                    original_size = get_file_size(input_path)
+                    success = handler.compress(input_path, str(transaction.staging_path))
+
+                    if not success:
+                        results['failed'] += 1
+                        results['errors'].append(f"Compression failed for {input_path}")
+                        results['records'].append(
+                            {
+                                'source': input_path,
+                                'output': output_path,
+                                'status': 'failed',
+                                'message': 'Compression failed.',
+                            }
+                        )
+                        continue
+                    if not transaction.staging_path.is_file():
+                        raise OSError("Compression did not materialize the output file.")
+
+                    compressed_size = get_file_size(str(transaction.staging_path))
+                    committed_path = transaction.commit()
+                    if committed_path is None:
+                        results['skipped'] += 1
+                        results['records'].append(
+                            {
+                                'source': input_path,
+                                'output': get_output_path(
+                                    input_path, output_dir, ext_override=ext_override
+                                ),
+                                'status': 'skipped',
+                                'message': 'Output appeared before commit and was preserved.',
+                            }
+                        )
+                        continue
+
                     saved = original_size - compressed_size
                     # Note: Negative saved bytes (file grew) is possible for very small files
                     # due to header overhead. We accept this as valid output.
-                    
+
                     results['success'] += 1
                     results['total_saved_bytes'] += saved
                     results['records'].append(
                         {
                             'source': input_path,
-                            'output': output_path,
+                            'output': committed_path,
                             'status': 'success',
                             'message': '',
                         }
                     )
-                else:
-                    results['failed'] += 1
-                    results['errors'].append(f"Compression failed for {input_path}")
-                    results['records'].append(
-                        {
-                            'source': input_path,
-                            'output': output_path,
-                            'status': 'failed',
-                            'message': 'Compression failed.',
-                        }
-                    )
+                finally:
+                    transaction.cleanup()
                     
             except Exception as e:
                 results['failed'] += 1

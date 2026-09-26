@@ -9,7 +9,7 @@ from typing import Any, Callable, Iterable, Mapping, Optional
 import fitz
 
 from ..utils.errors import friendly_error_message
-from ..utils.file_ops import resolve_output_path
+from ..utils.file_ops import create_staged_output
 from ..utils.workflow import WorkflowReport, new_job_summary
 from .processor import BatchProcessor
 
@@ -242,22 +242,28 @@ class HeadlessBatchRunner:
                     raise ValueError(
                         "OCR preprocessing must be None, Grayscale, Auto Contrast, or Threshold."
                     )
-            output_path = resolve_output_path(
+            transaction = create_staged_output(
                 str(Path(output_dir) / f"{Path(job.source).stem}.docx"),
                 conflict_policy,
             )
-            if output_path is None:
+            if transaction is None:
                 return []
-            PDFToWordTool.convert_pdf_to_docx(
-                job.source,
-                output_path,
-                range_text=str(job.options.get("page_range", "")),
-                mode=mode,
-                ocr_lang=str(job.options.get("ocr_lang", "eng")),
-                ocr_dpi=ocr_dpi,
-                ocr_preprocess=ocr_preprocess,
-            )
-            return [output_path]
+            try:
+                PDFToWordTool.convert_pdf_to_docx(
+                    job.source,
+                    str(transaction.staging_path),
+                    range_text=str(job.options.get("page_range", "")),
+                    mode=mode,
+                    ocr_lang=str(job.options.get("ocr_lang", "eng")),
+                    ocr_dpi=ocr_dpi,
+                    ocr_preprocess=ocr_preprocess,
+                )
+                if not transaction.staging_path.is_file():
+                    raise OSError("PDF-to-Word conversion did not create its output file.")
+                committed_path = transaction.commit()
+                return [committed_path] if committed_path is not None else []
+            finally:
+                transaction.cleanup()
 
         raise ValueError(f"Unsupported batch operation: {operation}")
 
@@ -294,18 +300,27 @@ class HeadlessBatchRunner:
                         Path(output_dir)
                         / f"{Path(input_path).stem}_page_{page_index + 1}.{normalized_format}"
                     )
-                    output_path = resolve_output_path(str(requested), conflict_policy)
-                    if output_path is None:
+                    transaction = create_staged_output(str(requested), conflict_policy)
+                    if transaction is None:
                         continue
                     try:
-                        pixmap.save(output_path)
+                        pixmap.save(str(transaction.staging_path))
                     except Exception:
-                        # Only inspect the exact path returned for this page; never
-                        # infer job outputs by scanning the destination directory.
-                        if Path(output_path).is_file():
-                            outputs.append(output_path)
+                        # Preserve explicit partial-artifact reporting while ensuring
+                        # the staged partial file follows the same collision policy.
+                        if transaction.staging_path.is_file():
+                            committed_path = transaction.commit()
+                            if committed_path is not None:
+                                outputs.append(committed_path)
                         raise
-                    outputs.append(output_path)
+                    else:
+                        if not transaction.staging_path.is_file():
+                            raise OSError("PDF page rendering did not create its output file.")
+                        committed_path = transaction.commit()
+                        if committed_path is not None:
+                            outputs.append(committed_path)
+                    finally:
+                        transaction.cleanup()
         except Exception as exc:
             raise BatchJobFailure(str(exc), outputs) from exc
         return outputs

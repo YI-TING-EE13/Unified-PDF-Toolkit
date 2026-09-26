@@ -19,7 +19,7 @@ from typing import List, Optional, Dict, Any
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
@@ -280,10 +280,10 @@ class ConverterTool(BaseTool):
                         pix = page.get_pixmap(dpi=dpi)
                         out_name = f"{base_name}_page_{i + 1}.{fmt}"
                         requested_path = os.path.join(out_dir, out_name)
-                        out_path = resolve_output_path(
+                        transaction = create_staged_output(
                             requested_path, get_conflict_policy()
                         )
-                        if out_path is None:
+                        if transaction is None:
                             current_page += 1
                             skipped_count += 1
                             report.add(
@@ -293,9 +293,24 @@ class ConverterTool(BaseTool):
                                 message="Output exists and conflict policy is skip.",
                             )
                             continue
-                        pix.save(out_path)
-                        report.add(pdf_path, out_path)
-                        output_count += 1
+                        try:
+                            pix.save(str(transaction.staging_path))
+                            if not transaction.staging_path.is_file():
+                                raise OSError("Page rendering did not create its output file.")
+                            committed_path = transaction.commit()
+                            if committed_path is None:
+                                skipped_count += 1
+                                report.add(
+                                    pdf_path,
+                                    requested_path,
+                                    status="skipped",
+                                    message="Output appeared before commit and was preserved.",
+                                )
+                            else:
+                                report.add(pdf_path, committed_path)
+                                output_count += 1
+                        finally:
+                            transaction.cleanup()
 
                         current_page += 1
 

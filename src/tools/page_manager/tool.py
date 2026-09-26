@@ -21,7 +21,7 @@ from typing import List, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
@@ -675,8 +675,8 @@ class PageManagerTool(BaseTool):
                 self.queue.put(("cancelled", f"Cancelled before save.\nReport: {report_path}"))
                 return
             os.makedirs(output_dir, exist_ok=True)
-            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
-            if resolved_output_path is None:
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
                 report.count_job("skipped")
                 job_status_recorded = True
                 report.add(
@@ -697,7 +697,36 @@ class PageManagerTool(BaseTool):
                     )
                 )
                 return
-            self.doc.save(resolved_output_path, garbage=3, deflate=True)
+            try:
+                self.doc.save(
+                    str(transaction.staging_path), garbage=3, deflate=True
+                )
+                if not transaction.staging_path.is_file():
+                    raise OSError("Page management did not create its output file.")
+                resolved_output_path = transaction.commit()
+            finally:
+                transaction.cleanup()
+            if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
+                report.add(
+                    self.current_pdf_path or "",
+                    output_path,
+                    status="skipped",
+                    message="Output appeared before commit and was preserved.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "message": "Skipped because output appeared before commit.",
+                            "output_path": output_path,
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
             report.count_job("success")
             job_status_recorded = True
             report.add(self.current_pdf_path or "", resolved_output_path)

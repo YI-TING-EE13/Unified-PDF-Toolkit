@@ -2,13 +2,18 @@ import gzip
 import string
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from unittest import mock
 
 from src.core.processor import BatchProcessor
 from src.utils.file_ops import (
     FILESYSTEM_MAX_COMPONENT_BYTES,
     WINDOWS_MAX_COMPONENT_UNITS,
+    create_staged_compression_output,
+    create_staged_output,
     get_output_path,
     resolve_compression_output_path,
 )
@@ -208,6 +213,277 @@ class StableCompressionOutputPathTests(unittest.TestCase):
             self.assertLessEqual(_component_bytes(output), FILESYSTEM_MAX_COMPONENT_BYTES)
             output.name.encode("utf-8")
             self.assertTrue(output.name.startswith("😀"))
+
+
+class AtomicOutputPublicationTests(unittest.TestCase):
+    def test_rename_preserves_foreign_files_created_after_lookup(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            transaction = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(transaction)
+            transaction.staging_path.write_bytes(b"our output")
+
+            requested.write_bytes(b"foreign base")
+            requested.with_name("output_2.pdf").write_bytes(b"foreign _2")
+
+            committed = transaction.commit()
+            try:
+                self.assertEqual(committed, str(requested.with_name("output_3.pdf")))
+                self.assertEqual(requested.read_bytes(), b"foreign base")
+                self.assertEqual(
+                    requested.with_name("output_2.pdf").read_bytes(), b"foreign _2"
+                )
+                self.assertEqual(
+                    requested.with_name("output_3.pdf").read_bytes(), b"our output"
+                )
+            finally:
+                transaction.cleanup()
+
+    def test_skip_does_not_overwrite_a_file_created_after_lookup(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            transaction = create_staged_output(str(requested), "skip")
+            self.assertIsNotNone(transaction)
+            transaction.staging_path.write_bytes(b"our output")
+            requested.write_bytes(b"foreign output")
+
+            try:
+                self.assertIsNone(transaction.commit())
+                self.assertEqual(requested.read_bytes(), b"foreign output")
+            finally:
+                transaction.cleanup()
+
+    def test_concurrent_rename_producers_publish_distinct_outputs(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            transactions = [
+                create_staged_output(str(requested), "rename") for _ in range(2)
+            ]
+            self.assertTrue(all(transaction is not None for transaction in transactions))
+            for index, transaction in enumerate(transactions, start=1):
+                transaction.staging_path.write_bytes(f"producer-{index}".encode())
+
+            barrier = threading.Barrier(2)
+
+            def commit(transaction):
+                barrier.wait(timeout=5)
+                return transaction.commit()
+
+            try:
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    outputs = list(executor.map(commit, transactions))
+
+                self.assertEqual(len(set(outputs)), 2)
+                self.assertEqual(
+                    {Path(output).name for output in outputs},
+                    {"output.pdf", "output_2.pdf"},
+                )
+                self.assertEqual(
+                    {Path(output).read_bytes() for output in outputs},
+                    {b"producer-1", b"producer-2"},
+                )
+            finally:
+                for transaction in transactions:
+                    transaction.cleanup()
+
+    def test_overwrite_replaces_existing_target_without_delete_first(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            requested.write_bytes(b"old output")
+            transaction = create_staged_output(str(requested), "overwrite")
+            self.assertIsNotNone(transaction)
+            transaction.staging_path.write_bytes(b"new output")
+            original_replace = os.replace
+            target_existed_at_replace = []
+
+            def observe_replace(source, target):
+                target_existed_at_replace.append(Path(target).is_file())
+                return original_replace(source, target)
+
+            try:
+                with mock.patch("src.utils.file_ops.os.replace", side_effect=observe_replace):
+                    self.assertEqual(transaction.commit(), str(requested))
+                self.assertEqual(target_existed_at_replace, [True])
+                self.assertEqual(requested.read_bytes(), b"new output")
+            finally:
+                transaction.cleanup()
+
+    def test_overwrite_does_not_interfere_with_a_concurrent_rename_transaction(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            requested.write_bytes(b"old output")
+            rename_transaction = create_staged_output(str(requested), "rename")
+            overwrite_transaction = create_staged_output(str(requested), "overwrite")
+            self.assertIsNotNone(rename_transaction)
+            self.assertIsNotNone(overwrite_transaction)
+            rename_transaction.staging_path.write_bytes(b"renamed output")
+            overwrite_transaction.staging_path.write_bytes(b"replacement output")
+
+            try:
+                self.assertEqual(overwrite_transaction.commit(), str(requested))
+                self.assertEqual(
+                    rename_transaction.commit(),
+                    str(requested.with_name("output_2.pdf")),
+                )
+                self.assertEqual(requested.read_bytes(), b"replacement output")
+                self.assertEqual(
+                    requested.with_name("output_2.pdf").read_bytes(), b"renamed output"
+                )
+            finally:
+                rename_transaction.cleanup()
+                overwrite_transaction.cleanup()
+
+    def test_generic_rename_suffixes_remain_bounded_through_ten(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / f"{'n' * 251}.pdf"
+            outputs = []
+            for index in range(1, 11):
+                transaction = create_staged_output(str(requested), "rename")
+                self.assertIsNotNone(transaction)
+                transaction.staging_path.write_bytes(str(index).encode())
+                try:
+                    outputs.append(Path(transaction.commit()))
+                finally:
+                    transaction.cleanup()
+
+            self.assertIn("_10.pdf", outputs[-1].name)
+            self.assertTrue(
+                all(_component_units(output) <= WINDOWS_MAX_COMPONENT_UNITS for output in outputs)
+            )
+            self.assertTrue(
+                all(_component_bytes(output) <= FILESYSTEM_MAX_COMPONENT_BYTES for output in outputs)
+            )
+
+    def test_compression_transaction_keeps_compound_extension_and_bounded_suffixes(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source = root / f"{'n' * 220}.txt"
+            source.write_text("source", encoding="utf-8")
+            output_dir = root / "out"
+            outputs = []
+            for index in range(1, 11):
+                transaction = create_staged_compression_output(
+                    str(source), str(output_dir), ".txt.gz", "rename"
+                )
+                self.assertIsNotNone(transaction)
+                transaction.staging_path.write_bytes(str(index).encode())
+                try:
+                    outputs.append(Path(transaction.commit()))
+                finally:
+                    transaction.cleanup()
+
+            self.assertIn("_10.txt.gz", outputs[-1].name)
+            self.assertTrue(
+                all(output.name.endswith(".txt.gz") for output in outputs)
+            )
+            self.assertTrue(
+                all(_component_units(output) <= WINDOWS_MAX_COMPONENT_UNITS for output in outputs)
+            )
+            self.assertTrue(
+                all(_component_bytes(output) <= FILESYSTEM_MAX_COMPONENT_BYTES for output in outputs)
+            )
+
+    def test_cleanup_only_removes_its_own_staging_directory(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            first = create_staged_output(str(requested), "rename")
+            second = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(first)
+            self.assertIsNotNone(second)
+            first_stage = first.staging_path
+            second_stage = second.staging_path
+            first_stage.write_bytes(b"first")
+            second_stage.write_bytes(b"second")
+
+            first.cleanup()
+
+            self.assertFalse(first_stage.parent.exists())
+            self.assertTrue(second_stage.is_file())
+            self.assertEqual(second.commit(), str(requested))
+            second.cleanup()
+            self.assertEqual(requested.read_bytes(), b"second")
+
+    def test_abandoned_staging_directory_does_not_reserve_a_logical_target(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            abandoned = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(abandoned)
+            abandoned.staging_path.write_bytes(b"crash artifact")
+            abandoned_staging_dir = abandoned.staging_directory
+
+            active = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(active)
+            active.staging_path.write_bytes(b"active output")
+            try:
+                self.assertEqual(active.initial_path, requested)
+                self.assertEqual(active.commit(), str(requested))
+                self.assertEqual(requested.read_bytes(), b"active output")
+                self.assertTrue(abandoned_staging_dir.is_dir())
+            finally:
+                active.cleanup()
+                abandoned.cleanup()
+
+    def test_existing_skip_target_returns_no_transaction(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            requested.write_bytes(b"existing")
+
+            self.assertIsNone(create_staged_output(str(requested), "skip"))
+            self.assertEqual(requested.read_bytes(), b"existing")
+
+    def test_compressor_preserves_destinations_claimed_after_lookup(self):
+        from src.utils import file_ops
+
+        for policy in ("skip", "rename"):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory(
+                dir=Path.cwd()
+            ) as temp_dir:
+                root = Path(temp_dir)
+                source = root / "source.txt"
+                source.write_text("compress this payload " * 20, encoding="utf-8")
+                output_dir = root / "out"
+                logical_output = Path(
+                    get_output_path(str(source), str(output_dir), ".txt.gz")
+                )
+                injected = {}
+                original_publish = file_ops._publish_without_replacing
+
+                def inject_foreign_file(staged_path, destination):
+                    target = Path(destination)
+                    if not injected:
+                        target.write_bytes(b"foreign compressed output")
+                        injected["path"] = target
+                    return original_publish(staged_path, destination)
+
+                with mock.patch(
+                    "src.utils.file_ops._publish_without_replacing",
+                    side_effect=inject_foreign_file,
+                ):
+                    result = BatchProcessor().process_files(
+                        [str(source)],
+                        str(output_dir),
+                        "Medium",
+                        conflict_policy=policy,
+                    )
+
+                self.assertEqual(injected["path"], logical_output)
+                self.assertEqual(logical_output.read_bytes(), b"foreign compressed output")
+                if policy == "skip":
+                    self.assertEqual(result["success"], 0)
+                    self.assertEqual(result["skipped"], 1)
+                    self.assertFalse(logical_output.with_name(
+                        f"{logical_output.name.removesuffix('.txt.gz')}_2.txt.gz"
+                    ).exists())
+                else:
+                    self.assertEqual(result["success"], 1, result["errors"])
+                    output = Path(result["records"][0]["output"])
+                    self.assertEqual(
+                        output.name,
+                        f"{logical_output.name.removesuffix('.txt.gz')}_2.txt.gz",
+                    )
+                    with gzip.open(output, "rt", encoding="utf-8") as compressed:
+                        self.assertEqual(compressed.read(), source.read_text(encoding="utf-8"))
+                self.assertEqual(list(output_dir.glob(".pdf-toolkit-stage-*")), [])
 
     def test_deep_output_directory_is_not_rejected_for_its_total_path_length(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:

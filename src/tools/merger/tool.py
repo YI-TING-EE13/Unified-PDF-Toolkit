@@ -13,7 +13,6 @@ import fitz
 import threading
 import os
 import queue
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Any, Dict, Tuple
@@ -27,7 +26,7 @@ from ...utils.file_ops import (
     get_default_save_dir,
     get_file_size,
     format_size,
-    resolve_output_path,
+    create_staged_output,
 )
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
@@ -425,7 +424,8 @@ class MergerTool(BaseTool):
         compression_level: str,
     ) -> None:
         """Worker thread for merging."""
-        staging_dir = None
+        transaction = None
+        intermediate_output_path = None
         doc = None
         processed_inputs: List[str] = []
         job_summary = new_job_summary()
@@ -460,8 +460,8 @@ class MergerTool(BaseTool):
             )
 
         try:
-            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
-            if resolved_output_path is None:
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
                 report.count_job("skipped")
                 job_status_recorded = True
                 report.add(
@@ -482,15 +482,15 @@ class MergerTool(BaseTool):
                     )
                 )
                 return
-            output_path = resolved_output_path
-            output_dir = os.path.dirname(output_path) or os.getcwd()
-            os.makedirs(output_dir, exist_ok=True)
-            staging_dir = tempfile.TemporaryDirectory(
-                prefix="pdf_toolkit_merge_",
-                dir=output_dir,
+            merge_output_path = (
+                str(transaction.staging_directory / "merged.pdf")
+                if auto_compress
+                else str(transaction.staging_path)
             )
-            merge_output_path = str(Path(staging_dir.name) / "merged.pdf")
-            staged_output_path = merge_output_path
+            intermediate_output_path = (
+                Path(merge_output_path) if auto_compress else None
+            )
+            staged_output_path = str(transaction.staging_path)
 
             self.queue.put(("progress", (0, "Merging PDFs...")))
             doc = fitz.open()
@@ -538,7 +538,6 @@ class MergerTool(BaseTool):
                 self.queue.put(("busy", (True, "Compressing merged PDF...")))
                 original_size = get_file_size(merge_output_path)
                 compressor = PDFCompressor(compression_level)
-                staged_output_path = str(Path(staging_dir.name) / "compressed.pdf")
                 if not compressor.compress(merge_output_path, staged_output_path):
                     raise RuntimeError("Merge completed, but post-merge compression failed.")
                 self.queue.put(("busy", (False, "Compression complete.")))
@@ -560,7 +559,29 @@ class MergerTool(BaseTool):
             if self.cancel_token.is_cancelled():
                 report_cancelled()
                 return
-            Path(staged_output_path).replace(output_path)
+            resolved_output_path = transaction.commit()
+            if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
+                report.add(
+                    "",
+                    output_path,
+                    status="skipped",
+                    message="Output appeared before commit and was preserved.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "output_path": output_path,
+                            "detail": "Skipped because output appeared before commit.",
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
+            output_path = resolved_output_path
 
             # Do not expose aggregate-output success rows until the final
             # uncompressed or compressed artifact has been committed.
@@ -590,5 +611,10 @@ class MergerTool(BaseTool):
         finally:
             if doc is not None:
                 doc.close()
-            if staging_dir is not None:
-                staging_dir.cleanup()
+            if intermediate_output_path is not None:
+                try:
+                    intermediate_output_path.unlink()
+                except FileNotFoundError:
+                    pass
+            if transaction is not None:
+                transaction.cleanup()

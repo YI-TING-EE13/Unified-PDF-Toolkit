@@ -14,7 +14,6 @@ import fitz
 import threading
 import io
 import queue
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +22,7 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
@@ -254,7 +253,7 @@ class Image2PDFTool(BaseTool):
         )
         job_status_recorded = False
         doc = None
-        staging_dir = None
+        transaction = None
         processed_inputs: List[str] = []
 
         def report_cancelled(source: str = "") -> None:
@@ -278,8 +277,8 @@ class Image2PDFTool(BaseTool):
             doc = fitz.open()
             total = len(files)
             last_update = 0.0
-            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
-            if resolved_output_path is None:
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
                 report.count_job("skipped")
                 job_status_recorded = True
                 report.add(
@@ -356,24 +355,38 @@ class Image2PDFTool(BaseTool):
                 report_cancelled()
                 return
 
-            # Save away from the final path so a failed write cannot leave a
-            # partial PDF where the previous output used to be.
-            output_parent = Path(resolved_output_path).parent
-            output_parent.mkdir(parents=True, exist_ok=True)
-            staging_dir = tempfile.TemporaryDirectory(
-                prefix="pdf_toolkit_image2pdf_",
-                dir=str(output_parent),
-            )
-            staged_output_path = Path(staging_dir.name) / Path(resolved_output_path).name
-            doc.save(str(staged_output_path), garbage=3, deflate=True)
+            # Write privately, then acquire/publish the final directory entry
+            # atomically under the selected conflict policy.
+            doc.save(str(transaction.staging_path), garbage=3, deflate=True)
             doc.close()
             doc = None
-            if not staged_output_path.is_file():
+            if not transaction.staging_path.is_file():
                 raise OSError("Image-to-PDF save did not materialize the output file.")
             if self.cancel_token.is_cancelled():
                 report_cancelled()
                 return
-            staged_output_path.replace(resolved_output_path)
+            resolved_output_path = transaction.commit()
+            if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
+                report.add(
+                    "",
+                    output_path,
+                    status="skipped",
+                    message="Output appeared before commit and was preserved.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "output_path": output_path,
+                            "detail": "Skipped because output appeared before commit.",
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
 
             # A successful report row means the final aggregate artifact now
             # exists, not merely that this input was inserted into memory.
@@ -400,5 +413,5 @@ class Image2PDFTool(BaseTool):
         finally:
             if doc is not None:
                 doc.close()
-            if staging_dir is not None:
-                staging_dir.cleanup()
+            if transaction is not None:
+                transaction.cleanup()

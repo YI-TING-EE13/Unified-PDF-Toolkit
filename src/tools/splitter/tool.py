@@ -20,7 +20,7 @@ from typing import List, Tuple, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
@@ -506,8 +506,10 @@ class SplitterTool(BaseTool):
                     new_doc.insert_pdf(doc, from_page=start, to_page=end)
                     out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
                     requested_path = os.path.join(out_dir, out_name)
-                    output_path = resolve_output_path(requested_path, get_conflict_policy())
-                    if output_path is None:
+                    transaction = create_staged_output(
+                        requested_path, get_conflict_policy()
+                    )
+                    if transaction is None:
                         report.add(
                             input_path,
                             requested_path,
@@ -515,7 +517,21 @@ class SplitterTool(BaseTool):
                             message="Output exists and conflict policy is skip.",
                         )
                         continue
-                    new_doc.save(output_path)
+                    try:
+                        new_doc.save(str(transaction.staging_path))
+                        if not transaction.staging_path.is_file():
+                            raise OSError("PDF split did not create its output file.")
+                        output_path = transaction.commit()
+                    finally:
+                        transaction.cleanup()
+                if output_path is None:
+                    report.add(
+                        input_path,
+                        requested_path,
+                        status="skipped",
+                        message="Output appeared before commit and was preserved.",
+                    )
+                    continue
                 report.add(input_path, output_path)
                 count += 1
                 self.queue.put(

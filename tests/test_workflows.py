@@ -27,6 +27,7 @@ from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.splitter.tool import SplitterTool
 from src.utils.diagnostics import DiagnosticCheck, diagnostics_to_text
 from src.utils.errors import error_hint, friendly_error_message
+from src.utils import file_ops
 from src.utils.workflow import WorkflowReport, new_job_summary
 
 
@@ -161,7 +162,7 @@ class CompressionWorkflowTests(unittest.TestCase):
             self.assertTrue(output_path.exists())
             with fitz.open(output_path) as merged:
                 self.assertEqual(merged.page_count, 2)
-            self.assertFalse(list(root.glob("pdf_toolkit_merge_*.pdf")))
+            self.assertFalse(list(root.glob(".pdf-toolkit-stage-*")))
             messages = []
             while not tool.queue.empty():
                 messages.append(tool.queue.get_nowait())
@@ -250,7 +251,7 @@ class ResourceLifecycleTests(unittest.TestCase):
             "src.tools.image2pdf.tool.fitz.open",
             return_value=document,
         ), mock.patch(
-            "src.tools.image2pdf.tool.resolve_output_path",
+            "src.tools.image2pdf.tool.create_staged_output",
             return_value=None,
         ):
             Image2PDFTool()._run_convert(
@@ -320,6 +321,113 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
         report_paths = list(output_dir.glob("*.json"))
         self.assertEqual(len(report_paths), 1)
         return json.loads(report_paths[0].read_text(encoding="utf-8"))
+
+    def test_image_to_pdf_preserves_destinations_claimed_after_lookup(self):
+        for policy in ("skip", "rename"):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory(
+                dir=Path.cwd()
+            ) as temp_dir:
+                root = Path(temp_dir)
+                image_path = root / "source.png"
+                Image.new("RGB", (24, 24), "white").save(image_path)
+                output_path = root / "combined.pdf"
+                injected = {}
+                original_publish = file_ops._publish_without_replacing
+
+                def inject_foreign_file(staged_path, destination):
+                    target = Path(destination)
+                    if not injected:
+                        target.write_bytes(b"foreign image-to-PDF output")
+                        injected["path"] = target
+                    return original_publish(staged_path, destination)
+
+                tool = Image2PDFTool()
+                with (
+                    mock.patch(
+                        "src.tools.image2pdf.tool.get_conflict_policy",
+                        return_value=policy,
+                    ),
+                    mock.patch(
+                        "src.utils.file_ops._publish_without_replacing",
+                        side_effect=inject_foreign_file,
+                    ),
+                ):
+                    tool._run_convert([str(image_path)], str(output_path), "Medium")
+
+                self.assertEqual(injected["path"], output_path)
+                self.assertEqual(output_path.read_bytes(), b"foreign image-to-PDF output")
+                payload = self._report_payload(root)
+                if policy == "skip":
+                    self.assertEqual(payload["summary"]["skipped"], 1)
+                    self.assertEqual(payload["summary"]["success"], 0)
+                    self.assertFalse(output_path.with_name("combined_2.pdf").exists())
+                    self.assertFalse(
+                        [row for row in payload["records"] if row["status"] == "success"]
+                    )
+                else:
+                    renamed = output_path.with_name("combined_2.pdf")
+                    self.assertEqual(payload["summary"]["success"], 1)
+                    self.assertEqual(
+                        {row["output"] for row in payload["records"]}, {str(renamed)}
+                    )
+                    with fitz.open(renamed) as document:
+                        self.assertEqual(document.page_count, 1)
+                self.assertFalse(list(root.glob(".pdf-toolkit-stage-*")))
+
+    def test_merger_preserves_destinations_claimed_after_lookup(self):
+        for auto_compress in (False, True):
+            for policy in ("skip", "rename"):
+                with self.subTest(auto_compress=auto_compress, policy=policy), tempfile.TemporaryDirectory(
+                    dir=Path.cwd()
+                ) as temp_dir:
+                    root = Path(temp_dir)
+                    source_path = root / "source.pdf"
+                    self._create_pdf(source_path, pages=1)
+                    output_path = root / "merged.pdf"
+                    injected = {}
+                    original_publish = file_ops._publish_without_replacing
+
+                    def inject_foreign_file(staged_path, destination):
+                        target = Path(destination)
+                        if not injected:
+                            target.write_bytes(b"foreign merger output")
+                            injected["path"] = target
+                        return original_publish(staged_path, destination)
+
+                    tool = MergerTool()
+                    with (
+                        mock.patch(
+                            "src.tools.merger.tool.get_conflict_policy",
+                            return_value=policy,
+                        ),
+                        mock.patch(
+                            "src.utils.file_ops._publish_without_replacing",
+                            side_effect=inject_foreign_file,
+                        ),
+                    ):
+                        tool._run_merge(
+                            [str(source_path)], str(output_path), auto_compress, "Medium"
+                        )
+
+                    self.assertEqual(injected["path"], output_path)
+                    self.assertEqual(output_path.read_bytes(), b"foreign merger output")
+                    payload = self._report_payload(root)
+                    if policy == "skip":
+                        self.assertEqual(payload["summary"]["skipped"], 1)
+                        self.assertEqual(payload["summary"]["success"], 0)
+                        self.assertFalse(output_path.with_name("merged_2.pdf").exists())
+                        self.assertFalse(
+                            [row for row in payload["records"] if row["status"] == "success"]
+                        )
+                    else:
+                        renamed = output_path.with_name("merged_2.pdf")
+                        self.assertEqual(payload["summary"]["success"], 1)
+                        self.assertEqual(
+                            {row["output"] for row in payload["records"]}, {str(renamed)}
+                        )
+                        with fitz.open(renamed) as document:
+                            self.assertEqual(document.page_count, 1)
+                    self.assertFalse(list(root.glob(".pdf-toolkit-stage-*")))
 
     def test_pdf_to_image_creates_one_image_per_page(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -500,7 +608,7 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
             self.assertFalse(
                 [row for row in payload["records"] if row["status"] == "success"]
             )
-            self.assertEqual(list(root.glob("pdf_toolkit_image2pdf_*")), [])
+            self.assertEqual(list(root.glob(".pdf-toolkit-stage-*")), [])
             document.close.assert_called_once_with()
 
     def test_image_to_pdf_cancellation_after_last_input_has_no_success_rows(self):
@@ -550,7 +658,7 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
             self.assertFalse(
                 [row for row in payload["records"] if row["status"] == "success"]
             )
-            self.assertEqual(list(root.glob("pdf_toolkit_image2pdf_*")), [])
+            self.assertEqual(list(root.glob(".pdf-toolkit-stage-*")), [])
 
     def test_merge_failure_after_one_input_has_no_aggregate_success_rows(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -612,7 +720,7 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
             self.assertFalse(
                 [row for row in payload["records"] if row["status"] == "success"]
             )
-            self.assertEqual(list(root.glob("pdf_toolkit_merge_*")), [])
+            self.assertEqual(list(root.glob(".pdf-toolkit-stage-*")), [])
             self.assertIn(
                 "forced save failure",
                 " ".join(row["message"] for row in payload["records"]),
@@ -637,7 +745,7 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
             self.assertFalse(
                 [row for row in payload["records"] if row["status"] == "success"]
             )
-            self.assertEqual(list(root.glob("pdf_toolkit_merge_*")), [])
+            self.assertEqual(list(root.glob(".pdf-toolkit-stage-*")), [])
 
     def test_merge_cancellation_after_last_input_has_no_success_rows(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -682,7 +790,7 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
             self.assertFalse(
                 [row for row in payload["records"] if row["status"] == "success"]
             )
-            self.assertEqual(list(root.glob("pdf_toolkit_merge_*")), [])
+            self.assertEqual(list(root.glob(".pdf-toolkit-stage-*")), [])
 
     def test_page_manager_save_writes_modified_pdf(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
