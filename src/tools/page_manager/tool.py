@@ -595,12 +595,32 @@ class PageManagerTool(BaseTool):
         if not output_path:
             return
 
+        transaction = None
         try:
-            new_doc = fitz.open()
-            for page_index in pages:
-                new_doc.insert_pdf(self.doc, from_page=page_index, to_page=page_index)
-            new_doc.save(output_path, garbage=3, deflate=True)
-            new_doc.close()
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
+                messagebox.showinfo("Success", "Skipped existing output.")
+                return
+
+            staging_path = transaction.staging_path
+            with fitz.open() as new_doc:
+                for page_index in pages:
+                    new_doc.insert_pdf(
+                        self.doc, from_page=page_index, to_page=page_index
+                    )
+                new_doc.save(str(staging_path), garbage=3, deflate=True)
+
+            if not staging_path.is_file():
+                raise OSError("Page extraction did not create its output file.")
+
+            resolved_output_path = transaction.commit()
+            if resolved_output_path is None:
+                messagebox.showinfo(
+                    "Success", "Skipped because output appeared before commit."
+                )
+                return
+
+            output_path = resolved_output_path
             set_setting("page_manager.output_dir", os.path.dirname(output_path))
             self.output_actions.set_path(output_path)
             self.status_lbl.config(text=f"Extracted {len(pages)} page(s) to {output_path}")
@@ -608,6 +628,9 @@ class PageManagerTool(BaseTool):
             messagebox.showinfo("Success", f"Extracted pages to {output_path}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to extract pages: {e}")
+        finally:
+            if transaction is not None:
+                transaction.cleanup()
 
     def _default_output_path(self) -> str:
         output_dir = get_setting("page_manager.output_dir", get_default_save_dir("Managed"))
