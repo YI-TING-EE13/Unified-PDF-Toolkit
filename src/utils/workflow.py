@@ -16,6 +16,11 @@ from .file_ops import format_size, get_file_size
 from .settings import add_recent_path, get_setting
 
 
+def new_job_summary() -> Dict[str, int]:
+    """Create explicit counters for logical workflow jobs."""
+    return {status: 0 for status in ("success", "failed", "skipped", "cancelled")}
+
+
 class CancellationToken:
     """Small thread-safe cancellation flag shared by GUI and worker code."""
 
@@ -50,7 +55,7 @@ class WorkflowReport:
     options: Dict[str, Any] = field(default_factory=dict)
     records: List[WorkflowRecord] = field(default_factory=list)
     _started_timer: float = field(default_factory=perf_counter)
-    job_summary: Optional[Dict[str, int]] = None
+    job_summary: Dict[str, int] = field(kw_only=True)
 
     def add(
         self,
@@ -69,6 +74,12 @@ class WorkflowReport:
                 output_size=get_file_size(output) if output else None,
             )
         )
+
+    def count_job(self, status: str) -> None:
+        """Count one logical job independently of the report record count."""
+        if status not in self.job_summary:
+            raise ValueError(f"Unknown workflow job status: {status}")
+        self.job_summary[status] += 1
 
     @property
     def elapsed_seconds(self) -> float:
@@ -138,16 +149,9 @@ class WorkflowReport:
         return str(txt_path)
 
     def _summary(self) -> Dict[str, int]:
-        if self.job_summary is not None:
-            return {
-                status: int(self.job_summary.get(status, 0))
-                for status in ("success", "failed", "skipped", "cancelled")
-            }
         return {
-            "success": len([r for r in self.records if r.status == "success"]),
-            "failed": len([r for r in self.records if r.status == "failed"]),
-            "skipped": len([r for r in self.records if r.status == "skipped"]),
-            "cancelled": len([r for r in self.records if r.status == "cancelled"]),
+            status: int(self.job_summary.get(status, 0))
+            for status in ("success", "failed", "skipped", "cancelled")
         }
 
     def _record_rows(self) -> List[Dict[str, Any]]:

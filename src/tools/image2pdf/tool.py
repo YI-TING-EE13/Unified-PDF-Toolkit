@@ -22,12 +22,13 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import get_default_save_dir, get_file_size, resolve_output_path
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -243,11 +244,14 @@ class Image2PDFTool(BaseTool):
         - Insert the compressed JPEG bytes directly into the PDF page.
         - Save with garbage collection and deflation.
         """
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Image to PDF",
             str(Path(output_path).parent),
             options={"compression": level, "conflict_policy": get_conflict_policy()},
+            job_summary=job_summary,
         )
+        job_status_recorded = False
         doc = None
         try:
             scale, quality = self.COMPRESSION_PRESETS.get(level, (0.75, 70))
@@ -256,6 +260,8 @@ class Image2PDFTool(BaseTool):
             last_update = 0.0
             resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
             if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
                 report.add(
                     "",
                     output_path,
@@ -273,6 +279,8 @@ class Image2PDFTool(BaseTool):
 
             for i, img_path in enumerate(files):
                 if self.cancel_token.is_cancelled():
+                    report.count_job("cancelled")
+                    job_status_recorded = True
                     report.add(img_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -318,7 +326,10 @@ class Image2PDFTool(BaseTool):
                     report.add(img_path, resolved_output_path)
 
                 except Exception as e:
+                    report.count_job("failed")
+                    job_status_recorded = True
                     report.add(img_path, status="failed", message=str(e))
+                    report.write()
                     self.queue.put(
                         ("error", f"Failed on image {Path(img_path).name}: {e}")
                     )
@@ -336,6 +347,12 @@ class Image2PDFTool(BaseTool):
             # Save with cleanup
             Path(resolved_output_path).parent.mkdir(parents=True, exist_ok=True)
             doc.save(resolved_output_path, garbage=3, deflate=True)
+            output_size = get_file_size(resolved_output_path)
+            for record in report.records:
+                if record.output == resolved_output_path:
+                    record.output_size = output_size
+            report.count_job("success")
+            job_status_recorded = True
 
             report_path = report.write()
             self.queue.put(
@@ -346,6 +363,9 @@ class Image2PDFTool(BaseTool):
             )
 
         except Exception as e:
+            if not job_status_recorded:
+                report.count_job("failed")
+                job_status_recorded = True
             report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

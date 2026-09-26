@@ -26,6 +26,7 @@ from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -448,6 +449,7 @@ class SplitterTool(BaseTool):
 
     def _run_split(self, input_path: str, out_dir: str, ranges_str: str) -> None:
         """Worker thread logic for PDF splitting."""
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Split PDF",
             out_dir,
@@ -455,6 +457,7 @@ class SplitterTool(BaseTool):
                 "ranges": ranges_str or "all",
                 "conflict_policy": get_conflict_policy(),
             },
+            job_summary=job_summary,
         )
         doc = None
         try:
@@ -466,6 +469,9 @@ class SplitterTool(BaseTool):
             try:
                 page_ranges = self._parse_ranges(ranges_str, total)
             except ValueError as exc:
+                report.count_job("failed")
+                report.add(input_path, status="failed", message=str(exc))
+                report.write()
                 self.queue.put(("error", str(exc)))
                 return
 
@@ -474,6 +480,7 @@ class SplitterTool(BaseTool):
             total_ranges = len(page_ranges)
             for idx, (start, end) in enumerate(page_ranges, start=1):
                 if self.cancel_token.is_cancelled():
+                    report.count_job("cancelled")
                     report.add(input_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -521,6 +528,7 @@ class SplitterTool(BaseTool):
                     )
                 )
 
+            report.count_job("success" if count else "skipped")
             report_path = report.write()
             self.queue.put(
                 (
@@ -533,6 +541,7 @@ class SplitterTool(BaseTool):
                 )
             )
         except Exception as e:
+            report.count_job("failed")
             report.add(input_path, status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

@@ -149,46 +149,94 @@ class BatchReportTests(unittest.TestCase):
                 report_txt.read_text(encoding="utf-8"),
             )
 
-    def test_failed_job_with_partial_output_counts_once(self):
+    def test_failed_job_reports_every_partial_artifact_without_multiplying_failure(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)
-            source = root / "source.pdf"
-            output_dir = root / "out"
-            partial_output = output_dir / "partial.png"
-            _create_pdf(source, pages=2)
-            job = BatchJob(str(source), "pdf-to-images", {"dpi": 72, "format": "png"})
+            cases = ((2, 2, 1), (3, 3, 2), (2, 1, 0))
 
-            def write_partial_then_fail(_job, _output_dir, _processor, _policy):
-                output_dir.mkdir(parents=True, exist_ok=True)
-                partial_output.write_bytes(b"partial artifact")
-                raise RuntimeError("conversion failed after first artifact")
+            class FakePixmap:
+                def __init__(self, page_number, calls, fail_on_call):
+                    self.page_number = page_number
+                    self.calls = calls
+                    self.fail_on_call = fail_on_call
 
-            with mock.patch("src.utils.workflow.add_recent_path"), mock.patch.object(
-                HeadlessBatchRunner,
-                "run_single_job",
-                side_effect=write_partial_then_fail,
-            ):
-                result = HeadlessBatchRunner.run_jobs([job], str(output_dir))
+                def save(self, output_path):
+                    self.calls[0] += 1
+                    if self.calls[0] == self.fail_on_call:
+                        raise RuntimeError("page write failed")
+                    Path(output_path).write_bytes(f"partial-{self.page_number}".encode())
 
-            report_txt = Path(result["report_path"])
-            payload = json.loads(
-                report_txt.with_suffix(".json").read_text(encoding="utf-8")
-            )
-            with report_txt.with_suffix(".csv").open(
-                newline="", encoding="utf-8"
-            ) as file:
-                csv_records = list(csv.DictReader(file))
+            class FakePage:
+                def __init__(self, page_number, calls, fail_on_call):
+                    self.page_number = page_number
+                    self.calls = calls
+                    self.fail_on_call = fail_on_call
 
-            self.assertTrue(partial_output.is_file())
-            self.assertEqual(result["failed"], 1)
-            self.assertEqual(payload["summary"]["failed"], 1)
-            self.assertEqual(len(payload["records"]), 1)
-            self.assertEqual(len(csv_records), 1)
-            self.assertEqual(csv_records[0]["status"], "failed")
-            self.assertIn(
-                "Summary: success=0, failed=1, skipped=0, cancelled=0",
-                report_txt.read_text(encoding="utf-8"),
-            )
+                def get_pixmap(self, dpi):
+                    return FakePixmap(self.page_number, self.calls, self.fail_on_call)
+
+            class FakeDocument:
+                def __init__(self, pages, calls, fail_on_call):
+                    self.page_count = pages
+                    self.calls = calls
+                    self.fail_on_call = fail_on_call
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *_args):
+                    return False
+
+                def __getitem__(self, index):
+                    return FakePage(index + 1, self.calls, self.fail_on_call)
+
+            for pages, fail_on_call, expected_partial_count in cases:
+                with self.subTest(
+                    pages=pages,
+                    fail_on_call=fail_on_call,
+                    expected_partial_count=expected_partial_count,
+                ):
+                    source = root / f"source-{pages}-{fail_on_call}.pdf"
+                    output_dir = root / f"out-{pages}-{fail_on_call}"
+                    source.write_bytes(b"fixture")
+                    calls = [0]
+                    document = FakeDocument(pages, calls, fail_on_call)
+                    job = BatchJob(
+                        str(source), "pdf-to-images", {"dpi": 72, "format": "png"}
+                    )
+
+                    with (
+                        mock.patch("src.utils.workflow.add_recent_path"),
+                        mock.patch(
+                            "src.tools.pdf2word.tool.PDFToWordTool.parse_page_range",
+                            return_value=None,
+                        ),
+                        mock.patch("src.core.batch.fitz.open", return_value=document),
+                    ):
+                        result = HeadlessBatchRunner.run_jobs([job], str(output_dir))
+
+                    report_txt = Path(result["report_path"])
+                    payload = json.loads(
+                        report_txt.with_suffix(".json").read_text(encoding="utf-8")
+                    )
+                    records = payload["records"]
+                    artifacts = [record for record in records if record["output"]]
+                    failed_rows = [record for record in records if record["status"] == "failed"]
+
+                    self.assertEqual(result["failed"], 1)
+                    self.assertEqual(payload["summary"]["failed"], 1)
+                    self.assertEqual(payload["summary"]["success"], 0)
+                    self.assertEqual(len(artifacts), expected_partial_count)
+                    self.assertEqual(len(failed_rows), 1)
+                    for record in artifacts:
+                        output = Path(record["output"])
+                        self.assertTrue(output.is_file())
+                        self.assertGreater(output.stat().st_size, 0)
+                        self.assertEqual(record["output_size"], output.stat().st_size)
+                    self.assertIn(
+                        "Summary: success=0, failed=1, skipped=0, cancelled=0",
+                        report_txt.read_text(encoding="utf-8"),
+                    )
 
 
 if __name__ == "__main__":

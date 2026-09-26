@@ -23,7 +23,12 @@ from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
 from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
-from ...utils.workflow import CancellationToken, WorkflowReport, get_conflict_policy
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    new_job_summary,
+)
 
 
 class PageManagerTool(BaseTool):
@@ -653,13 +658,18 @@ class PageManagerTool(BaseTool):
     def _run_save(self, output_path: str) -> None:
         """Worker thread for saving the modified PDF."""
         output_dir = os.path.dirname(output_path) or os.getcwd()
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Page Manager",
             output_dir,
             options={"conflict_policy": get_conflict_policy()},
+            job_summary=job_summary,
         )
+        job_status_recorded = False
         try:
             if self.cancel_token.is_cancelled():
+                report.count_job("cancelled")
+                job_status_recorded = True
                 report.add(self.current_pdf_path or "", output_path, status="cancelled")
                 report_path = report.write()
                 self.queue.put(("cancelled", f"Cancelled before save.\nReport: {report_path}"))
@@ -667,6 +677,8 @@ class PageManagerTool(BaseTool):
             os.makedirs(output_dir, exist_ok=True)
             resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
             if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
                 report.add(
                     self.current_pdf_path or "",
                     output_path,
@@ -686,6 +698,8 @@ class PageManagerTool(BaseTool):
                 )
                 return
             self.doc.save(resolved_output_path, garbage=3, deflate=True)
+            report.count_job("success")
+            job_status_recorded = True
             report.add(self.current_pdf_path or "", resolved_output_path)
             report_path = report.write()
             self.queue.put(
@@ -699,6 +713,8 @@ class PageManagerTool(BaseTool):
                 )
             )
         except Exception as e:
+            if not job_status_recorded:
+                report.count_job("failed")
             report.add(self.current_pdf_path or "", output_path, status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

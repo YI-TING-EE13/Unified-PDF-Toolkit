@@ -10,7 +10,7 @@ import fitz
 
 from ..utils.errors import friendly_error_message
 from ..utils.file_ops import resolve_output_path
-from ..utils.workflow import WorkflowReport
+from ..utils.workflow import WorkflowReport, new_job_summary
 from .processor import BatchProcessor
 
 
@@ -75,6 +75,14 @@ class BatchJob:
         return cls(source=source, operation=normalize_operation(operation), options=dict(options))
 
 
+class BatchJobFailure(RuntimeError):
+    """A failed job that can still identify artifacts it produced beforehand."""
+
+    def __init__(self, message: str, partial_outputs: Iterable[str] = ()) -> None:
+        super().__init__(message)
+        self.partial_outputs = tuple(partial_outputs)
+
+
 class HeadlessBatchRunner:
     """Run mixed PDF Toolkit jobs without creating a Tk window."""
 
@@ -97,10 +105,12 @@ class HeadlessBatchRunner:
             raise ValueError("Conflict policy must be one of: rename, overwrite, skip.")
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Batch Queue",
             output_dir,
             options={"conflict_policy": policy, "jobs": len(job_list)},
+            job_summary=job_summary,
         )
         result: dict[str, Any] = {
             "success": 0,
@@ -108,13 +118,12 @@ class HeadlessBatchRunner:
             "skipped": 0,
             "cancelled": False,
         }
-        cancelled_jobs = 0
         processor = BatchProcessor()
 
         for index, job in enumerate(job_list, start=1):
             if cancellation_check and cancellation_check():
                 result["cancelled"] = True
-                cancelled_jobs += 1
+                report.count_job("cancelled")
                 report.add(job.source, status="cancelled", message="Cancelled before job.")
                 break
             failed_this_job = False
@@ -129,14 +138,29 @@ class HeadlessBatchRunner:
                 outputs = cls.run_single_job(job, output_dir, processor, policy)
                 if not outputs:
                     result["skipped"] += 1
+                    report.count_job("skipped")
                     report.add(job.source, status="skipped", message="No output generated.")
                 else:
                     result["success"] += 1
+                    report.count_job("success")
                     for output in outputs:
                         report.add(job.source, output, message=operation)
+            except BatchJobFailure as exc:
+                failed_this_job = True
+                result["failed"] += 1
+                report.count_job("failed")
+                for output in exc.partial_outputs:
+                    report.add(
+                        job.source,
+                        output,
+                        status="success",
+                        message="Partial artifact produced before the job failed.",
+                    )
+                report.add(job.source, status="failed", message=friendly_error_message(exc))
             except Exception as exc:
                 failed_this_job = True
                 result["failed"] += 1
+                report.count_job("failed")
                 report.add(job.source, status="failed", message=friendly_error_message(exc))
             if progress_callback:
                 progress_callback(index, len(job_list), f"Finished {index}/{len(job_list)}")
@@ -146,12 +170,6 @@ class HeadlessBatchRunner:
             if failed_this_job and stop_on_error:
                 break
 
-        report.job_summary = {
-            "success": result["success"],
-            "failed": result["failed"],
-            "skipped": result["skipped"],
-            "cancelled": cancelled_jobs,
-        }
         result["report_path"] = report.write()
         return result
 
@@ -255,25 +273,39 @@ class HeadlessBatchRunner:
         """Render selected PDF pages while closing the source document deterministically."""
         from ..tools.pdf2word.tool import PDFToWordTool
 
-        normalized_format = fmt.casefold()
-        if normalized_format not in {"png", "jpg", "jpeg"}:
-            raise ValueError("Image format must be one of: png, jpg, jpeg.")
-        if not 72 <= dpi <= 600:
-            raise ValueError("DPI must be between 72 and 600.")
-
-        page_indices = PDFToWordTool.parse_page_range(range_text, input_path)
         outputs: list[str] = []
-        with fitz.open(input_path) as document:
-            selected = page_indices if page_indices is not None else list(range(document.page_count))
-            for page_index in selected:
-                pixmap = document[page_index].get_pixmap(dpi=dpi)
-                requested = (
-                    Path(output_dir)
-                    / f"{Path(input_path).stem}_page_{page_index + 1}.{normalized_format}"
+        try:
+            normalized_format = fmt.casefold()
+            if normalized_format not in {"png", "jpg", "jpeg"}:
+                raise ValueError("Image format must be one of: png, jpg, jpeg.")
+            if not 72 <= dpi <= 600:
+                raise ValueError("DPI must be between 72 and 600.")
+
+            page_indices = PDFToWordTool.parse_page_range(range_text, input_path)
+            with fitz.open(input_path) as document:
+                selected = (
+                    page_indices
+                    if page_indices is not None
+                    else list(range(document.page_count))
                 )
-                output_path = resolve_output_path(str(requested), conflict_policy)
-                if output_path is None:
-                    continue
-                pixmap.save(output_path)
-                outputs.append(output_path)
+                for page_index in selected:
+                    pixmap = document[page_index].get_pixmap(dpi=dpi)
+                    requested = (
+                        Path(output_dir)
+                        / f"{Path(input_path).stem}_page_{page_index + 1}.{normalized_format}"
+                    )
+                    output_path = resolve_output_path(str(requested), conflict_policy)
+                    if output_path is None:
+                        continue
+                    try:
+                        pixmap.save(output_path)
+                    except Exception:
+                        # Only inspect the exact path returned for this page; never
+                        # infer job outputs by scanning the destination directory.
+                        if Path(output_path).is_file():
+                            outputs.append(output_path)
+                        raise
+                    outputs.append(output_path)
+        except Exception as exc:
+            raise BatchJobFailure(str(exc), outputs) from exc
         return outputs

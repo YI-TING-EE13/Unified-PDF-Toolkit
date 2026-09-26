@@ -18,6 +18,7 @@ from PIL import Image
 
 from src.handlers.pdf import PDFCompressor
 from src.tools.batch_queue.tool import BatchJob, BatchQueueTool
+from src.tools.compressor.tool import CompressorTool
 from src.tools.converter.tool import ConverterTool
 from src.tools.image2pdf.tool import Image2PDFTool
 from src.tools.merger.tool import MergerTool
@@ -26,7 +27,7 @@ from src.tools.pdf2word.tool import PDFToWordTool
 from src.tools.splitter.tool import SplitterTool
 from src.utils.diagnostics import DiagnosticCheck, diagnostics_to_text
 from src.utils.errors import error_hint, friendly_error_message
-from src.utils.workflow import WorkflowReport
+from src.utils.workflow import WorkflowReport, new_job_summary
 
 
 class FakeWidget:
@@ -149,6 +150,32 @@ class CompressionWorkflowTests(unittest.TestCase):
             with fitz.open(output_path) as merged:
                 self.assertEqual(merged.page_count, 2)
             self.assertFalse(list(root.glob("pdf_toolkit_merge_*.pdf")))
+            messages = []
+            while not tool.queue.empty():
+                messages.append(tool.queue.get_nowait())
+            report_path = next(
+                data["report_path"]
+                for kind, data in messages
+                if kind == "success" and isinstance(data, dict)
+            )
+            report = json.loads(
+                Path(report_path).with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(report["summary"]["success"], 1)
+            self.assertEqual(len(report["records"]), 2)
+            self.assertTrue(
+                all(record["output"] == str(output_path) for record in report["records"])
+            )
+            self.assertTrue(
+                all(
+                    record["output_size"] == output_path.stat().st_size
+                    for record in report["records"]
+                )
+            )
+            self.assertIn(
+                "Summary: success=1, failed=0, skipped=0, cancelled=0",
+                Path(report_path).read_text(encoding="utf-8"),
+            )
 
     def test_merge_preview_index_tracks_ordered_pages(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -279,13 +306,13 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
             root = Path(temp_dir)
             pdf_path = root / "source.pdf"
             output_dir = root / "images"
-            self._create_pdf(pdf_path, pages=2)
+            self._create_pdf(pdf_path, pages=3)
 
             tool = ConverterTool()
             tool._run_convert([str(pdf_path)], str(output_dir), 72, "png")
 
             output_files = sorted(output_dir.glob("source_page_*.png"))
-            self.assertEqual(len(output_files), 2)
+            self.assertEqual(len(output_files), 3)
             for output_file in output_files:
                 with Image.open(output_file) as image:
                     self.assertGreater(image.width, 0)
@@ -293,6 +320,55 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
 
             messages = self._queue_messages(tool.queue)
             self.assertFalse([data for msg_type, data in messages if msg_type == "error"])
+            report_path = next(
+                data["report_path"]
+                for kind, data in messages
+                if kind == "success" and isinstance(data, dict)
+            )
+            payload = json.loads(
+                Path(report_path).with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["summary"]["success"], 1)
+            self.assertEqual(len(payload["records"]), 3)
+            self.assertIn(
+                "Summary: success=1, failed=0, skipped=0, cancelled=0",
+                Path(report_path).read_text(encoding="utf-8"),
+            )
+            for record in payload["records"]:
+                self.assertTrue(Path(record["output"]).is_file())
+                self.assertEqual(
+                    record["output_size"], Path(record["output"]).stat().st_size
+                )
+
+    def test_split_pdf_reports_one_job_for_three_artifacts(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            pdf_path = root / "source.pdf"
+            output_dir = root / "splits"
+            self._create_pdf(pdf_path, pages=3)
+
+            tool = SplitterTool()
+            tool._run_split(str(pdf_path), str(output_dir), "1,2,3")
+
+            messages = self._queue_messages(tool.queue)
+            report_path = next(
+                data["report_path"]
+                for kind, data in messages
+                if kind == "success" and isinstance(data, dict)
+            )
+            payload = json.loads(
+                Path(report_path).with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["summary"]["success"], 1)
+            self.assertEqual(len(payload["records"]), 3)
+            self.assertIn(
+                "Summary: success=1, failed=0, skipped=0, cancelled=0",
+                Path(report_path).read_text(encoding="utf-8"),
+            )
+            for record in payload["records"]:
+                output = Path(record["output"])
+                self.assertTrue(output.is_file())
+                self.assertEqual(record["output_size"], output.stat().st_size)
 
     def test_image_to_pdf_creates_page_per_image(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -313,6 +389,29 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
 
             messages = self._queue_messages(tool.queue)
             self.assertFalse([data for msg_type, data in messages if msg_type == "error"])
+            report_path = next(
+                data["report_path"]
+                for kind, data in messages
+                if kind == "success" and isinstance(data, dict)
+            )
+            payload = json.loads(
+                Path(report_path).with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["summary"]["success"], 1)
+            self.assertEqual(len(payload["records"]), 2)
+            self.assertTrue(
+                all(record["output"] == str(output_path) for record in payload["records"])
+            )
+            self.assertTrue(
+                all(
+                    record["output_size"] == output_path.stat().st_size
+                    for record in payload["records"]
+                )
+            )
+            self.assertIn(
+                "Summary: success=1, failed=0, skipped=0, cancelled=0",
+                Path(report_path).read_text(encoding="utf-8"),
+            )
 
     def test_page_manager_save_writes_modified_pdf(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -336,6 +435,15 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
 
             messages = self._queue_messages(tool.queue)
             self.assertFalse([data for msg_type, data in messages if msg_type == "error"])
+            report_path = next(
+                data["report_path"]
+                for kind, data in messages
+                if kind == "success" and isinstance(data, dict)
+            )
+            payload = json.loads(
+                Path(report_path).with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(payload["summary"]["success"], 1)
 
     def test_page_manager_delete_rotate_reorder_insert_extract(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
@@ -389,6 +497,55 @@ class ImageAndPageWorkflowTests(unittest.TestCase):
                 self.assertEqual(extracted.page_count, 2)
             tool.doc.close()
 
+    def test_compressor_report_counts_each_source_file_as_one_job(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.txt"
+            output_dir = root / "compressed"
+            source.write_text("compressible text " * 10, encoding="utf-8")
+
+            tool = CompressorTool()
+            tool._run_compression([str(source)], str(output_dir), "Medium", {})
+            messages = self._queue_messages(tool.queue)
+            result = next(data for kind, data in messages if kind == "done")[1]
+            payload = json.loads(
+                Path(result["report_path"])
+                .with_suffix(".json")
+                .read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(payload["summary"]["success"], 1)
+            self.assertEqual(len(payload["records"]), 1)
+
+    def test_pdf_to_word_report_counts_each_source_file_as_one_job(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            sources = [root / "first.pdf", root / "second.pdf"]
+            for source in sources:
+                self._create_pdf(source, pages=1)
+
+            tool = PDFToWordTool()
+            tool._run_conversion(
+                [str(source) for source in sources],
+                str(root / "docx"),
+                "",
+                "Text Only",
+            )
+            messages = []
+            while not tool.queue.empty():
+                messages.append(tool.queue.get_nowait())
+            report_path = next(
+                data["report_path"]
+                for kind, data in messages
+                if kind == "success" and isinstance(data, dict)
+            )
+            payload = json.loads(
+                Path(report_path).with_suffix(".json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(payload["summary"]["success"], 2)
+            self.assertEqual(len(payload["records"]), 2)
+
 
 class ReportWorkflowTests(unittest.TestCase):
     def test_workflow_report_writes_txt_csv_and_json(self):
@@ -399,7 +556,14 @@ class ReportWorkflowTests(unittest.TestCase):
             source_path.write_text("input", encoding="utf-8")
             output_path.write_text("output", encoding="utf-8")
 
-            report = WorkflowReport("Test Tool", str(root), options={"mode": "test"})
+            job_summary = new_job_summary()
+            job_summary["success"] = 1
+            report = WorkflowReport(
+                "Test Tool",
+                str(root),
+                options={"mode": "test"},
+                job_summary=job_summary,
+            )
             report.add(str(source_path), str(output_path))
             txt_path = Path(report.write())
             csv_path = txt_path.with_suffix(".csv")
@@ -430,6 +594,7 @@ class ReportWorkflowTests(unittest.TestCase):
                     "Same Tool",
                     str(output_dir),
                     started_at=timestamp,
+                    job_summary={"success": 1, "failed": 0, "skipped": 0, "cancelled": 0},
                 )
                 report.add(str(source), str(output), message=label)
                 barrier.wait(timeout=5)
@@ -455,6 +620,10 @@ class ReportWorkflowTests(unittest.TestCase):
                 self.assertEqual(payload["records"][0]["message"], label)
 
             self.assertEqual(list(output_dir.glob(".*.reserve")), [])
+
+    def test_workflow_report_requires_an_explicit_job_summary(self):
+        with self.assertRaises(TypeError):
+            WorkflowReport("Missing Summary", "unused")
 
 
 class ErrorAndDiagnosticsTests(unittest.TestCase):

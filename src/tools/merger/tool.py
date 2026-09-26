@@ -33,6 +33,7 @@ from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -425,6 +426,7 @@ class MergerTool(BaseTool):
         """Worker thread for merging."""
         temp_path = ""
         doc = None
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Merge PDFs",
             os.path.dirname(output_path) or os.getcwd(),
@@ -433,10 +435,14 @@ class MergerTool(BaseTool):
                 "compression_level": compression_level if auto_compress else "none",
                 "conflict_policy": get_conflict_policy(),
             },
+            job_summary=job_summary,
         )
+        job_status_recorded = False
         try:
             resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
             if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
                 report.add(
                     "",
                     output_path,
@@ -476,6 +482,8 @@ class MergerTool(BaseTool):
                 if self.cancel_token.is_cancelled():
                     doc.close()
                     doc = None
+                    report.count_job("cancelled")
+                    job_status_recorded = True
                     report.add(pdf_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -537,6 +545,12 @@ class MergerTool(BaseTool):
                 )
 
             self.queue.put(("progress", (100, "Merge complete.")))
+            output_size = get_file_size(output_path)
+            for record in report.records:
+                if record.output == output_path:
+                    record.output_size = output_size
+            report.count_job("success")
+            job_status_recorded = True
             report_path = report.write()
             self.queue.put(
                 (
@@ -549,6 +563,9 @@ class MergerTool(BaseTool):
                 )
             )
         except Exception as e:
+            if not job_status_recorded:
+                report.count_job("failed")
+                job_status_recorded = True
             report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))
