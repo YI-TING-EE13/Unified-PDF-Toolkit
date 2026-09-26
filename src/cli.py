@@ -19,6 +19,7 @@ from .core.batch import (
     BatchJob,
     HeadlessBatchRunner,
 )
+from .utils.file_ops import create_staged_output
 from .utils.workflow import CancellationToken
 
 
@@ -505,9 +506,24 @@ def _write_or_print_ocr_payload(
     if output:
         path = Path(output).expanduser().resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        if not args.json:
-            print(f"Report written: {path}")
+        transaction = create_staged_output(str(path), "overwrite")
+        if transaction is None:
+            raise RuntimeError("OCR JSON output transaction was not created.")
+        try:
+            staging_path = transaction.staging_path
+            staging_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            if not staging_path.is_file():
+                raise OSError("OCR JSON output was not created.")
+
+            committed_path = transaction.commit()
+            if committed_path is None:
+                raise RuntimeError("OCR JSON output was skipped unexpectedly.")
+            if not args.json:
+                print(f"Report written: {committed_path}")
+        finally:
+            transaction.cleanup()
     if args.json:
         print(json.dumps(payload, ensure_ascii=True, indent=2))
     elif not output:
