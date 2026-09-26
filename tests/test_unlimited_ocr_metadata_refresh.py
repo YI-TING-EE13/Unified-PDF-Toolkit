@@ -6,6 +6,7 @@ from scripts.refresh_unlimited_ocr_metadata import (
     detect_conflicts,
     fetch_bytes,
     metadata_content_changed,
+    _profile_driver_minimum_versions,
     parse_nvidia_driver_minimums,
     parse_pytorch_profiles,
     parse_transformers_requirements,
@@ -38,9 +39,38 @@ class UnlimitedOcrMetadataRefreshTests(unittest.TestCase):
         """
         self.assertEqual(parse_pytorch_profiles(page, "2.10.0"), ("cu126", "cu130"))
 
-    def test_driver_parser_reads_cuda_major_families(self):
-        page = "CUDA 13.x &gt;= 580 N/A CUDA 12.x &gt;= 525 &lt; 580"
-        self.assertEqual(parse_nvidia_driver_minimums(page), {12: 525, 13: 580})
+    def test_driver_parser_reads_precise_platform_thresholds(self):
+        compatibility_page = "CUDA 13.x &gt;= 580 N/A CUDA 12.x &gt;= 525 &lt; 580"
+        release_notes = (
+            "<tr><td>CUDA 12.x</td><td>&gt;=525.60.13</td>"
+            "<td>&gt;=528.33</td></tr>"
+        )
+        self.assertEqual(
+            parse_nvidia_driver_minimums(compatibility_page, release_notes),
+            {
+                "12": {"linux": "525.60.13", "windows": "528.33"},
+                "13": {"linux": "580", "windows": "580"},
+            },
+        )
+
+    def test_profile_threshold_builder_rejects_unreviewed_cuda_family(self):
+        thresholds = {
+            "12": {"linux": "525.60.13", "windows": "528.33"},
+            "13": {"linux": "580", "windows": "580"},
+        }
+        self.assertEqual(
+            _profile_driver_minimum_versions("cu128", thresholds),
+            {"linux": "525.60.13", "windows": "528.33"},
+        )
+        with self.assertRaises(ValueError):
+            _profile_driver_minimum_versions("cu110", thresholds)
+
+    def test_driver_parser_fails_closed_when_exact_table_is_missing(self):
+        with self.assertRaises(ValueError):
+            parse_nvidia_driver_minimums(
+                "CUDA 13.x >= 580 CUDA 12.x >= 525",
+                "CUDA 12.x driver is at least 525",
+            )
 
     def test_conflicts_detect_missing_wheel_and_kernel_pin_disagreement(self):
         conflicts = detect_conflicts(

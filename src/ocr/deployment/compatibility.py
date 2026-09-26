@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from .metadata import load_compatibility_metadata, metadata_age_days
+from .metadata import (
+    driver_platform_key,
+    load_compatibility_metadata,
+    metadata_age_days,
+    minimum_driver_versions_by_profile,
+    validate_compatibility_metadata,
+)
 from .models import (
     CompatibilityReport,
     CompatibilityStatus,
@@ -12,13 +18,16 @@ from .models import (
     RiskLevel,
     RuntimeBackend,
 )
+from .versions import numeric_version_at_least, parse_numeric_version
 
 
 class CompatibilityEngine:
     """Evaluate support conservatively; unknown evidence never becomes supported."""
 
     def __init__(self, metadata: Mapping[str, Any] | None = None) -> None:
-        self.metadata = dict(metadata or load_compatibility_metadata())
+        source = load_compatibility_metadata() if metadata is None else metadata
+        validate_compatibility_metadata(source)
+        self.metadata = dict(source)
 
     def evaluate(self, report: EnvironmentReport | Mapping[str, Any]) -> CompatibilityReport:
         env = report.to_dict() if isinstance(report, EnvironmentReport) else dict(report)
@@ -115,13 +124,45 @@ class CompatibilityEngine:
             status = CompatibilityStatus.UNSUPPORTED
 
         driver = env.get("nvidia_driver", {})
-        driver_major = _driver_major(driver.get("driver_version"))
-        profile, index_url = self._select_pytorch_profile(driver_major)
+        driver_version = driver.get("driver_version")
+        parsed_driver_version = parse_numeric_version(driver_version)
+        driver_platform = driver_platform_key(os_name)
+        profile, index_url = self._select_pytorch_profile(
+            parsed_driver_version, driver_platform
+        )
         if gpu is not None and profile is None:
-            missing.append("NVIDIA Driver is missing, unknown, or too old for an official PyTorch 2.10 CUDA wheel.")
-            status = CompatibilityStatus.UNSUPPORTED if driver_major is not None else CompatibilityStatus.UNKNOWN
+            if parsed_driver_version is None:
+                missing.append(
+                    "NVIDIA Driver is missing, unknown, or too old for an official PyTorch 2.10 CUDA wheel. "
+                    f"Driver version {driver_version!r} is unavailable or is not a numeric dotted version, "
+                    "so CUDA compatibility cannot be established."
+                )
+                status = CompatibilityStatus.UNKNOWN
+            else:
+                minimums = minimum_driver_versions_by_profile(self.metadata, os_name)
+                if minimums:
+                    required = ", ".join(
+                        f"{name} >= {minimum}"
+                        for name, minimum in minimums.items()
+                    )
+                    detail = (
+                        f"Detected {os_name} driver {driver_version}; profile minimums are {required}."
+                    )
+                else:
+                    detail = f"No reviewed CUDA profile threshold exists for {os_name or 'this OS'}."
+                missing.append(
+                    "NVIDIA Driver is missing, unknown, or too old for an official PyTorch 2.10 CUDA wheel. "
+                    f"{detail}"
+                )
+                status = CompatibilityStatus.UNSUPPORTED
         elif profile:
-            met.append(f"NVIDIA Driver {driver.get('driver_version')} supports the PyTorch {profile} wheel family.")
+            minimum = self.metadata["backends"]["transformers"]["pytorch_profiles"][profile][
+                "minimum_driver_versions"
+            ][driver_platform]
+            met.append(
+                f"NVIDIA Driver {driver_version} meets the {os_name} minor-version-compatibility "
+                f"minimum {minimum} for PyTorch {profile}."
+            )
             changes.append(
                 f"Install torch 2.10.0 and torchvision 0.25.0 from {index_url} inside the private OCR runtime."
             )
@@ -266,13 +307,20 @@ class CompatibilityEngine:
             selected_gpu=_selected_gpu_summary(gpu),
         )
 
-    def _select_pytorch_profile(self, driver_major: int | None) -> tuple[str | None, str | None]:
-        if driver_major is None:
+    def _select_pytorch_profile(
+        self,
+        driver_version: tuple[int, ...] | None,
+        platform_key: str | None,
+    ) -> tuple[str | None, str | None]:
+        if driver_version is None or platform_key is None:
             return None, None
         profiles = self.metadata["backends"]["transformers"]["pytorch_profiles"]
         for name in ("cu130", "cu128", "cu126"):
             profile = profiles[name]
-            if driver_major >= int(profile["minimum_driver_major"]):
+            minimum = parse_numeric_version(
+                profile["minimum_driver_versions"].get(platform_key)
+            )
+            if minimum is not None and numeric_version_at_least(driver_version, minimum):
                 return name, str(profile["index_url"])
         return None, None
 
@@ -361,18 +409,8 @@ def _basic_ocr_compatibility(env: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _driver_major(value: Any) -> int | None:
-    try:
-        return int(str(value).split(".", 1)[0])
-    except (TypeError, ValueError):
-        return None
-
-
 def _version_tuple(value: Any) -> tuple[int, ...] | None:
-    try:
-        return tuple(int(part) for part in str(value).split("."))
-    except (TypeError, ValueError):
-        return None
+    return parse_numeric_version(str(value)) if value is not None else None
 
 
 def _tool_version_tuple(value: Any) -> tuple[int, ...] | None:

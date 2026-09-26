@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "model": "baidu/Unlimited-OCR",
   "checked_at": "2026-07-14T13:59:31.474861Z",
   "source_revision": "528fca4e2161e23231d05666a6d35155dcb1957e",
@@ -10,7 +10,8 @@
     "repository_readme": "https://github.com/baidu/Unlimited-OCR/blob/528fca4e2161e23231d05666a6d35155dcb1957e/README.md",
     "model": "https://huggingface.co/baidu/Unlimited-OCR/tree/ee63731b6461c8afcdcc7b15352e7d2ffecc2ead",
     "pytorch_versions": "https://pytorch.org/get-started/previous-versions/",
-    "nvidia_compatibility": "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html"
+    "nvidia_compatibility": "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html",
+    "nvidia_cuda_12_release_notes": "https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/"
   },
   "uv_bootstrap": {
     "version": "0.11.28",
@@ -94,15 +95,24 @@
       },
       "pytorch_profiles": {
         "cu126": {
-          "minimum_driver_major": 525,
+          "minimum_driver_versions": {
+            "windows": "528.33",
+            "linux": "525.60.13"
+          },
           "index_url": "https://download.pytorch.org/whl/cu126"
         },
         "cu128": {
-          "minimum_driver_major": 525,
+          "minimum_driver_versions": {
+            "windows": "528.33",
+            "linux": "525.60.13"
+          },
           "index_url": "https://download.pytorch.org/whl/cu128"
         },
         "cu130": {
-          "minimum_driver_major": 580,
+          "minimum_driver_versions": {
+            "windows": "580",
+            "linux": "580"
+          },
           "index_url": "https://download.pytorch.org/whl/cu130"
         }
       }
@@ -121,16 +131,6 @@
         "default": "vllm/vllm-openai:unlimited-ocr",
         "hopper_cu129": "vllm/vllm-openai:unlimited-ocr-cu129"
       }
-    }
-  },
-  "driver_families": {
-    "cuda_12": {
-      "minimum_driver_major": 525,
-      "maximum_exclusive": 580
-    },
-    "cuda_13": {
-      "minimum_driver_major": 580,
-      "maximum_exclusive": null
     }
   },
   "known_conflicts": [

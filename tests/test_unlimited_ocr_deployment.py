@@ -53,6 +53,10 @@ from src.ocr.deployment.orchestrator import (
     SetupOrchestrator,
     _atomic_json,
 )
+from src.ocr.deployment.versions import (
+    numeric_version_at_least,
+    parse_numeric_version,
+)
 from src.ocr.deployment.provider_worker import (
     _benchmark_classification,
     _bounded_int,
@@ -179,11 +183,75 @@ class MetadataTests(unittest.TestCase):
 
     def test_bundled_metadata_is_complete_and_pinned(self):
         metadata = load_compatibility_metadata()
+        self.assertEqual(metadata["schema_version"], "2.0")
         self.assertEqual(metadata["model"], "baidu/Unlimited-OCR")
         self.assertEqual(len(metadata["source_revision"]), 40)
         self.assertEqual(len(metadata["model_revision"]), 40)
         self.assertEqual(len(metadata["model_artifacts"]["weight_sha256"]), 64)
         self.assertGreater(metadata["model_artifacts"]["required_download_bytes"], 6_000_000_000)
+
+    def test_driver_thresholds_are_precise_per_profile_and_platform(self):
+        metadata = load_compatibility_metadata()
+        profiles = metadata["backends"]["transformers"]["pytorch_profiles"]
+        for profile_name in ("cu126", "cu128"):
+            with self.subTest(profile=profile_name):
+                self.assertEqual(
+                    profiles[profile_name]["minimum_driver_versions"],
+                    {"windows": "528.33", "linux": "525.60.13"},
+                )
+        self.assertEqual(
+            profiles["cu130"]["minimum_driver_versions"],
+            {"windows": "580", "linux": "580"},
+        )
+        self.assertNotIn("driver_families", metadata)
+
+    def test_metadata_rejects_obsolete_or_invalid_driver_thresholds(self):
+        metadata = load_compatibility_metadata()
+        invalid_cases = (
+            (
+                "old schema",
+                lambda candidate: candidate.update(schema_version="1.0"),
+            ),
+            (
+                "duplicate coarse family thresholds",
+                lambda candidate: candidate.update(
+                    driver_families={"cuda_12": {"minimum_driver_major": 525}}
+                ),
+            ),
+            (
+                "legacy profile major field",
+                lambda candidate: candidate["backends"]["transformers"][
+                    "pytorch_profiles"
+                ]["cu128"].update(minimum_driver_major=525),
+            ),
+            (
+                "missing Linux threshold",
+                lambda candidate: candidate["backends"]["transformers"][
+                    "pytorch_profiles"
+                ]["cu128"]["minimum_driver_versions"].pop("linux"),
+            ),
+            (
+                "unsupported OS key",
+                lambda candidate: candidate["backends"]["transformers"][
+                    "pytorch_profiles"
+                ]["cu128"]["minimum_driver_versions"].update(darwin="525.60.13"),
+            ),
+        )
+        for label, mutate in invalid_cases:
+            with self.subTest(case=label):
+                candidate = copy.deepcopy(metadata)
+                mutate(candidate)
+                with self.assertRaises(CompatibilityMetadataError):
+                    validate_compatibility_metadata(candidate)
+
+        for invalid_version in ("", "525.x", "525.-1", 525):
+            with self.subTest(version=invalid_version):
+                candidate = copy.deepcopy(metadata)
+                candidate["backends"]["transformers"]["pytorch_profiles"]["cu128"][
+                    "minimum_driver_versions"
+                ]["linux"] = invalid_version
+                with self.assertRaises(CompatibilityMetadataError):
+                    validate_compatibility_metadata(candidate)
 
     def test_metadata_rejects_missing_or_unpinned_values(self):
         metadata = load_compatibility_metadata()
@@ -211,6 +279,58 @@ class MetadataTests(unittest.TestCase):
 
     def test_metadata_age_is_non_negative(self):
         self.assertGreaterEqual(metadata_age_days(load_compatibility_metadata()), 0)
+
+
+class DriverVersionTests(unittest.TestCase):
+    def test_numeric_dotted_driver_versions_parse_without_truncation(self):
+        self.assertEqual(parse_numeric_version("528.33"), (528, 33))
+        self.assertEqual(parse_numeric_version("525.60.13"), (525, 60, 13))
+        self.assertEqual(parse_numeric_version("580"), (580,))
+        self.assertEqual(parse_numeric_version("580.0"), (580, 0))
+
+    def test_driver_version_comparison_is_numeric_and_zero_pads_tuples(self):
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("528.33"), parse_numeric_version("528.33")
+            )
+        )
+        self.assertFalse(
+            numeric_version_at_least(
+                parse_numeric_version("528.32"), parse_numeric_version("528.33")
+            )
+        )
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("525.60.13"),
+                parse_numeric_version("525.60.13"),
+            )
+        )
+        self.assertFalse(
+            numeric_version_at_least(
+                parse_numeric_version("525.60.12"),
+                parse_numeric_version("525.60.13"),
+            )
+        )
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("580"), parse_numeric_version("580.0")
+            )
+        )
+        self.assertFalse(
+            numeric_version_at_least(
+                parse_numeric_version("579.99.99"), parse_numeric_version("580")
+            )
+        )
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("528.100"), parse_numeric_version("528.33")
+            )
+        )
+
+    def test_malformed_or_unavailable_driver_versions_fail_closed(self):
+        for value in (None, 525, "", "N/A", "525.x", "525..10", "525.-1", "-525.10"):
+            with self.subTest(value=value):
+                self.assertIsNone(parse_numeric_version(value))
 
 
 class EnvironmentInspectorTests(unittest.TestCase):
@@ -334,6 +454,14 @@ class CompatibilityTests(unittest.TestCase):
             environment or _environment(),
         )
 
+    def evaluate_driver(self, system, driver_version):
+        base = _environment()
+        environment = _environment(
+            os={**base.os, "system": system, "platform": f"{system}-driver-test"},
+            nvidia_driver={"available": True, "driver_version": driver_version},
+        )
+        return self.evaluate(environment)
+
     def test_supported_windows_nvidia_requires_private_changes(self):
         result = self.evaluate()
         self.assertEqual(result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES)
@@ -349,6 +477,105 @@ class CompatibilityTests(unittest.TestCase):
         result = self.evaluate(env)
         self.assertEqual(result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES)
         self.assertIn("cu128", result.recommended_runtime)
+
+    def test_windows_cuda12_driver_boundaries(self):
+        for driver_version in (
+            "525.00",
+            "525.60.13",
+            "527.41",
+            "527.99",
+            "528.32",
+        ):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Windows", driver_version)
+                self.assertEqual(result.status, CompatibilityStatus.UNSUPPORTED)
+                self.assertIsNone(result.recommended_runtime)
+        for driver_version in ("528.33", "529.00", "550.90"):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Windows", driver_version)
+                self.assertEqual(
+                    result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES
+                )
+                self.assertIn("cu128", result.recommended_runtime)
+
+    def test_linux_cuda12_driver_boundaries(self):
+        for driver_version in ("525.00", "525.59.99", "525.60.12"):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Linux", driver_version)
+                self.assertEqual(result.status, CompatibilityStatus.UNSUPPORTED)
+                self.assertIsNone(result.recommended_runtime)
+        for driver_version in ("525.60.13", "526.00", "550.90"):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Linux", driver_version)
+                self.assertEqual(
+                    result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES
+                )
+                self.assertIn("cu128", result.recommended_runtime)
+
+    def test_same_driver_version_has_platform_specific_eligibility(self):
+        windows = self.evaluate_driver("Windows", "526.00")
+        linux = self.evaluate_driver("Linux", "526.00")
+        self.assertEqual(windows.status, CompatibilityStatus.UNSUPPORTED)
+        self.assertIsNone(windows.recommended_runtime)
+        self.assertEqual(linux.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES)
+        self.assertIn("cu128", linux.recommended_runtime)
+
+    def test_cuda13_floor_and_cuda12_fallback_are_platform_consistent(self):
+        engine = CompatibilityEngine(self.metadata)
+        for system in ("Windows", "Linux"):
+            with self.subTest(system=system):
+                below = self.evaluate_driver(system, "579.99.99")
+                at_floor = self.evaluate_driver(system, "580")
+                above_floor = self.evaluate_driver(system, "580.65.06")
+                self.assertEqual(
+                    below.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES
+                )
+                self.assertIn("cu128", below.recommended_runtime)
+                self.assertEqual(
+                    engine._select_pytorch_profile(
+                        parse_numeric_version("579.99.99"), system.casefold()
+                    )[0],
+                    "cu128",
+                )
+                self.assertIn("cu130", at_floor.recommended_runtime)
+                self.assertIn("cu130", above_floor.recommended_runtime)
+                self.assertEqual(
+                    engine._select_pytorch_profile(
+                        parse_numeric_version("580"), system.casefold()
+                    )[0],
+                    "cu130",
+                )
+
+    def test_cu126_threshold_is_retained_while_cu128_remains_preferred(self):
+        profiles = self.metadata["backends"]["transformers"]["pytorch_profiles"]
+        self.assertEqual(
+            profiles["cu126"]["minimum_driver_versions"],
+            {"windows": "528.33", "linux": "525.60.13"},
+        )
+        self.assertEqual(
+            CompatibilityEngine(self.metadata)._select_pytorch_profile(
+                parse_numeric_version("550.90"), "linux"
+            )[0],
+            "cu128",
+        )
+
+    def test_driver_diagnostics_include_platform_profile_and_precise_minimum(self):
+        windows = self.evaluate_driver("Windows", "527.99")
+        linux = self.evaluate_driver("Linux", "525.60.12")
+        windows_diagnostic = " ".join(windows.requirements_missing)
+        linux_diagnostic = " ".join(linux.requirements_missing)
+        self.assertIn("Windows driver 527.99", windows_diagnostic)
+        self.assertIn("cu128 >= 528.33", windows_diagnostic)
+        self.assertNotIn("cu128 >= 525", windows_diagnostic)
+        self.assertIn("Linux driver 525.60.12", linux_diagnostic)
+        self.assertIn("cu128 >= 525.60.13", linux_diagnostic)
+
+    def test_malformed_driver_version_remains_unknown(self):
+        result = self.evaluate_driver("Windows", "N/A")
+        self.assertEqual(result.status, CompatibilityStatus.UNKNOWN)
+        self.assertTrue(
+            any("numeric dotted version" in item for item in result.requirements_missing)
+        )
 
     def test_conda_is_safe_fallback_when_uv_is_unavailable(self):
         env = _environment(
@@ -980,6 +1207,92 @@ class OrchestratorTests(unittest.TestCase):
             with self.assertRaises(DeploymentFailure) as caught:
                 orchestrator.run(until=InstallStage.PRECHECK)
             self.assertEqual(caught.exception.error.error_code, "NO_SUPPORTED_GPU")
+            self.assertFalse((root / "state").exists())
+
+    def test_driver_too_old_expected_state_is_platform_and_profile_precise(self):
+        cases = (
+            ("Windows", "527.99", "528.33"),
+            ("Linux", "525.60.12", "525.60.13"),
+        )
+        for system, driver_version, expected_cuda12_minimum in cases:
+            with self.subTest(system=system, driver=driver_version):
+                base = _environment()
+                environment = _environment(
+                    os={**base.os, "system": system, "platform": f"{system}-test"},
+                    nvidia_driver={
+                        "available": True,
+                        "driver_version": driver_version,
+                    },
+                )
+                compatibility = _evaluate_compatibility(self.metadata, environment)
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    plan = EnvironmentResolver(self.metadata).resolve(
+                        compatibility, data_root=root
+                    )
+                    consent = DeploymentConsent.create(
+                        plan=plan,
+                        metadata_revision=compatibility.metadata_revision,
+                        acknowledgements=_acknowledgements(),
+                    )
+                    orchestrator = SetupOrchestrator(
+                        plan=plan,
+                        compatibility=compatibility,
+                        environment=environment,
+                        consent=consent,
+                        metadata=self.metadata,
+                        state_root=root / "state",
+                        command_runner=self._success_runner,
+                    )
+                    with self.assertRaises(DeploymentFailure) as caught:
+                        orchestrator.run(until=InstallStage.PRECHECK)
+
+                    error = caught.exception.error
+                    self.assertEqual(error.error_code, "NVIDIA_DRIVER_TOO_OLD")
+                    self.assertEqual(error.expected_state["platform"], system)
+                    self.assertEqual(
+                        error.expected_state["minimum_driver_versions"]["cu128"],
+                        expected_cuda12_minimum,
+                    )
+                    self.assertIn(expected_cuda12_minimum, error.technical_details)
+                    self.assertFalse((root / "state").exists())
+
+    def test_precheck_distinguishes_unparseable_driver_from_too_old(self):
+        base = _environment()
+        environment = _environment(
+            os={**base.os, "system": "Windows"},
+            nvidia_driver={"available": True, "driver_version": "N/A"},
+        )
+        compatibility = _evaluate_compatibility(self.metadata, environment)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = EnvironmentResolver(self.metadata).resolve(
+                compatibility, data_root=root
+            )
+            consent = DeploymentConsent.create(
+                plan=plan,
+                metadata_revision=compatibility.metadata_revision,
+                acknowledgements=_acknowledgements(),
+            )
+            orchestrator = SetupOrchestrator(
+                plan=plan,
+                compatibility=compatibility,
+                environment=environment,
+                consent=consent,
+                metadata=self.metadata,
+                state_root=root / "state",
+                command_runner=self._success_runner,
+            )
+            with self.assertRaises(DeploymentFailure) as caught:
+                orchestrator.run(until=InstallStage.PRECHECK)
+
+            self.assertEqual(
+                caught.exception.error.error_code, "NVIDIA_DRIVER_VERSION_UNKNOWN"
+            )
+            self.assertEqual(
+                caught.exception.error.expected_state["format"],
+                "numeric dotted NVIDIA Driver version",
+            )
             self.assertFalse((root / "state").exists())
 
     def test_journal_resumes_completed_stages(self):
