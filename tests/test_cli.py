@@ -1,4 +1,5 @@
 import contextlib
+import gzip
 import io
 import json
 from pathlib import Path
@@ -6,6 +7,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -28,6 +30,49 @@ def create_pdf(path: Path, pages: int = 1) -> None:
 
 
 class CommandLineTests(unittest.TestCase):
+    def test_compression_conflicts_use_the_same_logical_output_across_runs(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.txt"
+            output_dir = root / "out"
+            expected_output = output_dir / "source_compressed.txt.gz"
+            source.write_text("first version", encoding="utf-8")
+            job = BatchJob(str(source), "compress")
+
+            with mock.patch("src.utils.workflow.add_recent_path"):
+                first = HeadlessBatchRunner.run_jobs(
+                    [job], str(output_dir), conflict_policy="rename"
+                )
+                self.assertEqual(first["success"], 1)
+                self.assertEqual(first["skipped"], 0)
+                self.assertTrue(expected_output.is_file())
+                with gzip.open(expected_output, "rt", encoding="utf-8") as compressed:
+                    self.assertEqual(compressed.read(), "first version")
+
+                time.sleep(1.05)
+                source.write_text("updated version", encoding="utf-8")
+                skipped = HeadlessBatchRunner.run_jobs(
+                    [job], str(output_dir), conflict_policy="skip"
+                )
+                self.assertEqual(skipped["success"], 0)
+                self.assertEqual(skipped["skipped"], 1)
+                with gzip.open(expected_output, "rt", encoding="utf-8") as compressed:
+                    self.assertEqual(compressed.read(), "first version")
+
+                time.sleep(1.05)
+                overwritten = HeadlessBatchRunner.run_jobs(
+                    [job], str(output_dir), conflict_policy="overwrite"
+                )
+                self.assertEqual(overwritten["success"], 1)
+                with gzip.open(expected_output, "rt", encoding="utf-8") as compressed:
+                    self.assertEqual(compressed.read(), "updated version")
+
+                renamed = HeadlessBatchRunner.run_jobs(
+                    [job], str(output_dir), conflict_policy="rename"
+                )
+                self.assertEqual(renamed["success"], 1)
+                self.assertTrue((output_dir / "source_compressed.txt_2.gz").is_file())
+
     def test_blocked_ocr_plan_is_actionable_and_does_not_offer_setup(self):
         payload = {
             "compatibility": {

@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -56,7 +55,8 @@ def normalize_path(path: str) -> str:
 def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_override: Optional[str] = None) -> str:
     """
     Generates the output file path based on standard naming conventions.
-    Format: {filename}_compressed_{YYYYMMDD}_{HHMMSS}{ext}
+    Format: {filename}_compressed{ext}. Conflict policy is applied later to
+    this stable logical output path.
     
     Args:
         input_path (str): Source file path.
@@ -84,12 +84,11 @@ def get_output_path(input_path: str, output_dir: Optional[str] = None, ext_overr
         out_dir = Path.cwd() / "compressed_files"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate Filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Keep the logical output stable so skip/overwrite can find it across runs.
     stem = input_p.stem
     extension = ext_override if ext_override else input_p.suffix
-    
-    new_filename = f"{stem}_compressed_{timestamp}{extension}"
+
+    new_filename = f"{stem}_compressed{extension}"
     return str(out_dir / new_filename)
 
 def check_permissions(path: str, mode: str = 'r') -> bool:
