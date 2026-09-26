@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import unittest
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -75,6 +76,19 @@ from src.ocr.deployment.runtime_tasks import (
 )
 from src.ocr.deployment.validation_assets import create_validation_suite
 from src.ocr.models import OcrEngine, OcrPageResult, OcrRequest, OcrResult
+
+
+_COMPATIBILITY_TEST_NOW = datetime(2026, 7, 15, tzinfo=timezone.utc)
+
+
+def _evaluate_compatibility(metadata, environment):
+    """Evaluate reviewed metadata against a stable test clock."""
+
+    with patch(
+        "src.ocr.deployment.compatibility.metadata_age_days",
+        side_effect=lambda value: metadata_age_days(value, now=_COMPATIBILITY_TEST_NOW),
+    ):
+        return CompatibilityEngine(metadata).evaluate(environment)
 
 
 def _environment(**overrides):
@@ -315,7 +329,10 @@ class CompatibilityTests(unittest.TestCase):
         self.metadata = load_compatibility_metadata()
 
     def evaluate(self, environment=None, metadata=None):
-        return CompatibilityEngine(metadata or self.metadata).evaluate(environment or _environment())
+        return _evaluate_compatibility(
+            metadata or self.metadata,
+            environment or _environment(),
+        )
 
     def test_supported_windows_nvidia_requires_private_changes(self):
         result = self.evaluate()
@@ -536,6 +553,25 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(result.status, CompatibilityStatus.UNKNOWN)
         self.assertEqual(result.risk_level.value, "BLOCKED")
 
+    def test_metadata_freshness_boundary_uses_controlled_test_clock(self):
+        fresh = copy.deepcopy(self.metadata)
+        fresh["checked_at"] = (
+            _COMPATIBILITY_TEST_NOW - timedelta(days=30)
+        ).isoformat().replace("+00:00", "Z")
+        stale = copy.deepcopy(self.metadata)
+        stale["checked_at"] = (
+            _COMPATIBILITY_TEST_NOW - timedelta(days=31)
+        ).isoformat().replace("+00:00", "Z")
+
+        self.assertEqual(
+            self.evaluate(metadata=fresh).status,
+            CompatibilityStatus.SUPPORTED_WITH_CHANGES,
+        )
+        self.assertEqual(
+            self.evaluate(metadata=stale).status,
+            CompatibilityStatus.UNKNOWN,
+        )
+
     def test_upstream_conflict_is_exposed(self):
         result = self.evaluate()
         self.assertTrue(result.conflicts)
@@ -545,7 +581,7 @@ class CompatibilityTests(unittest.TestCase):
 class ResolverAndConsentTests(unittest.TestCase):
     def setUp(self):
         self.metadata = load_compatibility_metadata()
-        self.compatibility = CompatibilityEngine(self.metadata).evaluate(_environment())
+        self.compatibility = _evaluate_compatibility(self.metadata, _environment())
 
     def test_resolver_has_no_system_changes_or_shell_commands(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -612,11 +648,11 @@ class ResolverAndConsentTests(unittest.TestCase):
     def test_resolver_binds_worker_and_plan_id_to_selected_gpu(self):
         first = dict(_environment().gpu[0], index=0, uuid="GPU-first")
         second = dict(_environment().gpu[0], index=1, uuid="GPU-second")
-        first_compatibility = CompatibilityEngine(self.metadata).evaluate(
-            _environment(gpu=(first, second))
+        first_compatibility = _evaluate_compatibility(
+            self.metadata, _environment(gpu=(first, second))
         )
-        second_compatibility = CompatibilityEngine(self.metadata).evaluate(
-            _environment(gpu=(second,))
+        second_compatibility = _evaluate_compatibility(
+            self.metadata, _environment(gpu=(second,))
         )
         with tempfile.TemporaryDirectory() as temporary:
             resolver = EnvironmentResolver(self.metadata)
@@ -650,7 +686,7 @@ class ResolverAndConsentTests(unittest.TestCase):
                 },
             },
         )
-        compatibility = CompatibilityEngine(self.metadata).evaluate(environment)
+        compatibility = _evaluate_compatibility(self.metadata, environment)
         with tempfile.TemporaryDirectory() as temporary:
             plan = EnvironmentResolver(self.metadata).resolve(
                 compatibility, data_root=Path(temporary)
@@ -852,7 +888,7 @@ class OrchestratorTests(unittest.TestCase):
     def setUp(self):
         self.metadata = load_compatibility_metadata()
         self.environment = _environment()
-        self.compatibility = CompatibilityEngine(self.metadata).evaluate(self.environment)
+        self.compatibility = _evaluate_compatibility(self.metadata, self.environment)
 
     @staticmethod
     def _success_runner(command, environment, timeout, cancellation):
@@ -921,7 +957,7 @@ class OrchestratorTests(unittest.TestCase):
             gpu=({"vendor": "AMD", "name": "Radeon", "vram_total_bytes": 24 * 1024**3},),
             nvidia_driver={"available": False, "driver_version": None},
         )
-        compatibility = CompatibilityEngine(self.metadata).evaluate(environment)
+        compatibility = _evaluate_compatibility(self.metadata, environment)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             plan = EnvironmentResolver(self.metadata).resolve(
