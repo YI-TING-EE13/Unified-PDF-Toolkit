@@ -1,11 +1,15 @@
 import contextlib
+import csv
 import io
 import json
 import queue
 import tempfile
+import threading
 import unittest
 import zipfile
 import zlib
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -409,6 +413,48 @@ class ReportWorkflowTests(unittest.TestCase):
             self.assertEqual(payload["tool"], "Test Tool")
             self.assertEqual(payload["summary"]["success"], 1)
             self.assertEqual(payload["records"][0]["source"], str(source_path))
+
+    def test_same_timestamp_report_writes_reserve_distinct_coherent_sets(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            output_dir = root / "reports"
+            timestamp = datetime(2026, 9, 26, 12, 0, 0)
+            barrier = threading.Barrier(2)
+
+            def write_report(label: str) -> Path:
+                source = root / f"{label}-source.txt"
+                output = root / f"{label}-output.txt"
+                source.write_text(f"input-{label}", encoding="utf-8")
+                output.write_text(f"output-{label}", encoding="utf-8")
+                report = WorkflowReport(
+                    "Same Tool",
+                    str(output_dir),
+                    started_at=timestamp,
+                )
+                report.add(str(source), str(output), message=label)
+                barrier.wait(timeout=5)
+                return Path(report.write())
+
+            with mock.patch("src.utils.workflow.add_recent_path"):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    txt_paths = list(pool.map(write_report, ("first", "second")))
+
+            self.assertEqual(len({path.stem for path in txt_paths}), 2)
+            for txt_path in txt_paths:
+                csv_path = txt_path.with_suffix(".csv")
+                json_path = txt_path.with_suffix(".json")
+                self.assertTrue(csv_path.is_file())
+                self.assertTrue(json_path.is_file())
+                txt_content = txt_path.read_text(encoding="utf-8")
+                payload = json.loads(json_path.read_text(encoding="utf-8"))
+                with csv_path.open(newline="", encoding="utf-8") as file:
+                    csv_records = list(csv.DictReader(file))
+                label = payload["records"][0]["message"]
+                self.assertIn(label, txt_content)
+                self.assertEqual(csv_records[0]["message"], label)
+                self.assertEqual(payload["records"][0]["message"], label)
+
+            self.assertEqual(list(output_dir.glob(".*.reserve")), [])
 
 
 class ErrorAndDiagnosticsTests(unittest.TestCase):

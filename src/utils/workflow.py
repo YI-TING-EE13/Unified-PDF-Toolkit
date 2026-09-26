@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -79,11 +80,6 @@ class WorkflowReport:
         slug = "".join(
             ch.lower() if ch.isalnum() else "_" for ch in self.tool_name
         ).strip("_")
-        report_base = output_root / f"{slug}_report_{timestamp}"
-        txt_path = report_base.with_suffix(".txt")
-        csv_path = report_base.with_suffix(".csv")
-        json_path = report_base.with_suffix(".json")
-
         summary = self._summary()
 
         lines = [
@@ -124,9 +120,17 @@ class WorkflowReport:
             if record.message:
                 lines.append(f"  message: {record.message}")
 
-        txt_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        self._write_csv(csv_path)
-        self._write_json(json_path, summary)
+        report_base, reservation = _reserve_report_base(output_root, slug, timestamp)
+        txt_path = report_base.with_suffix(".txt")
+        csv_path = report_base.with_suffix(".csv")
+        json_path = report_base.with_suffix(".json")
+        try:
+            with txt_path.open("x", encoding="utf-8") as file:
+                file.write("\n".join(lines) + "\n")
+            self._write_csv(csv_path)
+            self._write_json(json_path, summary)
+        finally:
+            reservation.unlink(missing_ok=True)
 
         for path in (txt_path, csv_path, json_path):
             add_recent_path("recent.reports", str(path))
@@ -178,7 +182,7 @@ class WorkflowReport:
             "saved_bytes",
             "saved_percent",
         ]
-        with path.open("w", newline="", encoding="utf-8") as file:
+        with path.open("x", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
@@ -193,10 +197,30 @@ class WorkflowReport:
             "options": self.options,
             "records": self._record_rows(),
         }
-        path.write_text(
-            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        with path.open("x", encoding="utf-8") as file:
+            file.write(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+
+
+def _reserve_report_base(output_root: Path, slug: str, timestamp: str) -> tuple[Path, Path]:
+    """Atomically reserve a readable common basename for one report set."""
+    counter = 1
+    while True:
+        suffix = "" if counter == 1 else f"_{counter}"
+        report_base = output_root / f"{slug}_report_{timestamp}{suffix}"
+        reservation = output_root / f".{report_base.name}.reserve"
+        try:
+            with reservation.open("x", encoding="utf-8"):
+                pass
+        except FileExistsError:
+            counter += 1
+            continue
+
+        report_paths = tuple(report_base.with_suffix(ext) for ext in (".txt", ".csv", ".json"))
+        if any(os.path.lexists(path) for path in report_paths):
+            reservation.unlink(missing_ok=True)
+            counter += 1
+            continue
+        return report_base, reservation
 
 
 def get_conflict_policy() -> str:

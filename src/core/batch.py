@@ -130,7 +130,8 @@ class HeadlessBatchRunner:
                     report.add(job.source, status="skipped", message="No output generated.")
                 else:
                     result["success"] += 1
-                    report.add(job.source, "; ".join(outputs), message=operation)
+                    for output in outputs:
+                        report.add(job.source, output, message=operation)
             except Exception as exc:
                 failed_this_job = True
                 result["failed"] += 1

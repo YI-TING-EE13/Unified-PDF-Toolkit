@@ -164,8 +164,10 @@ the manifest's folder, not the caller's current directory. A command-line
 
 ## Reports and exit codes
 
-Every run writes TXT, CSV, and JSON workflow reports to the output folder. The
-final JSON summary contains `success`, `failed`, `skipped`, `cancelled`, and
+Every run writes TXT, CSV, and JSON workflow reports to the output folder. Each
+produced artifact has its own report record, and all three formats share a
+collision-safe report name; repeated same-second names receive a numeric suffix.
+The final JSON summary contains `success`, `failed`, `skipped`, `cancelled`, and
 `report_path`.
 
 | Exit code | Meaning |
