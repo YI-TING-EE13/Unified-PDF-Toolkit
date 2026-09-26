@@ -8,6 +8,7 @@ from unittest import mock
 import fitz
 
 from src.core.batch import BatchJob, HeadlessBatchRunner
+from src.utils import file_ops
 from src.utils.file_ops import format_size
 
 
@@ -149,6 +150,47 @@ class BatchReportTests(unittest.TestCase):
                 report_txt.read_text(encoding="utf-8"),
             )
 
+    def test_late_skip_collision_on_later_image_preserves_foreign_output(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source.pdf"
+            output_dir = root / "out"
+            _create_pdf(source, pages=2)
+            page_two = output_dir / "source_page_2.png"
+            original_publish = file_ops._publish_without_replacing
+
+            def inject_page_two_collision(staged_path, destination):
+                destination = Path(destination)
+                if destination == page_two and not page_two.exists():
+                    page_two.parent.mkdir(parents=True, exist_ok=True)
+                    page_two.write_bytes(b"foreign page two")
+                return original_publish(staged_path, destination)
+
+            with (
+                mock.patch("src.utils.workflow.add_recent_path"),
+                mock.patch(
+                    "src.utils.file_ops._publish_without_replacing",
+                    side_effect=inject_page_two_collision,
+                ),
+            ):
+                result = HeadlessBatchRunner.run_jobs(
+                    [BatchJob(str(source), "pdf-to-images", {"dpi": 72, "format": "png"})],
+                    str(output_dir),
+                    conflict_policy="skip",
+                )
+
+            report_txt = Path(result["report_path"])
+            payload = json.loads(report_txt.with_suffix(".json").read_text(encoding="utf-8"))
+            artifacts = [record for record in payload["records"] if record["output"]]
+
+            self.assertEqual(result["success"], 1)
+            self.assertEqual(result["failed"], 0)
+            self.assertEqual(result["skipped"], 0)
+            self.assertEqual([record["output"] for record in artifacts], [str(output_dir / "source_page_1.png")])
+            self.assertTrue((output_dir / "source_page_1.png").is_file())
+            self.assertEqual(page_two.read_bytes(), b"foreign page two")
+            self.assertEqual(list(output_dir.glob(".pdf-toolkit-stage-*")), [])
+
     def test_failed_job_reports_every_partial_artifact_without_multiplying_failure(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)
@@ -163,6 +205,9 @@ class BatchReportTests(unittest.TestCase):
                 def save(self, output_path):
                     self.calls[0] += 1
                     if self.calls[0] == self.fail_on_call:
+                        Path(output_path).write_bytes(
+                            f"partial-failed-{self.page_number}".encode()
+                        )
                         raise RuntimeError("page write failed")
                     Path(output_path).write_bytes(f"partial-{self.page_number}".encode())
 
@@ -228,6 +273,13 @@ class BatchReportTests(unittest.TestCase):
                     self.assertEqual(payload["summary"]["success"], 0)
                     self.assertEqual(len(artifacts), expected_partial_count)
                     self.assertEqual(len(failed_rows), 1)
+                    self.assertEqual(
+                        len(list(output_dir.glob("*.png"))), expected_partial_count
+                    )
+                    self.assertFalse(
+                        (output_dir / f"{source.stem}_page_{fail_on_call}.png").exists()
+                    )
+                    self.assertEqual(list(output_dir.glob(".pdf-toolkit-stage-*")), [])
                     for record in artifacts:
                         output = Path(record["output"])
                         self.assertTrue(output.is_file())

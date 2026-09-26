@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 from src.core.processor import BatchProcessor
+from src.utils import file_ops
 from src.utils.file_ops import (
     FILESYSTEM_MAX_COMPONENT_BYTES,
     WINDOWS_MAX_COMPONENT_UNITS,
@@ -216,6 +217,25 @@ class StableCompressionOutputPathTests(unittest.TestCase):
 
 
 class AtomicOutputPublicationTests(unittest.TestCase):
+    def test_no_clobber_primitive_publishes_and_preserves_existing_target(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            destination = root / "destination.pdf"
+            staged = root / "staged.pdf"
+            staged.write_bytes(b"our output")
+
+            file_ops._publish_without_replacing(staged, destination)
+
+            self.assertEqual(destination.read_bytes(), b"our output")
+
+            foreign_staged = root / "foreign-stage.pdf"
+            foreign_staged.write_bytes(b"other output")
+            with self.assertRaises(FileExistsError):
+                file_ops._publish_without_replacing(foreign_staged, destination)
+
+            self.assertEqual(destination.read_bytes(), b"our output")
+            self.assertEqual(foreign_staged.read_bytes(), b"other output")
+
     def test_rename_preserves_foreign_files_created_after_lookup(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             requested = Path(temp_dir) / "output.pdf"
@@ -252,6 +272,105 @@ class AtomicOutputPublicationTests(unittest.TestCase):
                 self.assertEqual(requested.read_bytes(), b"foreign output")
             finally:
                 transaction.cleanup()
+
+    def test_unexpected_publish_failure_is_terminal_and_cleanup_is_scoped(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            requested.write_bytes(b"foreign output")
+            transaction = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(transaction)
+            staged_path = transaction.staging_path
+            staged_path.write_bytes(b"our output")
+            next_candidate = requested.with_name("output_2.pdf")
+
+            with mock.patch(
+                "src.utils.file_ops._publish_without_replacing",
+                side_effect=PermissionError("injected publish failure"),
+            ):
+                with self.assertRaisesRegex(PermissionError, "injected publish failure"):
+                    transaction.commit()
+
+            self.assertIs(transaction._state, file_ops._StagedOutputState.FAILED)
+            self.assertTrue(staged_path.is_file())
+            self.assertFalse(next_candidate.exists())
+            self.assertEqual(requested.read_bytes(), b"foreign output")
+
+            with self.assertRaisesRegex(RuntimeError, "failed"):
+                transaction.commit()
+            self.assertFalse(next_candidate.exists())
+
+            transaction.cleanup()
+            transaction.cleanup()
+            self.assertFalse(staged_path.parent.exists())
+            self.assertEqual(requested.read_bytes(), b"foreign output")
+            self.assertFalse(next_candidate.exists())
+
+    def test_overwrite_publish_failure_is_terminal_and_preserves_target(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            requested.write_bytes(b"original output")
+            transaction = create_staged_output(str(requested), "overwrite")
+            self.assertIsNotNone(transaction)
+            transaction.staging_path.write_bytes(b"replacement output")
+
+            with mock.patch(
+                "src.utils.file_ops.os.replace",
+                side_effect=PermissionError("injected replace failure"),
+            ):
+                with self.assertRaisesRegex(PermissionError, "injected replace failure"):
+                    transaction.commit()
+
+            self.assertIs(transaction._state, file_ops._StagedOutputState.FAILED)
+            self.assertEqual(requested.read_bytes(), b"original output")
+            with self.assertRaisesRegex(RuntimeError, "failed"):
+                transaction.commit()
+            transaction.cleanup()
+            self.assertEqual(requested.read_bytes(), b"original output")
+
+    def test_successful_and_skipped_transactions_reject_second_commit(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            requested = root / "success.pdf"
+            successful = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(successful)
+            successful.staging_path.write_bytes(b"complete output")
+            self.assertEqual(successful.commit(), str(requested))
+            self.assertIs(successful._state, file_ops._StagedOutputState.COMMITTED)
+            with self.assertRaisesRegex(RuntimeError, "committed"):
+                successful.commit()
+            with self.assertRaisesRegex(RuntimeError, "committed"):
+                _ = successful.staging_path
+            successful.cleanup()
+            self.assertEqual(requested.read_bytes(), b"complete output")
+
+            skipped_path = root / "skip.pdf"
+            skipped = create_staged_output(str(skipped_path), "skip")
+            self.assertIsNotNone(skipped)
+            skipped.staging_path.write_bytes(b"our output")
+            skipped_path.write_bytes(b"foreign output")
+            self.assertIsNone(skipped.commit())
+            self.assertIs(skipped._state, file_ops._StagedOutputState.SKIPPED)
+            with self.assertRaisesRegex(RuntimeError, "skipped"):
+                skipped.commit()
+            skipped.cleanup()
+            self.assertEqual(skipped_path.read_bytes(), b"foreign output")
+
+    def test_cleanup_closes_an_open_transaction(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            requested = Path(temp_dir) / "output.pdf"
+            transaction = create_staged_output(str(requested), "rename")
+            self.assertIsNotNone(transaction)
+            staged_path = transaction.staging_path
+            staged_path.write_bytes(b"discarded output")
+
+            transaction.cleanup()
+
+            self.assertIs(transaction._state, file_ops._StagedOutputState.CLEANED)
+            self.assertFalse(staged_path.exists())
+            with self.assertRaisesRegex(RuntimeError, "cleaned"):
+                transaction.commit()
+            with self.assertRaisesRegex(RuntimeError, "cleaned"):
+                _ = transaction.staging_path
 
     def test_concurrent_rename_producers_publish_distinct_outputs(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:

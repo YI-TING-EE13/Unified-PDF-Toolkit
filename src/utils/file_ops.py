@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -248,6 +249,14 @@ def _publish_without_replacing(staged_path: Path, output_path: Path) -> None:
     os.link(staged_path, output_path)
 
 
+class _StagedOutputState(Enum):
+    OPEN = "open"
+    COMMITTED = "committed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    CLEANED = "cleaned"
+
+
 class StagedOutput:
     """A staged artifact committed under one output conflict policy.
 
@@ -272,41 +281,71 @@ class StagedOutput:
         self.staging_directory = staging_directory
         # Keep the writer-visible extension, but not the potentially long source
         # name. This also supports compound outputs such as .txt.gz via .gz.
-        self.staging_path = staging_directory / f"output{logical_path.suffix}"
-        self._completed = False
+        self._staging_path = staging_directory / f"output{logical_path.suffix}"
+        self._state = _StagedOutputState.OPEN
+
+    @property
+    def staging_path(self) -> Path:
+        """Return the writer path only while this transaction is open."""
+        self._require_open("access its staging path")
+        return self._staging_path
+
+    def _require_open(self, action: str) -> None:
+        if self._state is not _StagedOutputState.OPEN:
+            raise RuntimeError(
+                f"Cannot {action} for staged output in {self._state.value} state."
+            )
 
     def commit(self) -> Optional[str]:
         """Publish the staged file and return its actual path, or None for skip."""
-        if self._completed:
-            raise RuntimeError("This staged output has already been committed or skipped.")
+        self._require_open("commit")
 
-        if self.policy == "overwrite":
-            os.replace(self.staging_path, self.logical_path)
-            self._completed = True
+        should_skip = False
+        committed_path: Optional[Path] = None
+        try:
+            if self.policy == "overwrite":
+                os.replace(self._staging_path, self.logical_path)
+                committed_path = self.logical_path
+            else:
+                index = self.first_index
+                while True:
+                    candidate = self._candidate_builder(index)
+                    try:
+                        _publish_without_replacing(self._staging_path, candidate)
+                    except FileExistsError:
+                        if self.policy == "skip":
+                            self._state = _StagedOutputState.SKIPPED
+                            should_skip = True
+                            break
+                        index += 1
+                        continue
+
+                    committed_path = candidate
+                    break
+        except BaseException:
+            # Any error escaping normal collision handling is terminal. Keep the
+            # stage private for explicit cleanup, but never allow this transaction
+            # to publish it after the caller has observed a failed commit.
+            if self._state is _StagedOutputState.OPEN:
+                self._state = _StagedOutputState.FAILED
+            raise
+
+        if should_skip:
             self.cleanup()
-            return str(self.logical_path)
+            return None
 
-        index = self.first_index
-        while True:
-            candidate = self._candidate_builder(index)
-            try:
-                _publish_without_replacing(self.staging_path, candidate)
-            except FileExistsError:
-                if self.policy == "skip":
-                    self._completed = True
-                    self.cleanup()
-                    return None
-                index += 1
-                continue
-
-            self._completed = True
-            self.cleanup()
-            return str(candidate)
+        if committed_path is None:
+            raise RuntimeError("Staged output completed without a commit result.")
+        self._state = _StagedOutputState.COMMITTED
+        self.cleanup()
+        return str(committed_path)
 
     def cleanup(self) -> None:
         """Remove only this invocation's staged file and empty staging directory."""
+        if self._state is _StagedOutputState.OPEN:
+            self._state = _StagedOutputState.CLEANED
         try:
-            self.staging_path.unlink()
+            self._staging_path.unlink()
         except FileNotFoundError:
             pass
         except OSError:
@@ -321,6 +360,7 @@ class StagedOutput:
             pass
 
     def __enter__(self) -> "StagedOutput":
+        self._require_open("enter its context")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:

@@ -305,15 +305,6 @@ class HeadlessBatchRunner:
                         continue
                     try:
                         pixmap.save(str(transaction.staging_path))
-                    except Exception:
-                        # Preserve explicit partial-artifact reporting while ensuring
-                        # the staged partial file follows the same collision policy.
-                        if transaction.staging_path.is_file():
-                            committed_path = transaction.commit()
-                            if committed_path is not None:
-                                outputs.append(committed_path)
-                        raise
-                    else:
                         if not transaction.staging_path.is_file():
                             raise OSError("PDF page rendering did not create its output file.")
                         committed_path = transaction.commit()
