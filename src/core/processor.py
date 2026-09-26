@@ -5,7 +5,7 @@ from ..utils.file_ops import (
     get_output_path,
     check_permissions,
     get_file_size,
-    resolve_output_path,
+    resolve_compression_output_path,
 )
 from ..utils.logger import setup_logger
 from .base import BaseCompressor
@@ -151,9 +151,16 @@ class BatchProcessor:
                 # 2. Output Path Preparation
                 # Text files receive a special extension override (.gz)
                 ext_override = '.txt.gz' if ext == '.txt' else None
-                output_path = get_output_path(input_path, output_dir, ext_override=ext_override)
-                resolved_output_path = resolve_output_path(output_path, conflict_policy)
+                resolved_output_path = resolve_compression_output_path(
+                    input_path,
+                    output_dir,
+                    ext_override=ext_override,
+                    conflict_policy=conflict_policy,
+                )
                 if resolved_output_path is None:
+                    output_path = get_output_path(
+                        input_path, output_dir, ext_override=ext_override
+                    )
                     results['skipped'] += 1
                     results['records'].append(
                         {

@@ -75,7 +75,7 @@ class CommandLineTests(unittest.TestCase):
                 )
                 self.assertEqual(renamed["success"], 1)
                 renamed_output = expected_output.with_name(
-                    f"{expected_output.stem}_2{expected_output.suffix}"
+                    f"{expected_output.name.removesuffix('.txt.gz')}_2.txt.gz"
                 )
                 self.assertTrue(renamed_output.is_file())
 
@@ -150,7 +150,7 @@ class CommandLineTests(unittest.TestCase):
                     jobs_a, str(output_dir), conflict_policy="rename"
                 )
                 renamed_target = target_a.with_name(
-                    f"{target_a.stem}_2{target_a.suffix}"
+                    f"{target_a.name.removesuffix('.txt.gz')}_2.txt.gz"
                 )
                 self.assertEqual(renamed["success"], 1)
                 self.assertTrue(renamed_target.is_file())
