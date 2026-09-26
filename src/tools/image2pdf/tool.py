@@ -14,6 +14,7 @@ import fitz
 import threading
 import io
 import queue
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -22,7 +23,7 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, get_file_size, resolve_output_path
+from ...utils.file_ops import get_default_save_dir, resolve_output_path
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
@@ -253,6 +254,25 @@ class Image2PDFTool(BaseTool):
         )
         job_status_recorded = False
         doc = None
+        staging_dir = None
+        processed_inputs: List[str] = []
+
+        def report_cancelled(source: str = "") -> None:
+            nonlocal job_status_recorded
+            report.count_job("cancelled")
+            job_status_recorded = True
+            report.add(source, status="cancelled")
+            report_path = report.write()
+            self.queue.put(
+                (
+                    "cancelled",
+                    {
+                        "message": f"Cancelled. Report: {report_path}",
+                        "report_path": report_path,
+                    },
+                )
+            )
+
         try:
             scale, quality = self.COMPRESSION_PRESETS.get(level, (0.75, 70))
             doc = fitz.open()
@@ -279,19 +299,7 @@ class Image2PDFTool(BaseTool):
 
             for i, img_path in enumerate(files):
                 if self.cancel_token.is_cancelled():
-                    report.count_job("cancelled")
-                    job_status_recorded = True
-                    report.add(img_path, status="cancelled")
-                    report_path = report.write()
-                    self.queue.put(
-                        (
-                            "cancelled",
-                            {
-                                "message": f"Cancelled. Report: {report_path}",
-                                "report_path": report_path,
-                            },
-                        )
-                    )
+                    report_cancelled(img_path)
                     return
                 try:
                     with Image.open(img_path) as pil_img:
@@ -323,7 +331,7 @@ class Image2PDFTool(BaseTool):
 
                     # Insert the compressed image bytes directly
                     page.insert_image(page_rect, stream=img_bytes)
-                    report.add(img_path, resolved_output_path)
+                    processed_inputs.append(img_path)
 
                 except Exception as e:
                     report.count_job("failed")
@@ -344,13 +352,33 @@ class Image2PDFTool(BaseTool):
                     )
                     last_update = now
 
-            # Save with cleanup
-            Path(resolved_output_path).parent.mkdir(parents=True, exist_ok=True)
-            doc.save(resolved_output_path, garbage=3, deflate=True)
-            output_size = get_file_size(resolved_output_path)
-            for record in report.records:
-                if record.output == resolved_output_path:
-                    record.output_size = output_size
+            if self.cancel_token.is_cancelled():
+                report_cancelled()
+                return
+
+            # Save away from the final path so a failed write cannot leave a
+            # partial PDF where the previous output used to be.
+            output_parent = Path(resolved_output_path).parent
+            output_parent.mkdir(parents=True, exist_ok=True)
+            staging_dir = tempfile.TemporaryDirectory(
+                prefix="pdf_toolkit_image2pdf_",
+                dir=str(output_parent),
+            )
+            staged_output_path = Path(staging_dir.name) / Path(resolved_output_path).name
+            doc.save(str(staged_output_path), garbage=3, deflate=True)
+            doc.close()
+            doc = None
+            if not staged_output_path.is_file():
+                raise OSError("Image-to-PDF save did not materialize the output file.")
+            if self.cancel_token.is_cancelled():
+                report_cancelled()
+                return
+            staged_output_path.replace(resolved_output_path)
+
+            # A successful report row means the final aggregate artifact now
+            # exists, not merely that this input was inserted into memory.
+            for img_path in processed_inputs:
+                report.add(img_path, resolved_output_path)
             report.count_job("success")
             job_status_recorded = True
 
@@ -372,3 +400,5 @@ class Image2PDFTool(BaseTool):
         finally:
             if doc is not None:
                 doc.close()
+            if staging_dir is not None:
+                staging_dir.cleanup()

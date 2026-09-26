@@ -15,6 +15,7 @@ import os
 import queue
 import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Any, Dict, Tuple
 
 from PIL import Image, ImageTk
@@ -424,8 +425,9 @@ class MergerTool(BaseTool):
         compression_level: str,
     ) -> None:
         """Worker thread for merging."""
-        temp_path = ""
+        staging_dir = None
         doc = None
+        processed_inputs: List[str] = []
         job_summary = new_job_summary()
         report = WorkflowReport(
             "Merge PDFs",
@@ -438,6 +440,25 @@ class MergerTool(BaseTool):
             job_summary=job_summary,
         )
         job_status_recorded = False
+
+        def report_cancelled(source: str = "") -> None:
+            nonlocal job_status_recorded
+            report.count_job("cancelled")
+            job_status_recorded = True
+            report.add(source, status="cancelled")
+            report_path = report.write()
+            self.queue.put(
+                (
+                    "cancelled",
+                    {
+                        "message": (
+                            f"Cancelled before merge completed.\nReport: {report_path}"
+                        ),
+                        "report_path": report_path,
+                    },
+                )
+            )
+
         try:
             resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
             if resolved_output_path is None:
@@ -462,18 +483,14 @@ class MergerTool(BaseTool):
                 )
                 return
             output_path = resolved_output_path
-            merge_output_path = output_path
             output_dir = os.path.dirname(output_path) or os.getcwd()
             os.makedirs(output_dir, exist_ok=True)
-            if auto_compress:
-                with tempfile.NamedTemporaryFile(
-                    suffix=".pdf",
-                    prefix="pdf_toolkit_merge_",
-                    dir=output_dir,
-                    delete=False,
-                ) as temp_file:
-                    temp_path = temp_file.name
-                merge_output_path = temp_path
+            staging_dir = tempfile.TemporaryDirectory(
+                prefix="pdf_toolkit_merge_",
+                dir=output_dir,
+            )
+            merge_output_path = str(Path(staging_dir.name) / "merged.pdf")
+            staged_output_path = merge_output_path
 
             self.queue.put(("progress", (0, "Merging PDFs...")))
             doc = fitz.open()
@@ -482,19 +499,7 @@ class MergerTool(BaseTool):
                 if self.cancel_token.is_cancelled():
                     doc.close()
                     doc = None
-                    report.count_job("cancelled")
-                    job_status_recorded = True
-                    report.add(pdf_path, status="cancelled")
-                    report_path = report.write()
-                    self.queue.put(
-                        (
-                            "cancelled",
-                            {
-                                "message": f"Cancelled before merge completed.\nReport: {report_path}",
-                                "report_path": report_path,
-                            },
-                        )
-                    )
+                    report_cancelled(pdf_path)
                     return
                 progress_start = ((idx - 1) / total_files) * 85
                 self.queue.put(
@@ -508,7 +513,7 @@ class MergerTool(BaseTool):
                 )
                 with fitz.open(pdf_path) as src:
                     doc.insert_pdf(src)
-                report.add(pdf_path, output_path)
+                processed_inputs.append(pdf_path)
                 progress_done = (idx / total_files) * 85
                 self.queue.put(
                     (
@@ -519,6 +524,11 @@ class MergerTool(BaseTool):
                         ),
                     )
                 )
+            if self.cancel_token.is_cancelled():
+                doc.close()
+                doc = None
+                report_cancelled()
+                return
             doc.save(merge_output_path)
             doc.close()
             doc = None
@@ -526,13 +536,14 @@ class MergerTool(BaseTool):
             detail = ""
             if auto_compress:
                 self.queue.put(("busy", (True, "Compressing merged PDF...")))
-                original_size = get_file_size(temp_path)
+                original_size = get_file_size(merge_output_path)
                 compressor = PDFCompressor(compression_level)
-                if not compressor.compress(temp_path, output_path):
+                staged_output_path = str(Path(staging_dir.name) / "compressed.pdf")
+                if not compressor.compress(merge_output_path, staged_output_path):
                     raise RuntimeError("Merge completed, but post-merge compression failed.")
                 self.queue.put(("busy", (False, "Compression complete.")))
 
-                compressed_size = get_file_size(output_path)
+                compressed_size = get_file_size(staged_output_path)
                 saved_bytes = original_size - compressed_size
                 size_detail = (
                     f"Saved {format_size(saved_bytes)}"
@@ -544,11 +555,18 @@ class MergerTool(BaseTool):
                     f"{size_detail}."
                 )
 
+            if not Path(staged_output_path).is_file():
+                raise OSError("Merge did not materialize the final output file.")
+            if self.cancel_token.is_cancelled():
+                report_cancelled()
+                return
+            Path(staged_output_path).replace(output_path)
+
+            # Do not expose aggregate-output success rows until the final
+            # uncompressed or compressed artifact has been committed.
+            for pdf_path in processed_inputs:
+                report.add(pdf_path, output_path)
             self.queue.put(("progress", (100, "Merge complete.")))
-            output_size = get_file_size(output_path)
-            for record in report.records:
-                if record.output == output_path:
-                    record.output_size = output_size
             report.count_job("success")
             job_status_recorded = True
             report_path = report.write()
@@ -572,8 +590,5 @@ class MergerTool(BaseTool):
         finally:
             if doc is not None:
                 doc.close()
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except OSError:
-                    pass
+            if staging_dir is not None:
+                staging_dir.cleanup()

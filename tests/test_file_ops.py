@@ -125,6 +125,21 @@ class StableCompressionOutputPathTests(unittest.TestCase):
                     self.assertTrue(output.name.endswith(extension))
                     self.assertTrue(output.name.startswith("p"))
 
+    def test_cjk_stem_truncation_obeys_utf8_budget_on_filesystem(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
+            root = Path(temp_dir)
+            source = root / f"{'漢' * 80}.pdf"
+            source.write_bytes(b"fixture")
+
+            output = Path(get_output_path(str(source), str(root / "out")))
+
+            self.assertTrue(source.is_file())
+            self.assertLessEqual(_component_bytes(output), FILESYSTEM_MAX_COMPONENT_BYTES)
+            self.assertLessEqual(_component_units(output), WINDOWS_MAX_COMPONENT_UNITS)
+            self.assertTrue(output.name.startswith("漢"))
+            readable_prefix = output.name.split("_compressed_", 1)[0]
+            self.assertLess(len(readable_prefix), len(source.stem))
+
     def test_rename_suffixes_fit_at_component_limit_and_compound_extension(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)
@@ -152,14 +167,22 @@ class StableCompressionOutputPathTests(unittest.TestCase):
             self.assertLessEqual(_component_bytes(second), FILESYSTEM_MAX_COMPONENT_BYTES)
             second.write_bytes(b"second")
 
-            third = Path(
-                resolve_compression_output_path(
-                    str(source), str(output_dir), ".txt.gz", "rename"
+            next_candidate = second
+            for expected_suffix in range(3, 11):
+                next_candidate.write_bytes(f"suffix-{expected_suffix - 1}".encode())
+                next_candidate = Path(
+                    resolve_compression_output_path(
+                        str(source), str(output_dir), ".txt.gz", "rename"
+                    )
                 )
-            )
-            self.assertIn("_3.txt.gz", third.name)
-            self.assertLessEqual(_component_units(third), WINDOWS_MAX_COMPONENT_UNITS)
-            self.assertLessEqual(_component_bytes(third), FILESYSTEM_MAX_COMPONENT_BYTES)
+                self.assertIn(f"_{expected_suffix}.txt.gz", next_candidate.name)
+                self.assertLessEqual(
+                    _component_units(next_candidate), WINDOWS_MAX_COMPONENT_UNITS
+                )
+                self.assertLessEqual(
+                    _component_bytes(next_candidate), FILESYSTEM_MAX_COMPONENT_BYTES
+                )
+            tenth = next_candidate
 
             self.assertIsNone(
                 resolve_compression_output_path(
@@ -172,11 +195,12 @@ class StableCompressionOutputPathTests(unittest.TestCase):
                 ),
                 str(original),
             )
+            self.assertIn("_10.txt.gz", tenth.name)
 
     def test_emoji_stem_truncation_preserves_valid_unicode(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as temp_dir:
             root = Path(temp_dir)
-            source = root / f"{'😀' * 100}.pdf"
+            source = root / f"{'😀' * 60}.pdf"
             source.write_bytes(b"fixture")
             output = Path(get_output_path(str(source), str(root / "out")))
 
