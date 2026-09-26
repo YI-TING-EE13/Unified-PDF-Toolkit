@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import fitz
+
+from .cache import _assert_child
 
 
 @dataclass(frozen=True)
@@ -30,24 +33,38 @@ class ValidationCase:
         }
 
 
-def create_validation_suite(root: Path, *, dpi: int = 144) -> tuple[ValidationCase, ...]:
-    root = root.expanduser().resolve()
+def create_validation_suite(
+    root: Path,
+    *,
+    managed_root: Path | None = None,
+    dpi: int = 144,
+) -> tuple[ValidationCase, ...]:
+    """Create a fresh suite below a validated managed root without replacing old files."""
+    root = root.expanduser()
+    boundary = managed_root if managed_root is not None else root.parent
+    _assert_child(root, boundary)
     root.mkdir(parents=True, exist_ok=True)
+    _assert_child(root, boundary)
+    suite_root = Path(tempfile.mkdtemp(prefix="suite-", dir=root))
+    _assert_child(suite_root, boundary)
     cases = (
-        _pure_text(root, dpi),
-        _table(root, dpi),
-        _mixed_language(root, dpi),
-        _complex_layout(root, dpi),
-        _rotated(root, dpi),
+        _pure_text(suite_root, dpi),
+        _table(suite_root, dpi),
+        _mixed_language(suite_root, dpi),
+        _complex_layout(suite_root, dpi),
+        _rotated(suite_root, dpi),
     )
-    (root / "suite.json").write_text(
-        json.dumps(
-            {"schema_version": "1.0", "synthetic": True, "cases": [case.to_dict() for case in cases]},
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
+    manifest = json.dumps(
+        {
+            "schema_version": "1.0",
+            "synthetic": True,
+            "cases": [case.to_dict() for case in cases],
+        },
+        ensure_ascii=False,
+        indent=2,
     )
+    with (suite_root / "suite.json").open("x", encoding="utf-8") as suite_file:
+        suite_file.write(manifest)
     return cases
 
 
@@ -189,13 +206,13 @@ def _save_case(
 ) -> ValidationCase:
     pdf_path = root / f"{case_id}.pdf"
     image_path = root / f"{case_id}.png"
-    pdf_path.unlink(missing_ok=True)
-    image_path.unlink(missing_ok=True)
-    doc.save(pdf_path, garbage=4, deflate=True)
-    page = doc[0]
-    pixmap = page.get_pixmap(matrix=fitz.Matrix(dpi / 72, dpi / 72), alpha=False)
-    pixmap.save(image_path)
-    doc.close()
+    try:
+        doc.save(pdf_path, garbage=4, deflate=True)
+        page = doc[0]
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(dpi / 72, dpi / 72), alpha=False)
+        pixmap.save(image_path)
+    finally:
+        doc.close()
     return ValidationCase(
         case_id=case_id,
         category=category,

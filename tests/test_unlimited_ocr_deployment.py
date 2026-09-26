@@ -894,6 +894,28 @@ class OrchestratorTests(unittest.TestCase):
                 orchestrator.run(until=InstallStage.PRECHECK)
             self.assertFalse((root / "state-invalid").exists())
 
+    def test_precheck_rejects_linked_validation_assets_before_state_write(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _plan, _consent, orchestrator = self._build(root)
+            state_root = root / "state"
+            state_root.mkdir()
+            outside = root / "outside"
+            outside.mkdir()
+            sentinel = outside / "pure-text.pdf"
+            sentinel.write_bytes(b"external sentinel")
+            try:
+                _make_directory_link(state_root / "validation-assets", outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            with self.assertRaises(DeploymentFailure) as caught:
+                orchestrator.run(until=InstallStage.PRECHECK)
+
+            self.assertEqual(caught.exception.error.error_code, "PERMISSION_DENIED")
+            self.assertFalse((state_root / "installation.json").exists())
+            self.assertEqual(sentinel.read_bytes(), b"external sentinel")
+
     def test_precheck_uses_specific_unsupported_gpu_error(self):
         environment = _environment(
             gpu=({"vendor": "AMD", "name": "Radeon", "vram_total_bytes": 24 * 1024**3},),
@@ -1574,16 +1596,66 @@ class ProviderAndAssetTests(unittest.TestCase):
         import fitz
 
         with tempfile.TemporaryDirectory() as temporary:
-            cases = create_validation_suite(Path(temporary))
+            data_root = Path(temporary)
+            validation_root = data_root / "runtime" / "state" / "validation-assets"
+            cases = create_validation_suite(validation_root, managed_root=data_root)
             categories = {case.category for case in cases}
             self.assertEqual(
                 categories,
                 {"pure_text", "table", "mixed_language", "complex_layout", "rotation"},
             )
             for case in cases:
+                self.assertIn(validation_root, case.pdf_path.parents)
+                self.assertTrue((case.pdf_path.parent / "suite.json").is_file())
                 with fitz.open(case.pdf_path) as document:
                     self.assertEqual(document.page_count, 1)
                 self.assertGreater(case.image_path.stat().st_size, 1000)
+
+    def test_validation_suite_rejects_linked_assets_before_touching_external_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary)
+            state_root = data_root / "runtime" / "state"
+            state_root.mkdir(parents=True)
+            outside = data_root / "outside"
+            outside.mkdir()
+            sentinel = outside / "pure-text.pdf"
+            sentinel.write_bytes(b"external sentinel")
+            assets_root = state_root / "validation-assets"
+            try:
+                _make_directory_link(assets_root, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            with self.assertRaises(ValueError):
+                create_validation_suite(assets_root, managed_root=data_root)
+
+            self.assertEqual(sentinel.read_bytes(), b"external sentinel")
+            self.assertFalse((outside / "suite.json").exists())
+
+    def test_validation_suite_rejects_linked_intermediate_state_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary)
+            outside = data_root / "outside"
+            outside.mkdir()
+            external_assets = outside / "validation-assets"
+            external_assets.mkdir()
+            sentinel = external_assets / "pure-text.pdf"
+            sentinel.write_bytes(b"external sentinel")
+            state_link = data_root / "runtime" / "state"
+            state_link.parent.mkdir()
+            try:
+                _make_directory_link(state_link, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            with self.assertRaises(ValueError):
+                create_validation_suite(
+                    state_link / "validation-assets",
+                    managed_root=data_root,
+                )
+
+            self.assertEqual(sentinel.read_bytes(), b"external sentinel")
+            self.assertEqual(list(external_assets.iterdir()), [sentinel])
 
     def test_error_classifier_maps_permission_and_disk(self):
         self.assertEqual(

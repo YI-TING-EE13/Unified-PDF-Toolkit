@@ -197,6 +197,7 @@ class SetupOrchestrator:
             (declared_runtime / "environment", "private environment"),
             (cache_root, "model cache root"),
             (self._declared_state_root, "installation state root"),
+            (self._declared_state_root / "validation-assets", "validation assets root"),
         ):
             if _is_link_or_junction(path):
                 raise DeploymentFailure(

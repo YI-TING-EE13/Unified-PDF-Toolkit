@@ -430,7 +430,10 @@ def _run_managed_ocr_command(args: argparse.Namespace) -> int:
             print("Cancellation requested; stopping the active private process.", file=sys.stderr)
 
         signal.signal(signal.SIGINT, request_cancel)
-        cases = create_validation_suite(Path(plan.runtime_root) / "state" / "validation-assets")
+        cases = create_validation_suite(
+            Path(plan.runtime_root) / "state" / "validation-assets",
+            managed_root=Path(plan.model_cache_dir).parent,
+        )
 
         def progress(record: Any) -> None:
             if not args.quiet:

@@ -169,10 +169,31 @@ def _is_link_or_junction(path: Path) -> bool:
 
 
 def _assert_child(path: Path, root: Path) -> None:
-    resolved_path = path.resolve()
-    resolved_root = root.resolve()
+    declared_path = Path(path).expanduser()
+    if ".." in declared_path.parts:
+        raise ValueError("Managed path cannot contain parent-directory traversal.")
+    if not declared_path.is_absolute():
+        declared_path = Path.cwd() / declared_path
+    declared_root = Path(os.path.abspath(str(Path(root).expanduser())))
+    try:
+        relative_path = declared_path.relative_to(declared_root)
+    except ValueError as exc:
+        raise ValueError("Managed path is outside the managed root.") from exc
+    if not relative_path.parts:
+        raise ValueError("Managed path must be below the managed root.")
+
+    cursor = declared_root
+    if _is_link_or_junction(cursor):
+        raise ValueError("Managed path traverses a link or junction.")
+    for part in relative_path.parts:
+        cursor /= part
+        if _is_link_or_junction(cursor):
+            raise ValueError("Managed path traverses a link or junction.")
+
+    resolved_path = declared_path.resolve()
+    resolved_root = declared_root.resolve()
     if resolved_path == resolved_root or resolved_root not in resolved_path.parents:
-        raise ValueError("Cleanup target is outside the managed cache root.")
+        raise ValueError("Managed path is outside the managed root.")
 
 
 def _directory_size(path: Path) -> int:
