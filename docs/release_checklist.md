@@ -42,17 +42,40 @@ uv run --no-sync python scripts/verify_beta_release.py --tag v<version> --dist-d
 
 ## Windows installer lifecycle acceptance
 
-Before creating a tag, run
+Before creating a tag, the normal gate is to run
 [`docs/testing/windows_installer_lifecycle_acceptance.md`](testing/windows_installer_lifecycle_acceptance.md)
 against the exact candidate installer and portable ZIP in a checkpoint-capable
 Windows VM. Do not run install, upgrade, or uninstall acceptance on the primary
 development host. Record the candidate commit and SHA-256 values before the
 first scenario.
 
-The release remains blocked when the VM is unavailable or when any fresh
-install, beta.4-to-candidate upgrade, retained-data, uninstall, reinstall,
-shortcut/registry, shutdown, or rollback scenario is incomplete. Static Inno
-Setup review and a successful installer build do not replace this gate.
+The lifecycle gate is normally required before tagging. Static Inno Setup
+review, a successful installer build, and packaged-app smoke do not replace
+actual lifecycle acceptance.
+
+### Controlled prerelease waiver
+
+A maintainer may waive this gate only for a controlled alpha, beta, or release
+candidate, and only when all of the following are true:
+
+1. The release is an alpha, beta, or release candidate, not a stable production
+   release.
+2. The maintainer explicitly approves and records the waiver.
+3. Release notes disclose every untested scenario and the accepted risk.
+4. No lifecycle scenario has actually failed. Unrun scenarios remain
+   unverified and must never be reported as passing.
+5. Exact-main CI and the applicable packaging smoke are green.
+6. The release remains marked as a prerelease.
+7. The waiver documentation is committed before the tag is created.
+
+For `v0.6.0-beta.5`, the specific waiver is recorded in
+[`docs/releases/beta_tag_readiness_review.md`](releases/beta_tag_readiness_review.md)
+and [`docs/releases/v0.6.0-beta.5.md`](releases/v0.6.0-beta.5.md). It accepts
+the missing VM evidence for this controlled beta only; it does not change the
+lifecycle result from `DEFERRED_NO_VM` or imply production readiness.
+
+Stable/public production releases still require actual lifecycle acceptance
+unless release policy is separately changed and approved.
 
 ## Publish
 

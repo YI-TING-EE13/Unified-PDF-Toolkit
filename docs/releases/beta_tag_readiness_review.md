@@ -4,7 +4,46 @@ This document records the current readiness review for a human-approved beta
 tag. It does not create a tag, publish a GitHub Release, or approve production
 Unlimited-OCR support.
 
-## Current Beta 5 Candidate (2026-08-10)
+## Current Beta 5 Decision (2026-09-27)
+
+Release decision for the controlled `v0.6.0-beta.5` prerelease:
+
+- Exact promoted `main` SHA: `9706e6417a592671a6f4e758005d904443595d09`.
+- Exact-main GitHub CI run
+  [36309255928](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/36309255928)
+  completed successfully on this SHA. Windows, macOS, and Ubuntu test jobs,
+  quality/security gates, and the Windows PyInstaller packaged-app smoke all
+  passed. Coverage was 55%; the dependency audit reported no known
+  vulnerabilities.
+- Normal-user Windows packaged-app launch/shutdown validation passed 20/20 on
+  commit `f768c674939edeb328c0baa7838d3b65ca5f449a`. That commit has the same
+  Git tree as promoted `main` (`2ee5ba57f2e2fb0d683c383adc25c186acb260f5`).
+  This does not test installer lifecycle behavior.
+- Historical packaged-app shutdown observation: controlled local A/B runs
+  recorded timeouts in 5/5 baseline runs and 5/5 candidate runs. Affected
+  processes remained alive beyond the normal 5-second close bound; diagnostic
+  runs remained alive to about 15 seconds. Later normal-user desktop validation
+  passed 20/20 without reproducing the timeout, and the exact-head GitHub
+  PyInstaller packaged smoke passed. Classification:
+  `HISTORICAL_NONDETERMINISTIC_FAILURE`. Monitor this as a residual beta
+  reliability risk, not a currently reproducible release blocker. It is
+  separate from the waived installer lifecycle matrix; no root-cause fix or
+  permanent elimination is established.
+- Installer lifecycle acceptance status: `DEFERRED_NO_VM`. No checkpoint-
+  capable disposable Windows VM was available, and no lifecycle scenario was
+  executed. No scenario produced a failing result; all scenarios remain
+  unverified because no scenario ran.
+- Maintainer decision: `INSTALLER_ACCEPTANCE_WAIVED_BY_MAINTAINER` /
+  `WAIVED_FOR_CONTROLLED_BETA5`. The missing evidence is knowingly accepted
+  for this controlled beta only. The waiver is not equivalent to `PASS`.
+
+Recommendation: **READY FOR HUMAN-AUTHORIZED CONTROLLED BETA TAG WITH
+DOCUMENTED INSTALLER RISK**. This is not production readiness or tag
+authorization. The release must remain a prerelease, and its notes must disclose
+the untested installer scenarios. Future releases use the standard lifecycle
+gate unless separately waived under the release checklist.
+
+## Beta 5 Candidate Preparation History (2026-08-10)
 
 Release candidate metadata:
 
@@ -19,7 +58,9 @@ This candidate contains the core PDF workflow performance changes from
 not change the default Tesseract provider, broaden Unlimited-OCR hardware
 support, or bundle an optional AI runtime or model.
 
-Candidate status: **NOT READY FOR TAG**.
+At that preparation stage, candidate status was **NOT READY FOR TAG**. This
+historical status is superseded for the controlled beta by the dated maintainer
+decision above; the technical test status remains unverified.
 
 Confirmed before candidate metadata preparation:
 
@@ -50,7 +91,8 @@ Exact-candidate local evidence completed on 2026-08-10:
   private source path, optional OCR runtime, model/cache, model-weight, or heavy
   AI/CUDA runtime dependency in the default deliverables.
 
-Release-blocking evidence still required:
+Installer lifecycle evidence not collected during candidate preparation and
+still unverified:
 
 - run the checkpointed Windows fresh-install, portable ZIP,
   beta.4-to-beta.5 upgrade, retained-data, uninstall, reinstall, shutdown, and
@@ -61,8 +103,9 @@ Release-blocking evidence still required:
 No recoverable Windows VM was available during candidate preparation. Hyper-V
 management tooling was present, but the Hyper-V Platform/WMI inventory was not
 available; VirtualBox, VMware, QEMU, VM images, and checkpoints were not found.
-Installer lifecycle acceptance therefore remains `DEFERRED`. The primary
-development host must not be used as a substitute.
+At that time, installer lifecycle acceptance was `DEFERRED`. The later waiver
+changes release policy for this controlled beta only; the scenarios remain
+unverified. The primary development host must not be used as a substitute.
 
 The existing `v0.6.0-beta.4` tag and published assets remain immutable. A local
 artifact named beta.4 that contains post-tag commits is verification-only and

@@ -4,9 +4,17 @@ This runbook verifies the Windows installer and portable ZIP without risking a
 developer workstation or user data. Run it only against an exact release
 candidate in a checkpoint-capable disposable Windows VM.
 
-Current status for `v0.6.0-beta.5`: **DEFERRED — no recoverable Windows VM is
-available on the development host.** The commands below are maintained but were
-not executed during beta.5 candidate preparation.
+Current status for `v0.6.0-beta.5` at promoted main
+`9706e6417a592671a6f4e758005d904443595d09`:
+**DEFERRED_NO_VM; WAIVED_FOR_CONTROLLED_BETA5**.
+Governance decision: `INSTALLER_ACCEPTANCE_WAIVED_BY_MAINTAINER`.
+
+The installer lifecycle matrix was not executed because no checkpoint-capable
+disposable Windows VM was available. The maintainer explicitly waived this gate
+for this controlled beta. Every scenario remains unverified; this waiver is not
+a PASS and does not establish production readiness. Future releases should run
+this matrix unless a maintainer separately approves and documents a waiver under
+the release checklist.
 
 ## Acceptance boundary
 
@@ -238,7 +246,10 @@ Record each scenario with:
 | Artifacts | Sanitized log/screenshot/inventory paths |
 | Gap | Anything not tested or requiring separate GPU/device acceptance |
 
-The beta.5 tag gate passes only when every release-blocking scenario is `PASS`,
-all evidence belongs to the exact candidate commit/artifact hashes, and a
-maintainer reviews the record. A build-only or static-review result remains
-`DEFERRED`.
+The standard lifecycle gate is satisfied only when every release-blocking
+scenario is `PASS`, all evidence belongs to the exact candidate commit and
+artifact hashes, and a maintainer reviews the record. A build-only or
+static-review result remains `DEFERRED`. The specific maintainer waiver recorded
+for `v0.6.0-beta.5` is a controlled-prerelease policy exception only: it does
+not change any scenario result from unverified to `PASS`. Future releases use
+the standard gate unless separately waived and documented.
