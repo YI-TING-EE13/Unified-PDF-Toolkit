@@ -41,13 +41,16 @@ Compatibility metadata lives in
 reviewed snapshot pins:
 
 - Unlimited-OCR source revision
-  `528fca4e2161e23231d05666a6d35155dcb1957e`;
+  `d49ff64afffc1f47ab563dc1c589bc2f78808fa4`;
 - Hugging Face model revision
-  `ee63731b6461c8afcdcc7b15352e7d2ffecc2ead`;
+  `07dea832e22aefee32ad281d4b80551282e1c168`;
 - model weight SHA-256
   `2bc48a7a110061ea58fff65d3169367eebe3aee371ca6968dc2219c1b2855fc6`;
 - the complete selected file inventory and exact package versions from the
   upstream Transformers instructions.
+
+The reviewed revisions and evidence-backed semantic changes are recorded in
+the [2026-09-27 compatibility evidence review](./unlimited_ocr_compatibility_evidence_review_2026-09-27.md).
 
 The upstream README currently says CUDA 12.9, while official PyTorch 2.10
 wheels are published for `cu126`, `cu128`, and `cu130`. The APP resolves this
