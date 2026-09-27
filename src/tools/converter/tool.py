@@ -19,12 +19,13 @@ from typing import List, Optional, Dict, Any
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -229,10 +230,12 @@ class ConverterTool(BaseTool):
         Worker thread for batch conversion.
         Includes simple throttling logic to avoid flooding the GUI queue.
         """
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "PDF to Image",
             out_dir,
             options={"dpi": dpi, "format": fmt, "conflict_policy": get_conflict_policy()},
+            job_summary=job_summary,
         )
         try:
             os.makedirs(out_dir, exist_ok=True)
@@ -249,15 +252,19 @@ class ConverterTool(BaseTool):
 
             for pdf_path in files:
                 if self.cancel_token.is_cancelled():
+                    report.count_job("cancelled")
                     report.add(pdf_path, status="cancelled", message="Cancelled before file.")
                     break
                 doc = None
+                output_count = 0
+                skipped_count = 0
                 try:
                     doc = fitz.open(pdf_path)
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
                     for i, page in enumerate(doc):
                         if self.cancel_token.is_cancelled():
+                            report.count_job("cancelled")
                             report.add(pdf_path, status="cancelled", message="Cancelled during conversion.")
                             report_path = report.write()
                             self.queue.put(
@@ -273,11 +280,12 @@ class ConverterTool(BaseTool):
                         pix = page.get_pixmap(dpi=dpi)
                         out_name = f"{base_name}_page_{i + 1}.{fmt}"
                         requested_path = os.path.join(out_dir, out_name)
-                        out_path = resolve_output_path(
+                        transaction = create_staged_output(
                             requested_path, get_conflict_policy()
                         )
-                        if out_path is None:
+                        if transaction is None:
                             current_page += 1
+                            skipped_count += 1
                             report.add(
                                 pdf_path,
                                 requested_path,
@@ -285,8 +293,24 @@ class ConverterTool(BaseTool):
                                 message="Output exists and conflict policy is skip.",
                             )
                             continue
-                        pix.save(out_path)
-                        report.add(pdf_path, out_path)
+                        try:
+                            pix.save(str(transaction.staging_path))
+                            if not transaction.staging_path.is_file():
+                                raise OSError("Page rendering did not create its output file.")
+                            committed_path = transaction.commit()
+                            if committed_path is None:
+                                skipped_count += 1
+                                report.add(
+                                    pdf_path,
+                                    requested_path,
+                                    status="skipped",
+                                    message="Output appeared before commit and was preserved.",
+                                )
+                            else:
+                                report.add(pdf_path, committed_path)
+                                output_count += 1
+                        finally:
+                            transaction.cleanup()
 
                         current_page += 1
 
@@ -302,8 +326,22 @@ class ConverterTool(BaseTool):
                             )
                             last_update = now
 
+                    if output_count:
+                        report.count_job("success")
+                    elif skipped_count:
+                        report.count_job("skipped")
+                    else:
+                        report.count_job("skipped")
+                        report.add(
+                            pdf_path,
+                            status="skipped",
+                            message="No pages were selected for conversion.",
+                        )
+
                 except Exception as e:
+                    report.count_job("failed")
                     report.add(pdf_path, status="failed", message=str(e))
+                    report.write()
                     self.queue.put(
                         (
                             "error",
@@ -328,6 +366,11 @@ class ConverterTool(BaseTool):
             )
 
         except Exception as e:
-            report.add("", status="failed", message=str(e))
+            if not any(job_summary.values()):
+                for pdf_path in files:
+                    report.count_job("failed")
+                    report.add(pdf_path, status="failed", message=str(e))
+            else:
+                report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

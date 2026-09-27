@@ -28,12 +28,13 @@ from ...base.tool import BaseTool
 from ...ocr import OcrDependencyMissingError, OcrEngine, OcrRequest, get_backend
 from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
 from ...utils.errors import friendly_error_message
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -400,6 +401,7 @@ class PDFToWordTool(BaseTool):
     ) -> None:
         results = {"success": 0, "failed": 0, "skipped": 0, "errors": []}
         total = len(files)
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "PDF to Word",
             output_dir,
@@ -411,6 +413,7 @@ class PDFToWordTool(BaseTool):
                 "ocr_preprocess": ocr_preprocess,
                 "conflict_policy": get_conflict_policy(),
             },
+            job_summary=job_summary,
         )
 
         try:
@@ -418,6 +421,7 @@ class PDFToWordTool(BaseTool):
 
             for idx, input_path in enumerate(files, start=1):
                 if self.cancel_token.is_cancelled():
+                    report.count_job("cancelled")
                     report.add(input_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -445,16 +449,18 @@ class PDFToWordTool(BaseTool):
                 try:
                     if not os.path.exists(input_path):
                         results["skipped"] += 1
+                        report.count_job("skipped")
                         results["errors"].append(f"File not found: {input_path}")
                         report.add(input_path, status="skipped", message="File not found.")
                         continue
 
                     output_path = self._output_path(input_path, output_dir)
-                    resolved_output_path = resolve_output_path(
+                    transaction = create_staged_output(
                         output_path, get_conflict_policy()
                     )
-                    if resolved_output_path is None:
+                    if transaction is None:
                         results["skipped"] += 1
+                        report.count_job("skipped")
                         report.add(
                             input_path,
                             output_path,
@@ -462,20 +468,38 @@ class PDFToWordTool(BaseTool):
                             message="Output exists and conflict policy is skip.",
                         )
                         continue
-                    self.convert_pdf_to_docx(
-                        input_path,
-                        resolved_output_path,
-                        range_text,
-                        mode,
-                        ocr_lang=ocr_lang,
-                        ocr_dpi=ocr_dpi,
-                        ocr_preprocess=ocr_preprocess,
-                    )
+                    try:
+                        self.convert_pdf_to_docx(
+                            input_path,
+                            str(transaction.staging_path),
+                            range_text,
+                            mode,
+                            ocr_lang=ocr_lang,
+                            ocr_dpi=ocr_dpi,
+                            ocr_preprocess=ocr_preprocess,
+                        )
+                        if not transaction.staging_path.is_file():
+                            raise OSError("PDF-to-Word conversion did not create its output file.")
+                        resolved_output_path = transaction.commit()
+                    finally:
+                        transaction.cleanup()
+                    if resolved_output_path is None:
+                        results["skipped"] += 1
+                        report.count_job("skipped")
+                        report.add(
+                            input_path,
+                            output_path,
+                            status="skipped",
+                            message="Output appeared before commit and was preserved.",
+                        )
+                        continue
                     results["success"] += 1
+                    report.count_job("success")
                     report.add(input_path, resolved_output_path)
                 except Exception as exc:
                     friendly = friendly_error_message(exc)
                     results["failed"] += 1
+                    report.count_job("failed")
                     results["errors"].append(
                         f"{os.path.basename(input_path)}: {friendly}"
                     )
@@ -500,6 +524,8 @@ class PDFToWordTool(BaseTool):
                 )
             )
         except Exception as exc:
+            if not any(job_summary.values()):
+                report.count_job("failed")
             report.add("", status="failed", message=str(exc))
             report.write()
             self.queue.put(("error", friendly_error_message(exc, "PDF to Word failed")))

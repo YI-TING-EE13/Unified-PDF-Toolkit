@@ -10,6 +10,7 @@ import tarfile
 import tempfile
 import unittest
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -52,6 +53,10 @@ from src.ocr.deployment.orchestrator import (
     SetupOrchestrator,
     _atomic_json,
 )
+from src.ocr.deployment.versions import (
+    numeric_version_at_least,
+    parse_numeric_version,
+)
 from src.ocr.deployment.provider_worker import (
     _benchmark_classification,
     _bounded_int,
@@ -75,6 +80,19 @@ from src.ocr.deployment.runtime_tasks import (
 )
 from src.ocr.deployment.validation_assets import create_validation_suite
 from src.ocr.models import OcrEngine, OcrPageResult, OcrRequest, OcrResult
+
+
+_COMPATIBILITY_TEST_NOW = datetime(2026, 7, 15, tzinfo=timezone.utc)
+
+
+def _evaluate_compatibility(metadata, environment):
+    """Evaluate reviewed metadata against a stable test clock."""
+
+    with patch(
+        "src.ocr.deployment.compatibility.metadata_age_days",
+        side_effect=lambda value: metadata_age_days(value, now=_COMPATIBILITY_TEST_NOW),
+    ):
+        return CompatibilityEngine(metadata).evaluate(environment)
 
 
 def _environment(**overrides):
@@ -165,11 +183,75 @@ class MetadataTests(unittest.TestCase):
 
     def test_bundled_metadata_is_complete_and_pinned(self):
         metadata = load_compatibility_metadata()
+        self.assertEqual(metadata["schema_version"], "2.0")
         self.assertEqual(metadata["model"], "baidu/Unlimited-OCR")
         self.assertEqual(len(metadata["source_revision"]), 40)
         self.assertEqual(len(metadata["model_revision"]), 40)
         self.assertEqual(len(metadata["model_artifacts"]["weight_sha256"]), 64)
         self.assertGreater(metadata["model_artifacts"]["required_download_bytes"], 6_000_000_000)
+
+    def test_driver_thresholds_are_precise_per_profile_and_platform(self):
+        metadata = load_compatibility_metadata()
+        profiles = metadata["backends"]["transformers"]["pytorch_profiles"]
+        for profile_name in ("cu126", "cu128"):
+            with self.subTest(profile=profile_name):
+                self.assertEqual(
+                    profiles[profile_name]["minimum_driver_versions"],
+                    {"windows": "528.33", "linux": "525.60.13"},
+                )
+        self.assertEqual(
+            profiles["cu130"]["minimum_driver_versions"],
+            {"windows": "580", "linux": "580"},
+        )
+        self.assertNotIn("driver_families", metadata)
+
+    def test_metadata_rejects_obsolete_or_invalid_driver_thresholds(self):
+        metadata = load_compatibility_metadata()
+        invalid_cases = (
+            (
+                "old schema",
+                lambda candidate: candidate.update(schema_version="1.0"),
+            ),
+            (
+                "duplicate coarse family thresholds",
+                lambda candidate: candidate.update(
+                    driver_families={"cuda_12": {"minimum_driver_major": 525}}
+                ),
+            ),
+            (
+                "legacy profile major field",
+                lambda candidate: candidate["backends"]["transformers"][
+                    "pytorch_profiles"
+                ]["cu128"].update(minimum_driver_major=525),
+            ),
+            (
+                "missing Linux threshold",
+                lambda candidate: candidate["backends"]["transformers"][
+                    "pytorch_profiles"
+                ]["cu128"]["minimum_driver_versions"].pop("linux"),
+            ),
+            (
+                "unsupported OS key",
+                lambda candidate: candidate["backends"]["transformers"][
+                    "pytorch_profiles"
+                ]["cu128"]["minimum_driver_versions"].update(darwin="525.60.13"),
+            ),
+        )
+        for label, mutate in invalid_cases:
+            with self.subTest(case=label):
+                candidate = copy.deepcopy(metadata)
+                mutate(candidate)
+                with self.assertRaises(CompatibilityMetadataError):
+                    validate_compatibility_metadata(candidate)
+
+        for invalid_version in ("", "525.x", "525.-1", 525):
+            with self.subTest(version=invalid_version):
+                candidate = copy.deepcopy(metadata)
+                candidate["backends"]["transformers"]["pytorch_profiles"]["cu128"][
+                    "minimum_driver_versions"
+                ]["linux"] = invalid_version
+                with self.assertRaises(CompatibilityMetadataError):
+                    validate_compatibility_metadata(candidate)
 
     def test_metadata_rejects_missing_or_unpinned_values(self):
         metadata = load_compatibility_metadata()
@@ -197,6 +279,58 @@ class MetadataTests(unittest.TestCase):
 
     def test_metadata_age_is_non_negative(self):
         self.assertGreaterEqual(metadata_age_days(load_compatibility_metadata()), 0)
+
+
+class DriverVersionTests(unittest.TestCase):
+    def test_numeric_dotted_driver_versions_parse_without_truncation(self):
+        self.assertEqual(parse_numeric_version("528.33"), (528, 33))
+        self.assertEqual(parse_numeric_version("525.60.13"), (525, 60, 13))
+        self.assertEqual(parse_numeric_version("580"), (580,))
+        self.assertEqual(parse_numeric_version("580.0"), (580, 0))
+
+    def test_driver_version_comparison_is_numeric_and_zero_pads_tuples(self):
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("528.33"), parse_numeric_version("528.33")
+            )
+        )
+        self.assertFalse(
+            numeric_version_at_least(
+                parse_numeric_version("528.32"), parse_numeric_version("528.33")
+            )
+        )
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("525.60.13"),
+                parse_numeric_version("525.60.13"),
+            )
+        )
+        self.assertFalse(
+            numeric_version_at_least(
+                parse_numeric_version("525.60.12"),
+                parse_numeric_version("525.60.13"),
+            )
+        )
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("580"), parse_numeric_version("580.0")
+            )
+        )
+        self.assertFalse(
+            numeric_version_at_least(
+                parse_numeric_version("579.99.99"), parse_numeric_version("580")
+            )
+        )
+        self.assertTrue(
+            numeric_version_at_least(
+                parse_numeric_version("528.100"), parse_numeric_version("528.33")
+            )
+        )
+
+    def test_malformed_or_unavailable_driver_versions_fail_closed(self):
+        for value in (None, 525, "", "N/A", "525.x", "525..10", "525.-1", "-525.10"):
+            with self.subTest(value=value):
+                self.assertIsNone(parse_numeric_version(value))
 
 
 class EnvironmentInspectorTests(unittest.TestCase):
@@ -315,7 +449,18 @@ class CompatibilityTests(unittest.TestCase):
         self.metadata = load_compatibility_metadata()
 
     def evaluate(self, environment=None, metadata=None):
-        return CompatibilityEngine(metadata or self.metadata).evaluate(environment or _environment())
+        return _evaluate_compatibility(
+            metadata or self.metadata,
+            environment or _environment(),
+        )
+
+    def evaluate_driver(self, system, driver_version):
+        base = _environment()
+        environment = _environment(
+            os={**base.os, "system": system, "platform": f"{system}-driver-test"},
+            nvidia_driver={"available": True, "driver_version": driver_version},
+        )
+        return self.evaluate(environment)
 
     def test_supported_windows_nvidia_requires_private_changes(self):
         result = self.evaluate()
@@ -332,6 +477,105 @@ class CompatibilityTests(unittest.TestCase):
         result = self.evaluate(env)
         self.assertEqual(result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES)
         self.assertIn("cu128", result.recommended_runtime)
+
+    def test_windows_cuda12_driver_boundaries(self):
+        for driver_version in (
+            "525.00",
+            "525.60.13",
+            "527.41",
+            "527.99",
+            "528.32",
+        ):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Windows", driver_version)
+                self.assertEqual(result.status, CompatibilityStatus.UNSUPPORTED)
+                self.assertIsNone(result.recommended_runtime)
+        for driver_version in ("528.33", "529.00", "550.90"):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Windows", driver_version)
+                self.assertEqual(
+                    result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES
+                )
+                self.assertIn("cu128", result.recommended_runtime)
+
+    def test_linux_cuda12_driver_boundaries(self):
+        for driver_version in ("525.00", "525.59.99", "525.60.12"):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Linux", driver_version)
+                self.assertEqual(result.status, CompatibilityStatus.UNSUPPORTED)
+                self.assertIsNone(result.recommended_runtime)
+        for driver_version in ("525.60.13", "526.00", "550.90"):
+            with self.subTest(driver=driver_version):
+                result = self.evaluate_driver("Linux", driver_version)
+                self.assertEqual(
+                    result.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES
+                )
+                self.assertIn("cu128", result.recommended_runtime)
+
+    def test_same_driver_version_has_platform_specific_eligibility(self):
+        windows = self.evaluate_driver("Windows", "526.00")
+        linux = self.evaluate_driver("Linux", "526.00")
+        self.assertEqual(windows.status, CompatibilityStatus.UNSUPPORTED)
+        self.assertIsNone(windows.recommended_runtime)
+        self.assertEqual(linux.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES)
+        self.assertIn("cu128", linux.recommended_runtime)
+
+    def test_cuda13_floor_and_cuda12_fallback_are_platform_consistent(self):
+        engine = CompatibilityEngine(self.metadata)
+        for system in ("Windows", "Linux"):
+            with self.subTest(system=system):
+                below = self.evaluate_driver(system, "579.99.99")
+                at_floor = self.evaluate_driver(system, "580")
+                above_floor = self.evaluate_driver(system, "580.65.06")
+                self.assertEqual(
+                    below.status, CompatibilityStatus.SUPPORTED_WITH_CHANGES
+                )
+                self.assertIn("cu128", below.recommended_runtime)
+                self.assertEqual(
+                    engine._select_pytorch_profile(
+                        parse_numeric_version("579.99.99"), system.casefold()
+                    )[0],
+                    "cu128",
+                )
+                self.assertIn("cu130", at_floor.recommended_runtime)
+                self.assertIn("cu130", above_floor.recommended_runtime)
+                self.assertEqual(
+                    engine._select_pytorch_profile(
+                        parse_numeric_version("580"), system.casefold()
+                    )[0],
+                    "cu130",
+                )
+
+    def test_cu126_threshold_is_retained_while_cu128_remains_preferred(self):
+        profiles = self.metadata["backends"]["transformers"]["pytorch_profiles"]
+        self.assertEqual(
+            profiles["cu126"]["minimum_driver_versions"],
+            {"windows": "528.33", "linux": "525.60.13"},
+        )
+        self.assertEqual(
+            CompatibilityEngine(self.metadata)._select_pytorch_profile(
+                parse_numeric_version("550.90"), "linux"
+            )[0],
+            "cu128",
+        )
+
+    def test_driver_diagnostics_include_platform_profile_and_precise_minimum(self):
+        windows = self.evaluate_driver("Windows", "527.99")
+        linux = self.evaluate_driver("Linux", "525.60.12")
+        windows_diagnostic = " ".join(windows.requirements_missing)
+        linux_diagnostic = " ".join(linux.requirements_missing)
+        self.assertIn("Windows driver 527.99", windows_diagnostic)
+        self.assertIn("cu128 >= 528.33", windows_diagnostic)
+        self.assertNotIn("cu128 >= 525", windows_diagnostic)
+        self.assertIn("Linux driver 525.60.12", linux_diagnostic)
+        self.assertIn("cu128 >= 525.60.13", linux_diagnostic)
+
+    def test_malformed_driver_version_remains_unknown(self):
+        result = self.evaluate_driver("Windows", "N/A")
+        self.assertEqual(result.status, CompatibilityStatus.UNKNOWN)
+        self.assertTrue(
+            any("numeric dotted version" in item for item in result.requirements_missing)
+        )
 
     def test_conda_is_safe_fallback_when_uv_is_unavailable(self):
         env = _environment(
@@ -536,6 +780,25 @@ class CompatibilityTests(unittest.TestCase):
         self.assertEqual(result.status, CompatibilityStatus.UNKNOWN)
         self.assertEqual(result.risk_level.value, "BLOCKED")
 
+    def test_metadata_freshness_boundary_uses_controlled_test_clock(self):
+        fresh = copy.deepcopy(self.metadata)
+        fresh["checked_at"] = (
+            _COMPATIBILITY_TEST_NOW - timedelta(days=30)
+        ).isoformat().replace("+00:00", "Z")
+        stale = copy.deepcopy(self.metadata)
+        stale["checked_at"] = (
+            _COMPATIBILITY_TEST_NOW - timedelta(days=31)
+        ).isoformat().replace("+00:00", "Z")
+
+        self.assertEqual(
+            self.evaluate(metadata=fresh).status,
+            CompatibilityStatus.SUPPORTED_WITH_CHANGES,
+        )
+        self.assertEqual(
+            self.evaluate(metadata=stale).status,
+            CompatibilityStatus.UNKNOWN,
+        )
+
     def test_upstream_conflict_is_exposed(self):
         result = self.evaluate()
         self.assertTrue(result.conflicts)
@@ -545,7 +808,7 @@ class CompatibilityTests(unittest.TestCase):
 class ResolverAndConsentTests(unittest.TestCase):
     def setUp(self):
         self.metadata = load_compatibility_metadata()
-        self.compatibility = CompatibilityEngine(self.metadata).evaluate(_environment())
+        self.compatibility = _evaluate_compatibility(self.metadata, _environment())
 
     def test_resolver_has_no_system_changes_or_shell_commands(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -612,11 +875,11 @@ class ResolverAndConsentTests(unittest.TestCase):
     def test_resolver_binds_worker_and_plan_id_to_selected_gpu(self):
         first = dict(_environment().gpu[0], index=0, uuid="GPU-first")
         second = dict(_environment().gpu[0], index=1, uuid="GPU-second")
-        first_compatibility = CompatibilityEngine(self.metadata).evaluate(
-            _environment(gpu=(first, second))
+        first_compatibility = _evaluate_compatibility(
+            self.metadata, _environment(gpu=(first, second))
         )
-        second_compatibility = CompatibilityEngine(self.metadata).evaluate(
-            _environment(gpu=(second,))
+        second_compatibility = _evaluate_compatibility(
+            self.metadata, _environment(gpu=(second,))
         )
         with tempfile.TemporaryDirectory() as temporary:
             resolver = EnvironmentResolver(self.metadata)
@@ -650,7 +913,7 @@ class ResolverAndConsentTests(unittest.TestCase):
                 },
             },
         )
-        compatibility = CompatibilityEngine(self.metadata).evaluate(environment)
+        compatibility = _evaluate_compatibility(self.metadata, environment)
         with tempfile.TemporaryDirectory() as temporary:
             plan = EnvironmentResolver(self.metadata).resolve(
                 compatibility, data_root=Path(temporary)
@@ -852,7 +1115,7 @@ class OrchestratorTests(unittest.TestCase):
     def setUp(self):
         self.metadata = load_compatibility_metadata()
         self.environment = _environment()
-        self.compatibility = CompatibilityEngine(self.metadata).evaluate(self.environment)
+        self.compatibility = _evaluate_compatibility(self.metadata, self.environment)
 
     @staticmethod
     def _success_runner(command, environment, timeout, cancellation):
@@ -894,12 +1157,34 @@ class OrchestratorTests(unittest.TestCase):
                 orchestrator.run(until=InstallStage.PRECHECK)
             self.assertFalse((root / "state-invalid").exists())
 
+    def test_precheck_rejects_linked_validation_assets_before_state_write(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _plan, _consent, orchestrator = self._build(root)
+            state_root = root / "state"
+            state_root.mkdir()
+            outside = root / "outside"
+            outside.mkdir()
+            sentinel = outside / "pure-text.pdf"
+            sentinel.write_bytes(b"external sentinel")
+            try:
+                _make_directory_link(state_root / "validation-assets", outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            with self.assertRaises(DeploymentFailure) as caught:
+                orchestrator.run(until=InstallStage.PRECHECK)
+
+            self.assertEqual(caught.exception.error.error_code, "PERMISSION_DENIED")
+            self.assertFalse((state_root / "installation.json").exists())
+            self.assertEqual(sentinel.read_bytes(), b"external sentinel")
+
     def test_precheck_uses_specific_unsupported_gpu_error(self):
         environment = _environment(
             gpu=({"vendor": "AMD", "name": "Radeon", "vram_total_bytes": 24 * 1024**3},),
             nvidia_driver={"available": False, "driver_version": None},
         )
-        compatibility = CompatibilityEngine(self.metadata).evaluate(environment)
+        compatibility = _evaluate_compatibility(self.metadata, environment)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             plan = EnvironmentResolver(self.metadata).resolve(
@@ -922,6 +1207,92 @@ class OrchestratorTests(unittest.TestCase):
             with self.assertRaises(DeploymentFailure) as caught:
                 orchestrator.run(until=InstallStage.PRECHECK)
             self.assertEqual(caught.exception.error.error_code, "NO_SUPPORTED_GPU")
+            self.assertFalse((root / "state").exists())
+
+    def test_driver_too_old_expected_state_is_platform_and_profile_precise(self):
+        cases = (
+            ("Windows", "527.99", "528.33"),
+            ("Linux", "525.60.12", "525.60.13"),
+        )
+        for system, driver_version, expected_cuda12_minimum in cases:
+            with self.subTest(system=system, driver=driver_version):
+                base = _environment()
+                environment = _environment(
+                    os={**base.os, "system": system, "platform": f"{system}-test"},
+                    nvidia_driver={
+                        "available": True,
+                        "driver_version": driver_version,
+                    },
+                )
+                compatibility = _evaluate_compatibility(self.metadata, environment)
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    plan = EnvironmentResolver(self.metadata).resolve(
+                        compatibility, data_root=root
+                    )
+                    consent = DeploymentConsent.create(
+                        plan=plan,
+                        metadata_revision=compatibility.metadata_revision,
+                        acknowledgements=_acknowledgements(),
+                    )
+                    orchestrator = SetupOrchestrator(
+                        plan=plan,
+                        compatibility=compatibility,
+                        environment=environment,
+                        consent=consent,
+                        metadata=self.metadata,
+                        state_root=root / "state",
+                        command_runner=self._success_runner,
+                    )
+                    with self.assertRaises(DeploymentFailure) as caught:
+                        orchestrator.run(until=InstallStage.PRECHECK)
+
+                    error = caught.exception.error
+                    self.assertEqual(error.error_code, "NVIDIA_DRIVER_TOO_OLD")
+                    self.assertEqual(error.expected_state["platform"], system)
+                    self.assertEqual(
+                        error.expected_state["minimum_driver_versions"]["cu128"],
+                        expected_cuda12_minimum,
+                    )
+                    self.assertIn(expected_cuda12_minimum, error.technical_details)
+                    self.assertFalse((root / "state").exists())
+
+    def test_precheck_distinguishes_unparseable_driver_from_too_old(self):
+        base = _environment()
+        environment = _environment(
+            os={**base.os, "system": "Windows"},
+            nvidia_driver={"available": True, "driver_version": "N/A"},
+        )
+        compatibility = _evaluate_compatibility(self.metadata, environment)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            plan = EnvironmentResolver(self.metadata).resolve(
+                compatibility, data_root=root
+            )
+            consent = DeploymentConsent.create(
+                plan=plan,
+                metadata_revision=compatibility.metadata_revision,
+                acknowledgements=_acknowledgements(),
+            )
+            orchestrator = SetupOrchestrator(
+                plan=plan,
+                compatibility=compatibility,
+                environment=environment,
+                consent=consent,
+                metadata=self.metadata,
+                state_root=root / "state",
+                command_runner=self._success_runner,
+            )
+            with self.assertRaises(DeploymentFailure) as caught:
+                orchestrator.run(until=InstallStage.PRECHECK)
+
+            self.assertEqual(
+                caught.exception.error.error_code, "NVIDIA_DRIVER_VERSION_UNKNOWN"
+            )
+            self.assertEqual(
+                caught.exception.error.expected_state["format"],
+                "numeric dotted NVIDIA Driver version",
+            )
             self.assertFalse((root / "state").exists())
 
     def test_journal_resumes_completed_stages(self):
@@ -1574,16 +1945,66 @@ class ProviderAndAssetTests(unittest.TestCase):
         import fitz
 
         with tempfile.TemporaryDirectory() as temporary:
-            cases = create_validation_suite(Path(temporary))
+            data_root = Path(temporary)
+            validation_root = data_root / "runtime" / "state" / "validation-assets"
+            cases = create_validation_suite(validation_root, managed_root=data_root)
             categories = {case.category for case in cases}
             self.assertEqual(
                 categories,
                 {"pure_text", "table", "mixed_language", "complex_layout", "rotation"},
             )
             for case in cases:
+                self.assertIn(validation_root, case.pdf_path.parents)
+                self.assertTrue((case.pdf_path.parent / "suite.json").is_file())
                 with fitz.open(case.pdf_path) as document:
                     self.assertEqual(document.page_count, 1)
                 self.assertGreater(case.image_path.stat().st_size, 1000)
+
+    def test_validation_suite_rejects_linked_assets_before_touching_external_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary)
+            state_root = data_root / "runtime" / "state"
+            state_root.mkdir(parents=True)
+            outside = data_root / "outside"
+            outside.mkdir()
+            sentinel = outside / "pure-text.pdf"
+            sentinel.write_bytes(b"external sentinel")
+            assets_root = state_root / "validation-assets"
+            try:
+                _make_directory_link(assets_root, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            with self.assertRaises(ValueError):
+                create_validation_suite(assets_root, managed_root=data_root)
+
+            self.assertEqual(sentinel.read_bytes(), b"external sentinel")
+            self.assertFalse((outside / "suite.json").exists())
+
+    def test_validation_suite_rejects_linked_intermediate_state_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data_root = Path(temporary)
+            outside = data_root / "outside"
+            outside.mkdir()
+            external_assets = outside / "validation-assets"
+            external_assets.mkdir()
+            sentinel = external_assets / "pure-text.pdf"
+            sentinel.write_bytes(b"external sentinel")
+            state_link = data_root / "runtime" / "state"
+            state_link.parent.mkdir()
+            try:
+                _make_directory_link(state_link, outside)
+            except OSError as exc:
+                self.skipTest(f"Directory links are unavailable: {exc}")
+
+            with self.assertRaises(ValueError):
+                create_validation_suite(
+                    state_link / "validation-assets",
+                    managed_root=data_root,
+                )
+
+            self.assertEqual(sentinel.read_bytes(), b"external sentinel")
+            self.assertEqual(list(external_assets.iterdir()), [sentinel])
 
     def test_error_classifier_maps_permission_and_disk(self):
         self.assertEqual(

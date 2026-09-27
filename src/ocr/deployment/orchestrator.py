@@ -19,7 +19,11 @@ from .bootstrap import UvBootstrapper
 from .cache import ModelCacheManager, _is_link_or_junction
 from .consent import DeploymentConsent
 from .errors import DeploymentFailure, ErrorCode, classify_exception, make_error
-from .metadata import load_compatibility_metadata
+from .metadata import (
+    load_compatibility_metadata,
+    minimum_driver_versions_by_profile,
+    validate_compatibility_metadata,
+)
 from .models import (
     CompatibilityReport,
     EnvironmentReport,
@@ -28,6 +32,7 @@ from .models import (
     RuntimePlan,
     StepStatus,
 )
+from .versions import parse_numeric_version
 
 _RESULT_PREFIX = "PDF_TOOLKIT_RESULT="
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -88,7 +93,9 @@ class SetupOrchestrator:
         self.compatibility = compatibility
         self.environment = environment
         self.consent = consent
-        self.metadata = dict(metadata or load_compatibility_metadata())
+        source = load_compatibility_metadata() if metadata is None else metadata
+        validate_compatibility_metadata(source)
+        self.metadata = dict(source)
         self.runtime_root = _absolute_path(Path(plan.runtime_root)).resolve()
         self._declared_state_root = _absolute_path(state_root or self.runtime_root / "state")
         self.state_root = self._declared_state_root.resolve()
@@ -197,6 +204,7 @@ class SetupOrchestrator:
             (declared_runtime / "environment", "private environment"),
             (cache_root, "model cache root"),
             (self._declared_state_root, "installation state root"),
+            (self._declared_state_root / "validation-assets", "validation assets root"),
         ):
             if _is_link_or_junction(path):
                 raise DeploymentFailure(
@@ -313,12 +321,32 @@ class SetupOrchestrator:
         driver_version = self.environment.nvidia_driver.get("driver_version")
         if not driver_version:
             raise DeploymentFailure(make_error(ErrorCode.NVIDIA_DRIVER_MISSING))
+        if parse_numeric_version(driver_version) is None:
+            raise DeploymentFailure(
+                make_error(
+                    ErrorCode.NVIDIA_DRIVER_VERSION_UNKNOWN,
+                    detected_state={"driver_version": driver_version},
+                    expected_state={"format": "numeric dotted NVIDIA Driver version"},
+                )
+            )
         if not self.plan.package_index_url:
+            system = self.environment.os.get("system")
+            minimums = minimum_driver_versions_by_profile(self.metadata, system)
+            details = ", ".join(
+                f"{name} >= {minimum}" for name, minimum in minimums.items()
+            )
             raise DeploymentFailure(
                 make_error(
                     ErrorCode.NVIDIA_DRIVER_TOO_OLD,
                     detected_state={"driver_version": driver_version},
-                    expected_state={"supported_profiles": self.metadata["driver_families"]},
+                    technical_details=(
+                        f"Detected {system or 'unknown platform'} driver {driver_version}; "
+                        f"profile minimums: {details or 'no reviewed platform thresholds'}."
+                    ),
+                    expected_state={
+                        "platform": system,
+                        "minimum_driver_versions": minimums,
+                    },
                 )
             )
         if self.plan.environment_manager == "unresolved":

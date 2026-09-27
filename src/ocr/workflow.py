@@ -41,7 +41,7 @@ from .unlimited_fake import (
     UNLIMITED_OCR_PROVIDER,
     FakeUnlimitedOcrBackend,
 )
-from ..utils.file_ops import resolve_output_path
+from ..utils.file_ops import create_staged_output
 from ..utils.workflow import get_conflict_policy
 
 SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
@@ -273,15 +273,21 @@ def write_ocr_outputs(
         requested = output_dir / (
             f"{source_name.rsplit('.', 1)[0]}_{filename_suffix}.{output_format}"
         )
-        output_path = resolve_output_path(str(requested), get_conflict_policy())
-        if output_path is None:
+        transaction = create_staged_output(str(requested), get_conflict_policy())
+        if transaction is None:
             continue
         content = (
             markdown_output(source_name, result)
             if output_format == "md"
             else text_output(source_name, result)
         )
-        Path(output_path).write_text(content, encoding="utf-8")
+        try:
+            transaction.staging_path.write_text(content, encoding="utf-8")
+            output_path = transaction.commit()
+        finally:
+            transaction.cleanup()
+        if output_path is None:
+            continue
         outputs.append(
             AdvancedOcrOutput(source=source_name, path=output_path, format=output_format)
         )

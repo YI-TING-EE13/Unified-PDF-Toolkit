@@ -41,19 +41,37 @@ Compatibility metadata lives in
 reviewed snapshot pins:
 
 - Unlimited-OCR source revision
-  `528fca4e2161e23231d05666a6d35155dcb1957e`;
+  `d49ff64afffc1f47ab563dc1c589bc2f78808fa4`;
 - Hugging Face model revision
-  `ee63731b6461c8afcdcc7b15352e7d2ffecc2ead`;
+  `07dea832e22aefee32ad281d4b80551282e1c168`;
 - model weight SHA-256
   `2bc48a7a110061ea58fff65d3169367eebe3aee371ca6968dc2219c1b2855fc6`;
 - the complete selected file inventory and exact package versions from the
   upstream Transformers instructions.
+
+The reviewed revisions and evidence-backed semantic changes are recorded in
+the [2026-09-27 compatibility evidence review](./unlimited_ocr_compatibility_evidence_review_2026-09-27.md).
 
 The upstream README currently says CUDA 12.9, while official PyTorch 2.10
 wheels are published for `cu126`, `cu128`, and `cu130`. The APP resolves this
 through official wheel/Driver compatibility metadata; it does not install a
 fictional `cu129` wheel. SGLang automatic setup remains blocked because the
 upstream instructions contain conflicting `kernels` pins.
+
+Compatibility metadata schema `2.0` records a full numeric minimum Driver
+version separately for Windows and Linux on each PyTorch profile. Under
+NVIDIA's CUDA minor-version compatibility policy, `cu126` and `cu128` require
+Windows `528.33` or newer and Linux `525.60.13` or newer; `cu130` requires
+`580` or newer on both platforms. These are limited-feature minor-version
+compatibility floors, not the higher toolkit-bundled/full-feature Driver
+versions. The selector compares numeric version components and treats a
+missing or malformed Driver version as unknown.
+
+The thresholds follow NVIDIA's [CUDA 12.6](https://docs.nvidia.com/cuda/archive/12.6.0/cuda-toolkit-release-notes/index.html),
+[CUDA 12.8](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/),
+[CUDA 12.9](https://docs.nvidia.com/cuda/archive/12.9.0/cuda-toolkit-release-notes/index.html),
+and [CUDA 13.x compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html)
+tables.
 
 Refresh auditing is explicit and maintainer-reviewed:
 
@@ -234,7 +252,8 @@ counts, worker PIDs, cleanup, and dependency versions, but not full OCR text.
 ## Failure behavior
 
 User-facing errors use stable codes such as `NO_SUPPORTED_GPU`,
-`INSUFFICIENT_VRAM`, `NVIDIA_DRIVER_TOO_OLD`, `PYTORCH_CUDA_MISMATCH`,
+`INSUFFICIENT_VRAM`, `NVIDIA_DRIVER_VERSION_UNKNOWN`,
+`NVIDIA_DRIVER_TOO_OLD`, `PYTORCH_CUDA_MISMATCH`,
 `MODEL_DOWNLOAD_FAILED`, `MODEL_INTEGRITY_FAILED`, `CUDA_OOM`,
 `PERMISSION_DENIED`, and `NETWORK_ERROR`. Technical details remain available for
 export, but a traceback is not the only user message.

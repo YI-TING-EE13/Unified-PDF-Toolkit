@@ -15,6 +15,7 @@ class ErrorCode(str, Enum):
     INSUFFICIENT_RAM = "INSUFFICIENT_RAM"
     INSUFFICIENT_DISK = "INSUFFICIENT_DISK"
     NVIDIA_DRIVER_MISSING = "NVIDIA_DRIVER_MISSING"
+    NVIDIA_DRIVER_VERSION_UNKNOWN = "NVIDIA_DRIVER_VERSION_UNKNOWN"
     NVIDIA_DRIVER_TOO_OLD = "NVIDIA_DRIVER_TOO_OLD"
     CUDA_RUNTIME_MISMATCH = "CUDA_RUNTIME_MISMATCH"
     PYTORCH_CUDA_MISMATCH = "PYTORCH_CUDA_MISMATCH"
@@ -43,6 +44,7 @@ _MESSAGES: dict[ErrorCode, tuple[str, str, bool, bool, bool]] = {
     ErrorCode.INSUFFICIENT_RAM: ("Insufficient system memory", "The computer does not have enough RAM for the safe setup profile.", False, False, False),
     ErrorCode.INSUFFICIENT_DISK: ("Insufficient disk space", "Free space is below the amount reserved for the runtime and model.", True, False, True),
     ErrorCode.NVIDIA_DRIVER_MISSING: ("NVIDIA Driver not found", "Install an NVIDIA Driver before using this provider.", False, True, False),
+    ErrorCode.NVIDIA_DRIVER_VERSION_UNKNOWN: ("NVIDIA Driver version unknown", "The NVIDIA Driver was detected, but its version could not be read reliably; CUDA compatibility cannot be verified.", False, False, False),
     ErrorCode.NVIDIA_DRIVER_TOO_OLD: ("NVIDIA Driver is too old", "A newer Driver is required for the selected PyTorch CUDA runtime.", False, True, False),
     ErrorCode.CUDA_RUNTIME_MISMATCH: ("CUDA runtime mismatch", "The private runtime and Driver could not initialize a compatible CUDA path.", True, False, True),
     ErrorCode.PYTORCH_CUDA_MISMATCH: ("PyTorch CUDA mismatch", "PyTorch was installed but cannot use the detected GPU.", True, False, True),

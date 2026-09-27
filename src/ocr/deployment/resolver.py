@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .environment import default_ocr_data_root
-from .metadata import load_compatibility_metadata
+from .metadata import load_compatibility_metadata, validate_compatibility_metadata
 from .models import (
     CompatibilityReport,
     CompatibilityStatus,
@@ -22,7 +22,9 @@ class EnvironmentResolver:
     """Create argv-only plans. It never executes commands or modifies the system."""
 
     def __init__(self, metadata: Mapping[str, Any] | None = None) -> None:
-        self.metadata = dict(metadata or load_compatibility_metadata())
+        source = load_compatibility_metadata() if metadata is None else metadata
+        validate_compatibility_metadata(source)
+        self.metadata = dict(source)
 
     def resolve(
         self,

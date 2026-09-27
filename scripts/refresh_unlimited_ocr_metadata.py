@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import html
 import json
 import re
 import sys
@@ -21,6 +22,10 @@ from src.ocr.deployment.metadata import (  # noqa: E402
     bundled_metadata_path,
     load_compatibility_metadata,
     validate_compatibility_metadata,
+)
+from src.ocr.deployment.versions import (  # noqa: E402
+    numeric_version_at_least,
+    parse_numeric_version,
 )
 
 ALLOWED_HOSTS = {
@@ -100,7 +105,12 @@ def build_candidate(current: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[s
     nvidia_page = fetch_text(
         "https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html"
     )
-    driver_minimums = parse_nvidia_driver_minimums(nvidia_page)
+    cuda_12_release_notes = fetch_text(
+        str(candidate["sources"]["nvidia_cuda_12_release_notes"])
+    )
+    driver_minimums = parse_nvidia_driver_minimums(
+        nvidia_page, cuda_12_release_notes
+    )
     siblings = {str(item["rfilename"]): item for item in model.get("siblings", [])}
     weight_name = "model-00001-of-000001.safetensors"
     weight = siblings[weight_name]
@@ -148,8 +158,8 @@ def build_candidate(current: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[s
             "packages": requirement["packages"],
             "pytorch_profiles": {
                 profile: {
-                    "minimum_driver_major": (
-                        driver_minimums[13] if profile.startswith("cu13") else driver_minimums[12]
+                    "minimum_driver_versions": _profile_driver_minimum_versions(
+                        profile, driver_minimums
                     ),
                     "index_url": f"https://download.pytorch.org/whl/{profile}",
                 }
@@ -197,17 +207,59 @@ def parse_pytorch_profiles(page: str, torch_version: str) -> tuple[str, ...]:
     return tuple(profiles)
 
 
-def parse_nvidia_driver_minimums(page: str) -> dict[int, int]:
-    text = re.sub(r"<[^>]+>", " ", page)
-    values = {}
+def parse_nvidia_driver_minimums(
+    compatibility_page: str, cuda_12_release_notes: str
+) -> dict[str, dict[str, str]]:
+    """Read generic CUDA family floors and the complete platform-specific 12.x table."""
+
+    compatibility_text = html.unescape(re.sub(r"<[^>]+>", " ", compatibility_page))
+    family_minimums: dict[int, str] = {}
     for family in (12, 13):
-        match = re.search(rf"CUDA\s+{family}\.x\s*&gt;=\s*(\d+)", text)
-        if not match:
-            match = re.search(rf"CUDA\s+{family}\.x\s*>=\s*(\d+)", text)
+        match = re.search(
+            rf"CUDA\s+{family}\.x\s*>=\s*([0-9]+(?:\.[0-9]+)*)",
+            compatibility_text,
+        )
         if not match:
             raise ValueError(f"Unable to locate NVIDIA CUDA {family}.x minimum Driver.")
-        values[family] = int(match.group(1))
-    return values
+        family_minimums[family] = match.group(1)
+
+    release_text = html.unescape(re.sub(r"<[^>]+>", " ", cuda_12_release_notes))
+    match = re.search(
+        r"CUDA\s+12\.x\s*>=\s*([0-9]+(?:\.[0-9]+)*)\s*>=\s*([0-9]+(?:\.[0-9]+)*)",
+        release_text,
+    )
+    if not match:
+        raise ValueError(
+            "Unable to locate the platform-specific CUDA 12.x minor-version compatibility table."
+        )
+    linux_minimum, windows_minimum = match.groups()
+    family_12_minimum = parse_numeric_version(family_minimums[12])
+    if any(
+        not numeric_version_at_least(
+            parse_numeric_version(platform_minimum), family_12_minimum
+        )
+        for platform_minimum in (linux_minimum, windows_minimum)
+    ):
+        raise ValueError("NVIDIA's CUDA 12 release-note floor is below its family minimum.")
+    if family_minimums[13] != "580":
+        raise ValueError("The reviewed CUDA 13.x minor-version compatibility floor changed.")
+    return {
+        "12": {"linux": linux_minimum, "windows": windows_minimum},
+        "13": {"linux": family_minimums[13], "windows": family_minimums[13]},
+    }
+
+
+def _profile_driver_minimum_versions(
+    profile: str, family_minimums: Mapping[str, Mapping[str, str]]
+) -> dict[str, str]:
+    match = re.fullmatch(r"cu([0-9]+)", profile)
+    if not match:
+        raise ValueError(f"Invalid PyTorch CUDA profile: {profile}.")
+    family = str(int(match.group(1)) // 10)
+    minimums = family_minimums.get(family)
+    if minimums is None:
+        raise ValueError(f"No reviewed NVIDIA Driver thresholds exist for {profile}.")
+    return dict(minimums)
 
 
 def detect_conflicts(

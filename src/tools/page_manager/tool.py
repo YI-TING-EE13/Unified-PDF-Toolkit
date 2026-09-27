@@ -21,9 +21,14 @@ from typing import List, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
-from ...utils.workflow import CancellationToken, WorkflowReport, get_conflict_policy
+from ...utils.workflow import (
+    CancellationToken,
+    WorkflowReport,
+    get_conflict_policy,
+    new_job_summary,
+)
 
 
 class PageManagerTool(BaseTool):
@@ -590,12 +595,32 @@ class PageManagerTool(BaseTool):
         if not output_path:
             return
 
+        transaction = None
         try:
-            new_doc = fitz.open()
-            for page_index in pages:
-                new_doc.insert_pdf(self.doc, from_page=page_index, to_page=page_index)
-            new_doc.save(output_path, garbage=3, deflate=True)
-            new_doc.close()
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
+                messagebox.showinfo("Success", "Skipped existing output.")
+                return
+
+            staging_path = transaction.staging_path
+            with fitz.open() as new_doc:
+                for page_index in pages:
+                    new_doc.insert_pdf(
+                        self.doc, from_page=page_index, to_page=page_index
+                    )
+                new_doc.save(str(staging_path), garbage=3, deflate=True)
+
+            if not staging_path.is_file():
+                raise OSError("Page extraction did not create its output file.")
+
+            resolved_output_path = transaction.commit()
+            if resolved_output_path is None:
+                messagebox.showinfo(
+                    "Success", "Skipped because output appeared before commit."
+                )
+                return
+
+            output_path = resolved_output_path
             set_setting("page_manager.output_dir", os.path.dirname(output_path))
             self.output_actions.set_path(output_path)
             self.status_lbl.config(text=f"Extracted {len(pages)} page(s) to {output_path}")
@@ -603,6 +628,9 @@ class PageManagerTool(BaseTool):
             messagebox.showinfo("Success", f"Extracted pages to {output_path}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to extract pages: {e}")
+        finally:
+            if transaction is not None:
+                transaction.cleanup()
 
     def _default_output_path(self) -> str:
         output_dir = get_setting("page_manager.output_dir", get_default_save_dir("Managed"))
@@ -653,20 +681,27 @@ class PageManagerTool(BaseTool):
     def _run_save(self, output_path: str) -> None:
         """Worker thread for saving the modified PDF."""
         output_dir = os.path.dirname(output_path) or os.getcwd()
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Page Manager",
             output_dir,
             options={"conflict_policy": get_conflict_policy()},
+            job_summary=job_summary,
         )
+        job_status_recorded = False
         try:
             if self.cancel_token.is_cancelled():
+                report.count_job("cancelled")
+                job_status_recorded = True
                 report.add(self.current_pdf_path or "", output_path, status="cancelled")
                 report_path = report.write()
                 self.queue.put(("cancelled", f"Cancelled before save.\nReport: {report_path}"))
                 return
             os.makedirs(output_dir, exist_ok=True)
-            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
-            if resolved_output_path is None:
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
+                report.count_job("skipped")
+                job_status_recorded = True
                 report.add(
                     self.current_pdf_path or "",
                     output_path,
@@ -685,7 +720,38 @@ class PageManagerTool(BaseTool):
                     )
                 )
                 return
-            self.doc.save(resolved_output_path, garbage=3, deflate=True)
+            try:
+                self.doc.save(
+                    str(transaction.staging_path), garbage=3, deflate=True
+                )
+                if not transaction.staging_path.is_file():
+                    raise OSError("Page management did not create its output file.")
+                resolved_output_path = transaction.commit()
+            finally:
+                transaction.cleanup()
+            if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
+                report.add(
+                    self.current_pdf_path or "",
+                    output_path,
+                    status="skipped",
+                    message="Output appeared before commit and was preserved.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "message": "Skipped because output appeared before commit.",
+                            "output_path": output_path,
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
+            report.count_job("success")
+            job_status_recorded = True
             report.add(self.current_pdf_path or "", resolved_output_path)
             report_path = report.write()
             self.queue.put(
@@ -699,6 +765,8 @@ class PageManagerTool(BaseTool):
                 )
             )
         except Exception as e:
+            if not job_status_recorded:
+                report.count_job("failed")
             report.add(self.current_pdf_path or "", output_path, status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

@@ -22,12 +22,13 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -243,19 +244,43 @@ class Image2PDFTool(BaseTool):
         - Insert the compressed JPEG bytes directly into the PDF page.
         - Save with garbage collection and deflation.
         """
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Image to PDF",
             str(Path(output_path).parent),
             options={"compression": level, "conflict_policy": get_conflict_policy()},
+            job_summary=job_summary,
         )
+        job_status_recorded = False
         doc = None
+        transaction = None
+        processed_inputs: List[str] = []
+
+        def report_cancelled(source: str = "") -> None:
+            nonlocal job_status_recorded
+            report.count_job("cancelled")
+            job_status_recorded = True
+            report.add(source, status="cancelled")
+            report_path = report.write()
+            self.queue.put(
+                (
+                    "cancelled",
+                    {
+                        "message": f"Cancelled. Report: {report_path}",
+                        "report_path": report_path,
+                    },
+                )
+            )
+
         try:
             scale, quality = self.COMPRESSION_PRESETS.get(level, (0.75, 70))
             doc = fitz.open()
             total = len(files)
             last_update = 0.0
-            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
-            if resolved_output_path is None:
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
+                report.count_job("skipped")
+                job_status_recorded = True
                 report.add(
                     "",
                     output_path,
@@ -273,17 +298,7 @@ class Image2PDFTool(BaseTool):
 
             for i, img_path in enumerate(files):
                 if self.cancel_token.is_cancelled():
-                    report.add(img_path, status="cancelled")
-                    report_path = report.write()
-                    self.queue.put(
-                        (
-                            "cancelled",
-                            {
-                                "message": f"Cancelled. Report: {report_path}",
-                                "report_path": report_path,
-                            },
-                        )
-                    )
+                    report_cancelled(img_path)
                     return
                 try:
                     with Image.open(img_path) as pil_img:
@@ -315,10 +330,13 @@ class Image2PDFTool(BaseTool):
 
                     # Insert the compressed image bytes directly
                     page.insert_image(page_rect, stream=img_bytes)
-                    report.add(img_path, resolved_output_path)
+                    processed_inputs.append(img_path)
 
                 except Exception as e:
+                    report.count_job("failed")
+                    job_status_recorded = True
                     report.add(img_path, status="failed", message=str(e))
+                    report.write()
                     self.queue.put(
                         ("error", f"Failed on image {Path(img_path).name}: {e}")
                     )
@@ -333,9 +351,49 @@ class Image2PDFTool(BaseTool):
                     )
                     last_update = now
 
-            # Save with cleanup
-            Path(resolved_output_path).parent.mkdir(parents=True, exist_ok=True)
-            doc.save(resolved_output_path, garbage=3, deflate=True)
+            if self.cancel_token.is_cancelled():
+                report_cancelled()
+                return
+
+            # Write privately, then acquire/publish the final directory entry
+            # atomically under the selected conflict policy.
+            doc.save(str(transaction.staging_path), garbage=3, deflate=True)
+            doc.close()
+            doc = None
+            if not transaction.staging_path.is_file():
+                raise OSError("Image-to-PDF save did not materialize the output file.")
+            if self.cancel_token.is_cancelled():
+                report_cancelled()
+                return
+            resolved_output_path = transaction.commit()
+            if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
+                report.add(
+                    "",
+                    output_path,
+                    status="skipped",
+                    message="Output appeared before commit and was preserved.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "output_path": output_path,
+                            "detail": "Skipped because output appeared before commit.",
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
+
+            # A successful report row means the final aggregate artifact now
+            # exists, not merely that this input was inserted into memory.
+            for img_path in processed_inputs:
+                report.add(img_path, resolved_output_path)
+            report.count_job("success")
+            job_status_recorded = True
 
             report_path = report.write()
             self.queue.put(
@@ -346,9 +404,14 @@ class Image2PDFTool(BaseTool):
             )
 
         except Exception as e:
+            if not job_status_recorded:
+                report.count_job("failed")
+                job_status_recorded = True
             report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))
         finally:
             if doc is not None:
                 doc.close()
+            if transaction is not None:
+                transaction.cleanup()

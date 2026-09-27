@@ -13,8 +13,8 @@ import fitz
 import threading
 import os
 import queue
-import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Any, Dict, Tuple
 
 from PIL import Image, ImageTk
@@ -26,13 +26,14 @@ from ...utils.file_ops import (
     get_default_save_dir,
     get_file_size,
     format_size,
-    resolve_output_path,
+    create_staged_output,
 )
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -423,8 +424,11 @@ class MergerTool(BaseTool):
         compression_level: str,
     ) -> None:
         """Worker thread for merging."""
-        temp_path = ""
+        transaction = None
+        intermediate_output_path = None
         doc = None
+        processed_inputs: List[str] = []
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Merge PDFs",
             os.path.dirname(output_path) or os.getcwd(),
@@ -433,10 +437,33 @@ class MergerTool(BaseTool):
                 "compression_level": compression_level if auto_compress else "none",
                 "conflict_policy": get_conflict_policy(),
             },
+            job_summary=job_summary,
         )
+        job_status_recorded = False
+
+        def report_cancelled(source: str = "") -> None:
+            nonlocal job_status_recorded
+            report.count_job("cancelled")
+            job_status_recorded = True
+            report.add(source, status="cancelled")
+            report_path = report.write()
+            self.queue.put(
+                (
+                    "cancelled",
+                    {
+                        "message": (
+                            f"Cancelled before merge completed.\nReport: {report_path}"
+                        ),
+                        "report_path": report_path,
+                    },
+                )
+            )
+
         try:
-            resolved_output_path = resolve_output_path(output_path, get_conflict_policy())
-            if resolved_output_path is None:
+            transaction = create_staged_output(output_path, get_conflict_policy())
+            if transaction is None:
+                report.count_job("skipped")
+                job_status_recorded = True
                 report.add(
                     "",
                     output_path,
@@ -455,19 +482,15 @@ class MergerTool(BaseTool):
                     )
                 )
                 return
-            output_path = resolved_output_path
-            merge_output_path = output_path
-            output_dir = os.path.dirname(output_path) or os.getcwd()
-            os.makedirs(output_dir, exist_ok=True)
-            if auto_compress:
-                with tempfile.NamedTemporaryFile(
-                    suffix=".pdf",
-                    prefix="pdf_toolkit_merge_",
-                    dir=output_dir,
-                    delete=False,
-                ) as temp_file:
-                    temp_path = temp_file.name
-                merge_output_path = temp_path
+            merge_output_path = (
+                str(transaction.staging_directory / "merged.pdf")
+                if auto_compress
+                else str(transaction.staging_path)
+            )
+            intermediate_output_path = (
+                Path(merge_output_path) if auto_compress else None
+            )
+            staged_output_path = str(transaction.staging_path)
 
             self.queue.put(("progress", (0, "Merging PDFs...")))
             doc = fitz.open()
@@ -476,17 +499,7 @@ class MergerTool(BaseTool):
                 if self.cancel_token.is_cancelled():
                     doc.close()
                     doc = None
-                    report.add(pdf_path, status="cancelled")
-                    report_path = report.write()
-                    self.queue.put(
-                        (
-                            "cancelled",
-                            {
-                                "message": f"Cancelled before merge completed.\nReport: {report_path}",
-                                "report_path": report_path,
-                            },
-                        )
-                    )
+                    report_cancelled(pdf_path)
                     return
                 progress_start = ((idx - 1) / total_files) * 85
                 self.queue.put(
@@ -500,7 +513,7 @@ class MergerTool(BaseTool):
                 )
                 with fitz.open(pdf_path) as src:
                     doc.insert_pdf(src)
-                report.add(pdf_path, output_path)
+                processed_inputs.append(pdf_path)
                 progress_done = (idx / total_files) * 85
                 self.queue.put(
                     (
@@ -511,6 +524,11 @@ class MergerTool(BaseTool):
                         ),
                     )
                 )
+            if self.cancel_token.is_cancelled():
+                doc.close()
+                doc = None
+                report_cancelled()
+                return
             doc.save(merge_output_path)
             doc.close()
             doc = None
@@ -518,13 +536,13 @@ class MergerTool(BaseTool):
             detail = ""
             if auto_compress:
                 self.queue.put(("busy", (True, "Compressing merged PDF...")))
-                original_size = get_file_size(temp_path)
+                original_size = get_file_size(merge_output_path)
                 compressor = PDFCompressor(compression_level)
-                if not compressor.compress(temp_path, output_path):
+                if not compressor.compress(merge_output_path, staged_output_path):
                     raise RuntimeError("Merge completed, but post-merge compression failed.")
                 self.queue.put(("busy", (False, "Compression complete.")))
 
-                compressed_size = get_file_size(output_path)
+                compressed_size = get_file_size(staged_output_path)
                 saved_bytes = original_size - compressed_size
                 size_detail = (
                     f"Saved {format_size(saved_bytes)}"
@@ -536,7 +554,42 @@ class MergerTool(BaseTool):
                     f"{size_detail}."
                 )
 
+            if not Path(staged_output_path).is_file():
+                raise OSError("Merge did not materialize the final output file.")
+            if self.cancel_token.is_cancelled():
+                report_cancelled()
+                return
+            resolved_output_path = transaction.commit()
+            if resolved_output_path is None:
+                report.count_job("skipped")
+                job_status_recorded = True
+                report.add(
+                    "",
+                    output_path,
+                    status="skipped",
+                    message="Output appeared before commit and was preserved.",
+                )
+                report_path = report.write()
+                self.queue.put(
+                    (
+                        "success",
+                        {
+                            "output_path": output_path,
+                            "detail": "Skipped because output appeared before commit.",
+                            "report_path": report_path,
+                        },
+                    )
+                )
+                return
+            output_path = resolved_output_path
+
+            # Do not expose aggregate-output success rows until the final
+            # uncompressed or compressed artifact has been committed.
+            for pdf_path in processed_inputs:
+                report.add(pdf_path, output_path)
             self.queue.put(("progress", (100, "Merge complete.")))
+            report.count_job("success")
+            job_status_recorded = True
             report_path = report.write()
             self.queue.put(
                 (
@@ -549,14 +602,19 @@ class MergerTool(BaseTool):
                 )
             )
         except Exception as e:
+            if not job_status_recorded:
+                report.count_job("failed")
+                job_status_recorded = True
             report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))
         finally:
             if doc is not None:
                 doc.close()
-            if temp_path and os.path.exists(temp_path):
+            if intermediate_output_path is not None:
                 try:
-                    os.remove(temp_path)
-                except OSError:
+                    intermediate_output_path.unlink()
+                except FileNotFoundError:
                     pass
+            if transaction is not None:
+                transaction.cleanup()

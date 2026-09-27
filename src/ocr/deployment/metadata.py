@@ -10,6 +10,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
+from .versions import parse_numeric_version
+
 TRUSTED_SOURCE_HOSTS = {
     "github.com",
     "huggingface.co",
@@ -21,6 +23,10 @@ TRUSTED_SOURCE_HOSTS = {
 
 class CompatibilityMetadataError(ValueError):
     """Raised when compatibility metadata cannot be trusted."""
+
+
+_COMPATIBILITY_SCHEMA_VERSION = "2.0"
+_DRIVER_PLATFORMS = frozenset({"windows", "linux"})
 
 
 def bundled_metadata_path() -> Path:
@@ -57,6 +63,14 @@ def validate_compatibility_metadata(data: Mapping[str, Any]) -> None:
     if missing:
         raise CompatibilityMetadataError(
             f"Compatibility metadata is missing required fields: {', '.join(missing)}"
+        )
+    if data["schema_version"] != _COMPATIBILITY_SCHEMA_VERSION:
+        raise CompatibilityMetadataError(
+            f"Unsupported compatibility metadata schema version: {data['schema_version']}."
+        )
+    if "driver_families" in data:
+        raise CompatibilityMetadataError(
+            "Obsolete driver_families thresholds are ambiguous; use per-profile driver versions."
         )
     if data["model"] != "baidu/Unlimited-OCR":
         raise CompatibilityMetadataError("Unexpected model id in compatibility metadata.")
@@ -105,6 +119,20 @@ def validate_compatibility_metadata(data: Mapping[str, Any]) -> None:
     for name, profile in profiles.items():
         if not re.fullmatch(r"cu\d+", str(name)) or not isinstance(profile, Mapping):
             raise CompatibilityMetadataError("Invalid PyTorch CUDA profile metadata.")
+        if "minimum_driver_major" in profile:
+            raise CompatibilityMetadataError(
+                f"Profile {name} uses an ambiguous major-only NVIDIA Driver threshold."
+            )
+        minimums = profile.get("minimum_driver_versions")
+        if not isinstance(minimums, Mapping) or set(minimums) != _DRIVER_PLATFORMS:
+            raise CompatibilityMetadataError(
+                f"Profile {name} must define Windows and Linux Driver minimums."
+            )
+        for platform_key, minimum in minimums.items():
+            if not isinstance(minimum, str) or parse_numeric_version(minimum) is None:
+                raise CompatibilityMetadataError(
+                    f"Profile {name} has an invalid {platform_key} Driver minimum version."
+                )
         _validate_trusted_url(str(profile.get("index_url", "")), label=f"profile {name}")
     uv_bootstrap = data.get("uv_bootstrap", {})
     if not isinstance(uv_bootstrap, Mapping) or not re.fullmatch(
@@ -130,6 +158,32 @@ def validate_compatibility_metadata(data: Mapping[str, Any]) -> None:
             raise CompatibilityMetadataError("Invalid uv bootstrap SHA-256.")
         if int(asset.get("size", 0)) <= 0:
             raise CompatibilityMetadataError("Invalid uv bootstrap asset size.")
+
+
+def driver_platform_key(system: Any) -> str | None:
+    """Normalize the OS names emitted by the environment inspector."""
+
+    if not isinstance(system, str):
+        return None
+    platform_key = system.strip().casefold()
+    return platform_key if platform_key in _DRIVER_PLATFORMS else None
+
+
+def minimum_driver_versions_by_profile(
+    data: Mapping[str, Any], system: Any
+) -> dict[str, str]:
+    """Return profile minimums for one supported OS from canonical metadata."""
+
+    platform_key = driver_platform_key(system)
+    if platform_key is None:
+        return {}
+    profiles = data["backends"]["transformers"]["pytorch_profiles"]
+    profile_order = ("cu130", "cu128", "cu126")
+    return {
+        name: str(profiles[name]["minimum_driver_versions"][platform_key])
+        for name in profile_order
+        if name in profiles
+    }
 
 
 def _validate_trusted_url(value: str, *, label: str) -> None:

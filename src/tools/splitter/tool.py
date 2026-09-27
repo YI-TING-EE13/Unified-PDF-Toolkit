@@ -20,12 +20,13 @@ from typing import List, Tuple, Optional, Any, Dict
 
 from ...base.tool import BaseTool
 from ...ui.components import FileListWidget, OutputActions, ResponsiveSplit
-from ...utils.file_ops import get_default_save_dir, resolve_output_path
+from ...utils.file_ops import create_staged_output, get_default_save_dir
 from ...utils.settings import get_setting, set_setting
 from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -448,6 +449,7 @@ class SplitterTool(BaseTool):
 
     def _run_split(self, input_path: str, out_dir: str, ranges_str: str) -> None:
         """Worker thread logic for PDF splitting."""
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Split PDF",
             out_dir,
@@ -455,6 +457,7 @@ class SplitterTool(BaseTool):
                 "ranges": ranges_str or "all",
                 "conflict_policy": get_conflict_policy(),
             },
+            job_summary=job_summary,
         )
         doc = None
         try:
@@ -466,6 +469,9 @@ class SplitterTool(BaseTool):
             try:
                 page_ranges = self._parse_ranges(ranges_str, total)
             except ValueError as exc:
+                report.count_job("failed")
+                report.add(input_path, status="failed", message=str(exc))
+                report.write()
                 self.queue.put(("error", str(exc)))
                 return
 
@@ -474,6 +480,7 @@ class SplitterTool(BaseTool):
             total_ranges = len(page_ranges)
             for idx, (start, end) in enumerate(page_ranges, start=1):
                 if self.cancel_token.is_cancelled():
+                    report.count_job("cancelled")
                     report.add(input_path, status="cancelled")
                     report_path = report.write()
                     self.queue.put(
@@ -499,8 +506,10 @@ class SplitterTool(BaseTool):
                     new_doc.insert_pdf(doc, from_page=start, to_page=end)
                     out_name = f"{base_name}_{start + 1}-{end + 1}.pdf"
                     requested_path = os.path.join(out_dir, out_name)
-                    output_path = resolve_output_path(requested_path, get_conflict_policy())
-                    if output_path is None:
+                    transaction = create_staged_output(
+                        requested_path, get_conflict_policy()
+                    )
+                    if transaction is None:
                         report.add(
                             input_path,
                             requested_path,
@@ -508,7 +517,21 @@ class SplitterTool(BaseTool):
                             message="Output exists and conflict policy is skip.",
                         )
                         continue
-                    new_doc.save(output_path)
+                    try:
+                        new_doc.save(str(transaction.staging_path))
+                        if not transaction.staging_path.is_file():
+                            raise OSError("PDF split did not create its output file.")
+                        output_path = transaction.commit()
+                    finally:
+                        transaction.cleanup()
+                if output_path is None:
+                    report.add(
+                        input_path,
+                        requested_path,
+                        status="skipped",
+                        message="Output appeared before commit and was preserved.",
+                    )
+                    continue
                 report.add(input_path, output_path)
                 count += 1
                 self.queue.put(
@@ -521,6 +544,7 @@ class SplitterTool(BaseTool):
                     )
                 )
 
+            report.count_job("success" if count else "skipped")
             report_path = report.write()
             self.queue.put(
                 (
@@ -533,6 +557,7 @@ class SplitterTool(BaseTool):
                 )
             )
         except Exception as e:
+            report.count_job("failed")
             report.add(input_path, status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

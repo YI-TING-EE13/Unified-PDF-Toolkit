@@ -24,6 +24,7 @@ from ...utils.workflow import (
     CancellationToken,
     WorkflowReport,
     get_conflict_policy,
+    new_job_summary,
     remember_inputs,
 )
 
@@ -325,6 +326,7 @@ class CompressorTool(BaseTool):
         """
         Worker thread logic. Expands folders and invokes BatchProcessor.
         """
+        job_summary = new_job_summary()
         report = WorkflowReport(
             "Compress PDF/Image",
             output_dir,
@@ -333,6 +335,7 @@ class CompressorTool(BaseTool):
                 "conflict_policy": get_conflict_policy(),
                 **compression_options,
             },
+            job_summary=job_summary,
         )
         try:
             # 1. Expand Folders using glob
@@ -360,6 +363,13 @@ class CompressorTool(BaseTool):
                 conflict_policy=get_conflict_policy(),
             )
 
+            for status in ("success", "failed", "skipped"):
+                job_summary[status] = int(result.get(status, 0))
+            job_summary["cancelled"] = sum(
+                record.get("status") == "cancelled"
+                for record in result.get("records", [])
+            )
+
             for record in result.get("records", []):
                 report.add(
                     record.get("source", ""),
@@ -383,6 +393,8 @@ class CompressorTool(BaseTool):
                 return
             self.queue.put(("done", (output_dir, result)))
         except Exception as e:
+            if not any(job_summary.values()):
+                report.count_job("failed")
             report.add("", status="failed", message=str(e))
             report.write()
             self.queue.put(("error", str(e)))

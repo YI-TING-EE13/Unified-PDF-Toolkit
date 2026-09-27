@@ -38,6 +38,25 @@ All direct commands accept:
 - `--json` for a machine-readable final summary
 - `--quiet` to suppress progress messages
 
+Output conflict behavior is enforced when the completed artifact is committed:
+
+- `skip` preserves an existing output and also skips if another writer claims
+  the target before commit.
+- `rename` preserves existing outputs. If another writer claims the selected
+  name before commit, the writer tries the next bounded `_2`, `_3`, and later
+  suffix.
+- `overwrite` replaces the original logical target only after the new artifact
+  has been staged. Concurrent overwrites of the same target are last-commit-
+  wins; the old file is not deleted before replacement.
+
+Staged files live in a per-invocation directory beside the output. A crash can
+leave that temporary directory behind, but it does not reserve or block the
+logical output name.
+
+Compression targets include a stable identifier derived from the resolved
+source path. Same-named files from different folders therefore keep separate
+targets, while repeated runs of the same source use the same conflict target.
+
 ## Managed Unlimited-OCR commands
 
 The advanced local OCR deployment commands are separate from normal batch jobs.
@@ -164,8 +183,10 @@ the manifest's folder, not the caller's current directory. A command-line
 
 ## Reports and exit codes
 
-Every run writes TXT, CSV, and JSON workflow reports to the output folder. The
-final JSON summary contains `success`, `failed`, `skipped`, `cancelled`, and
+Every run writes TXT, CSV, and JSON workflow reports to the output folder. Each
+produced artifact has its own report record, and all three formats share a
+collision-safe report name; repeated same-second names receive a numeric suffix.
+The final JSON summary contains `success`, `failed`, `skipped`, `cancelled`, and
 `report_path`.
 
 | Exit code | Meaning |

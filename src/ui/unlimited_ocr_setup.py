@@ -302,7 +302,10 @@ class UnlimitedOcrSetupDialog(tk.Toplevel):
     ) -> None:
         try:
             validation_root = Path(self.plan.runtime_root) / "state" / "validation-assets"
-            cases = create_validation_suite(validation_root)
+            cases = create_validation_suite(
+                validation_root,
+                managed_root=Path(self.plan.model_cache_dir).parent,
+            )
             journal = self.provider.setup(
                 consent=consent,
                 cancellation=cancellation,
