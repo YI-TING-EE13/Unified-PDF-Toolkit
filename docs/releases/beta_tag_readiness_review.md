@@ -19,6 +19,16 @@ Release decision for the controlled `v0.6.0-beta.5` prerelease:
   commit `f768c674939edeb328c0baa7838d3b65ca5f449a`. That commit has the same
   Git tree as promoted `main` (`2ee5ba57f2e2fb0d683c383adc25c186acb260f5`).
   This does not test installer lifecycle behavior.
+- Historical packaged-app shutdown observation: controlled local A/B runs
+  recorded timeouts in 5/5 baseline runs and 5/5 candidate runs. Affected
+  processes remained alive beyond the normal 5-second close bound; diagnostic
+  runs remained alive to about 15 seconds. Later normal-user desktop validation
+  passed 20/20 without reproducing the timeout, and the exact-head GitHub
+  PyInstaller packaged smoke passed. Classification:
+  `HISTORICAL_NONDETERMINISTIC_FAILURE`. Monitor this as a residual beta
+  reliability risk, not a currently reproducible release blocker. It is
+  separate from the waived installer lifecycle matrix; no root-cause fix or
+  permanent elimination is established.
 - Installer lifecycle acceptance status: `DEFERRED_NO_VM`. No checkpoint-
   capable disposable Windows VM was available, and no lifecycle scenario was
   executed. No scenario produced a failing result; all scenarios remain
