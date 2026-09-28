@@ -4,10 +4,13 @@ This runbook verifies the Windows installer and portable ZIP without risking a
 developer workstation or user data. Run it only against an exact release
 candidate in a checkpoint-capable disposable Windows VM.
 
-Current status for `v0.6.0-beta.5` at promoted main
-`9706e6417a592671a6f4e758005d904443595d09`:
+Published `v0.6.0-beta.5` release source/tag target:
+`580867862ac75deac8f337b836c8d490e0359f16`.
+Current lifecycle status:
 **DEFERRED_NO_VM; WAIVED_FOR_CONTROLLED_BETA5**.
 Governance decision: `INSTALLER_ACCEPTANCE_WAIVED_BY_MAINTAINER`.
+The tag-triggered Release workflow `36368410013` and normal-desktop packaged
+smoke passed, but neither substitutes for this checkpointed lifecycle matrix.
 
 The installer lifecycle matrix was not executed because no checkpoint-capable
 disposable Windows VM was available. The maintainer explicitly waived this gate
@@ -15,6 +18,21 @@ for this controlled beta. Every scenario remains unverified; this waiver is not
 a PASS and does not establish production readiness. Future releases should run
 this matrix unless a maintainer separately approves and documents a waiver under
 the release checklist.
+
+## Published beta.5 reference
+
+The controlled prerelease was published on 2026-09-28. The final release
+workflow succeeded and the published asset hashes matched `SHA256SUMS.txt`.
+The published Windows ZIP and installer SHA-256 values are:
+
+- `Unified-PDF-Toolkit-Windows.zip`:
+  `F063877FB8184F0B0AFDBBD7DE6670ABE29D326BFECAF6A6CED403BB2C820F10`
+- `Unified-PDF-Toolkit-Setup-0.6.0-beta.5.exe`:
+  `42F7BA08A792FEFEE0E208EDDD25CBFA670C82CF59A819CC03C403DDB1847D42`
+
+These hashes identify the released artifacts if this deferred matrix is run
+later for retrospective beta evidence. Running it later would add lifecycle
+evidence; it would not rewrite the historical waiver decision.
 
 ## Acceptance boundary
 

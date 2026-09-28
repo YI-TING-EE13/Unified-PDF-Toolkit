@@ -4,9 +4,10 @@ This checklist verifies packaging boundaries before any controlled beta build.
 It does not create a GitHub Release or git tag.
 
 > Historical note: the measurements below record the beta.1-beta.3 packaging
-> work. Current beta.4 readiness is maintained in
-> `docs/releases/beta_tag_readiness_review.md`; published beta.4 hashes are
-> generated as `SHA256SUMS.txt` by the release workflow.
+> work. Current release closure is maintained in
+> `docs/releases/beta_tag_readiness_review.md`; `v0.6.0-beta.5` was published
+> and verified on 2026-09-28, with published hashes generated as
+> `SHA256SUMS.txt` by the release workflow.
 
 ## Scope
 
@@ -256,8 +257,9 @@ a release.
 
 ## Remaining Packaging Work
 
-- Confirm release artifacts on GitHub Actions do not include optional OCR
-  runtime folders or model caches.
+- For future releases, continue confirming that GitHub Actions release artifacts
+  do not include optional OCR runtime folders or model caches. The published
+  beta.5 release passed the maintained artifact boundary/version verification.
 - Keep beta notes explicit that optional OCR runtime setup is user-managed and
   separate from the default installer.
 - Decide whether beta users should use repository/source-distribution docs or

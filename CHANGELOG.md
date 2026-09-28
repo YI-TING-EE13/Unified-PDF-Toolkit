@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.6.0-beta.5 - 2026-08-10
+## 0.6.0-beta.5 - 2026-09-28
 
 - Reworked the desktop shell into a grouped local-first workspace with clearer
   workflow headings, primary actions, status, empty states, and shared visual
@@ -18,11 +18,13 @@
 - Improved measured PDF compression and PDF-to-Word Page Images performance
   without changing page selection, image pixels, OCR routing, or output
   contracts; the maintained benchmark records the method and results.
-- Prepared a checkpoint-based Windows installer lifecycle acceptance runbook.
-  Fresh install, beta.4-to-beta.5 upgrade, retained-data, uninstall, reinstall,
-  and rollback acceptance remain blocked until a disposable Windows VM is
-  available; this candidate must not be tagged on static or build evidence
-  alone.
+- Published `v0.6.0-beta.5` as a controlled GitHub prerelease after exact-source
+  CI/release-workflow verification and a fixed 10/10 normal-user Windows
+  packaged startup/graceful-shutdown qualification. The checkpoint-based
+  Windows installer lifecycle matrix remains `DEFERRED_NO_VM` under the
+  explicit beta.5 maintainer waiver; fresh install, beta.4-to-beta.5 upgrade,
+  retained-data, uninstall, reinstall, and rollback scenarios remain
+  unverified rather than passed.
 
 ## 0.6.0-beta.4 - 2026-07-16
 

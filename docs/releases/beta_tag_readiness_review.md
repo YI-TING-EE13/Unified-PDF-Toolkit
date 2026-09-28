@@ -1,47 +1,50 @@
 # Beta Tag Readiness Review
 
-This document records the current readiness review for a human-approved beta
-tag. It does not create a tag, publish a GitHub Release, or approve production
-Unlimited-OCR support.
+This document preserves beta readiness history and records the final release
+closure for the published controlled prerelease. Historical pre-tag sections do
+not themselves create or authorize a tag, and none of this documentation
+approves production Unlimited-OCR support.
 
-## Current Beta 5 Decision (2026-09-27)
+## Final Beta 5 Release Closure (2026-09-28)
 
-Release decision for the controlled `v0.6.0-beta.5` prerelease:
+Release state for the controlled `v0.6.0-beta.5` prerelease:
 
-- Exact promoted `main` SHA: `9706e6417a592671a6f4e758005d904443595d09`.
-- Exact-main GitHub CI run
-  [36309255928](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/36309255928)
-  completed successfully on this SHA. Windows, macOS, and Ubuntu test jobs,
-  quality/security gates, and the Windows PyInstaller packaged-app smoke all
-  passed. Coverage was 55%; the dependency audit reported no known
-  vulnerabilities.
-- Normal-user Windows packaged-app launch/shutdown validation passed 20/20 on
-  commit `f768c674939edeb328c0baa7838d3b65ca5f449a`. That commit has the same
-  Git tree as promoted `main` (`2ee5ba57f2e2fb0d683c383adc25c186acb260f5`).
-  This does not test installer lifecycle behavior.
-- Historical packaged-app shutdown observation: controlled local A/B runs
-  recorded timeouts in 5/5 baseline runs and 5/5 candidate runs. Affected
-  processes remained alive beyond the normal 5-second close bound; diagnostic
-  runs remained alive to about 15 seconds. Later normal-user desktop validation
-  passed 20/20 without reproducing the timeout, and the exact-head GitHub
-  PyInstaller packaged smoke passed. Classification:
-  `HISTORICAL_NONDETERMINISTIC_FAILURE`. Monitor this as a residual beta
-  reliability risk, not a currently reproducible release blocker. It is
-  separate from the waived installer lifecycle matrix; no root-cause fix or
-  permanent elimination is established.
-- Installer lifecycle acceptance status: `DEFERRED_NO_VM`. No checkpoint-
-  capable disposable Windows VM was available, and no lifecycle scenario was
-  executed. No scenario produced a failing result; all scenarios remain
-  unverified because no scenario ran.
-- Maintainer decision: `INSTALLER_ACCEPTANCE_WAIVED_BY_MAINTAINER` /
-  `WAIVED_FOR_CONTROLLED_BETA5`. The missing evidence is knowingly accepted
-  for this controlled beta only. The waiver is not equivalent to `PASS`.
+- Release source/tag target:
+  `580867862ac75deac8f337b836c8d490e0359f16`.
+- Annotated tag object:
+  `c0d36168e50292708d33093cdf1f21de520ac686`.
+- Exact-source Release dry-run
+  [36322100389](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/36322100389)
+  passed before tagging without publication.
+- Tag-triggered Release workflow
+  [36368410013](https://github.com/YI-TING-EE13/Unified-PDF-Toolkit/actions/runs/36368410013)
+  passed from the exact release source and published the GitHub prerelease.
+  Quality/security gates, 55% coverage, 349 tests, install verification,
+  package build, PyInstaller, 5-second packaged-app shutdown smoke, Windows ZIP,
+  Inno Setup installer build, artifact verification, checksum generation, and
+  publication all passed.
+- Normal-user Windows desktop qualification of the authoritative dry-run
+  portable executable passed 10/10 fixed runs at the unchanged 5-second close
+  limit. Every close request was accepted, every process exited with code 0,
+  and measured close-to-exit times were 289-346 ms.
+- Published wheel, source distribution, Windows ZIP, and installer hashes were
+  recomputed and matched the published `SHA256SUMS.txt`.
+- GitHub Release status: published, non-draft, prerelease.
+- Final classification:
+  `BETA5_RELEASE_COMPLETE` /
+  `V0.6.0_BETA5_RELEASED_AND_VERIFIED`.
+- Installer lifecycle acceptance remains `DEFERRED_NO_VM`.
+  `INSTALLER_ACCEPTANCE_WAIVED_BY_MAINTAINER` applies only to this controlled
+  prerelease and is not equivalent to `PASS`.
+- The historical packaged-app shutdown observation remains
+  `HISTORICAL_NONDETERMINISTIC_FAILURE`. The later exact-source CI/release
+  smokes and normal-desktop qualification support the released beta, but do not
+  establish a permanent root-cause fix.
 
-Recommendation: **READY FOR HUMAN-AUTHORIZED CONTROLLED BETA TAG WITH
-DOCUMENTED INSTALLER RISK**. This is not production readiness or tag
-authorization. The release must remain a prerelease, and its notes must disclose
-the untested installer scenarios. Future releases use the standard lifecycle
-gate unless separately waived under the release checklist.
+The immutable tag and published assets are not changed by this post-release
+documentation update. Future stable/public production releases still require
+the normal installer lifecycle gate unless release policy is separately changed
+and approved.
 
 ## Beta 5 Candidate Preparation History (2026-08-10)
 

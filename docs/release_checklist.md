@@ -72,7 +72,10 @@ For `v0.6.0-beta.5`, the specific waiver is recorded in
 [`docs/releases/beta_tag_readiness_review.md`](releases/beta_tag_readiness_review.md)
 and [`docs/releases/v0.6.0-beta.5.md`](releases/v0.6.0-beta.5.md). It accepts
 the missing VM evidence for this controlled beta only; it does not change the
-lifecycle result from `DEFERRED_NO_VM` or imply production readiness.
+lifecycle result from `DEFERRED_NO_VM` or imply production readiness. The
+release was subsequently published and verified on 2026-09-28; that successful
+release evidence does not retroactively convert the waived lifecycle matrix to
+`PASS`.
 
 Stable/public production releases still require actual lifecycle acceptance
 unless release policy is separately changed and approved.
@@ -95,8 +98,20 @@ git push origin v<version>
 
 The `Release` workflow builds package artifacts, a Windows ZIP bundle, installs
 Inno Setup on the Windows runner, builds a current-user Windows installer, and
-publishes the release artifacts and `SHA256SUMS.txt`. A tag must have a matching
+publishes the release artifacts and `SHA256SUMS.txt` for tag-triggered runs.
+A manual `workflow_dispatch` run is an authoritative pre-tag dry run: it
+executes the same build/verification path and uploads the workflow artifact, but
+the publication step remains skipped because no tag ref is present. A tag must have a matching
 `docs/releases/<tag>.md` release-note file. Confirm both the tag-triggered CI and
 Release workflows are green, download every published asset into an isolated
 directory, verify the checksum manifest and packaged startup/shutdown, and keep
 alpha, beta, and release-candidate tags as GitHub prereleases.
+
+## Post-release evidence closure
+
+After a release is published, record the immutable tag target, tag-triggered
+workflow run, final asset hashes, and any required normal-desktop qualification
+in the versioned release notes/readiness record on `main`. Do not move the tag
+or replace published assets merely to add post-release documentation. Historical
+pre-tag evidence should remain labeled as historical instead of being rewritten
+as if it occurred at publication time.

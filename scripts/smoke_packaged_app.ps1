@@ -27,6 +27,8 @@ try {
     if (-not $process.CloseMainWindow()) {
         throw "Packaged app started without a closable main window."
     }
+    # The bounded close timeout is a release gate. Do not relax it merely to
+    # turn a packaging failure into a pass; investigate the lifecycle instead.
     if (-not $process.WaitForExit($CloseTimeoutSeconds * 1000)) {
         throw "Packaged app did not close within $CloseTimeoutSeconds seconds."
     }
