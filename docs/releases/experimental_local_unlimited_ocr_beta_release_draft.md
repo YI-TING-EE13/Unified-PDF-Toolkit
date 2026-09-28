@@ -1,14 +1,15 @@
 # Historical Experimental Local Unlimited-OCR Beta 3 Draft
 
 > This beta 3 planning document is retained for release history. The managed
-> deployment framework supersedes its user-managed setup assumptions. Current
-> beta 4 release notes are in [`v0.6.0-beta.4.md`](v0.6.0-beta.4.md), while the
-> canonical runtime and evidence boundaries live in the managed runtime,
-> validation, security, and roadmap documents.
+> deployment framework supersedes its user-managed setup assumptions. The
+> current published controlled prerelease is documented in
+> [`v0.6.0-beta.5.md`](v0.6.0-beta.5.md), while the canonical runtime and
+> evidence boundaries live in the managed runtime, validation, security, and
+> roadmap documents.
 
-This draft is for a future human-approved beta tag. It is not a published
-GitHub Release, does not create a tag, and does not make Experimental Local
-Unlimited-OCR production-ready.
+The text below is preserved as a historical beta.3 draft. It did not itself
+create or publish a tag and does not make Experimental Local Unlimited-OCR
+production-ready.
 
 Historical status note after `v0.6.0-beta.2`: the controlled beta tag, release, and
 CI are clean, but `main` now includes beta log/error hardening and beginner
